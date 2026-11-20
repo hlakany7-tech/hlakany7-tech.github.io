@@ -515,7 +515,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.20-1937</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.20-2003</p>
     <div hidden>
     </div>
   </div>
@@ -1594,16 +1594,18 @@ const ICONS = {
   length: '<path d="M4 17L17 4l3 3L7 20z"/><path d="M8 13l2 2M11 10l2 2M14 7l2 2"/>',
   angle: '<path d="M4 19h16M4 19L15 6"/><path d="M11 19a7 7 0 0 0-2.2-5"/>',
   roi: '<ellipse cx="12" cy="12" rx="8.5" ry="5.5"/><path d="M12 12h.01"/>',
+  hu: '<path d="M12 3v6M12 15v6M3 12h6M15 12h6"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/>',
 };
-const TOOLS = [
+const TOOLS = [ // toolbar order: the everyday tools first
   ['scroll', 'Scroll', 'Drag up or down to move through slices'],
   ['wl', 'Window', 'Drag to change window width (left, right) and level (up, down)'],
+  ['length', 'Length', 'Drag to measure a distance'],
+  ['hu', 'HU', 'Touch and move: the + just above your finger reads the HU of that one pixel. Press and hold the button for a circle'],
   ['pan', 'Pan', 'Drag to move the image'],
   ['zoom', 'Zoom', 'Drag up or down to zoom'],
   ['rotate', 'Rotate', 'Drag around the image to turn it. It snaps to right angles'],
-  ['length', 'Length', 'Drag to measure a distance'],
   ['angle', 'Angle', 'Tap three points: start, vertex, end'],
-  ['roi', 'ROI', 'Drag to outline an ellipse and read its statistics'],
+  ['roi', 'HU area', 'Drag to outline a circle: mean HU, SD and area'],
 ];
 const CT_PRESETS = [ // same set and order as RadiAnt: keys 2 to 7
   ['CT Abdomen', 60, 400], ['CT Angio', 300, 600], ['CT Bone', 300, 1500],
@@ -1742,7 +1744,16 @@ function roiStats(img, a, b) {
 // Editing: each measurement has grab points (its ends, or the ROI's four sides) and a body.
 // Dragging a grab point reshapes it; dragging the body moves it whole.
 function roiBox(m) { return { x0: Math.min(m.a.x, m.b.x), x1: Math.max(m.a.x, m.b.x), y0: Math.min(m.a.y, m.b.y), y1: Math.max(m.a.y, m.b.y) }; }
+// HU of one pixel (the + sits on it): CT values in HU, other modalities as stored values
+const HU_OFF = 64; // a finger reads the pixel this far above it, so the finger never hides it
+function huAt(img, q) {
+  if (!img || !img.pixels || !q) return null;
+  const x = Math.floor(q.x), y = Math.floor(q.y); if (x < 0 || y < 0 || x >= img.cols || y >= img.rows) return null;
+  return img.pixels[(y * img.cols + x) * (img.spp || 1)] * (img.slope || 1) + (img.intercept || 0);
+}
+const huText = (v, ct) => v == null ? '…' : Math.round(v) + (ct ? ' HU' : '');
 function measGrips(m) {
+  if (m.type === 'hu') return [m.p];
   if (m.type === 'length') return [m.a, m.b];
   if (m.type === 'angle') return m.pts;
   const r = roiBox(m), cx = (r.x0 + r.x1) / 2, cy = (r.y0 + r.y1) / 2;
@@ -1774,12 +1785,13 @@ function hitIn(list, toS, p, R, strict) {
 const hitMeas = (p, touch, strict) => hitIn(mlist(), (x, y) => toScreen(x, y), p, touch ? 24 : 12, strict);
 function startEdit(h, p, toI = (x, y) => toImage(x, y), list = mlist(), key = mkey()) {
   const m = h.m, copy = q => ({ x: q.x, y: q.y });
-  return { m, grip: h.grip, toI, prev: cloneList(list), key, q0: toI(p.x, p.y), orig: m.type === 'angle' ? { pts: m.pts.map(copy) } : { a: copy(m.a), b: copy(m.b) } };
+  return { m, grip: h.grip, toI, prev: cloneList(list), key, q0: toI(p.x, p.y), orig: m.type === 'angle' ? { pts: m.pts.map(copy) } : m.type === 'hu' ? { p: copy(m.p) } : { a: copy(m.a), b: copy(m.b) } };
 }
 function moveEdit(E, p) {
   const m = E.m, q = E.toI(p.x, p.y), dx = q.x - E.q0.x, dy = q.y - E.q0.y, o = E.orig;
   const sh = r => ({ x: r.x + dx, y: r.y + dy });
-  if (E.grip < 0) { if (m.type === 'angle') m.pts = o.pts.map(sh); else { m.a = sh(o.a); m.b = sh(o.b); } }
+  if (m.type === 'hu') { m.p = sh(o.p); m.v = null; }
+  else if (E.grip < 0) { if (m.type === 'angle') m.pts = o.pts.map(sh); else { m.a = sh(o.a); m.b = sh(o.b); } }
   else if (m.type === 'length') { if (E.grip === 0) m.a = sh(o.a); else m.b = sh(o.b); }
   else if (m.type === 'angle') m.pts[E.grip] = sh(o.pts[E.grip]);
   else { // ROI: move one side, keep the opposite side where it is
@@ -1836,6 +1848,14 @@ function commit(m) { const k = mkey(); snap(S.meas, k); const l = S.meas.get(k) 
 // Measurement labels are collected while the shapes are drawn, then placed together so that no label covers
 // another label or a measurement's end points. A label that had to move gets a thin line back to its measurement.
 let LQ = null;
+function drawPlus(c2, s, live) { // the HU point: a + with a gap in the middle, outlined so it shows on any grey
+  const arm = live ? 11 : 8, gap = 2.5;
+  for (const [w, col] of [[4, 'rgba(0,0,0,.7)'], [1.6, '#ffc857']]) {
+    c2.strokeStyle = col; c2.lineWidth = w; c2.setLineDash([]); c2.beginPath();
+    c2.moveTo(s.x - arm, s.y); c2.lineTo(s.x - gap, s.y); c2.moveTo(s.x + gap, s.y); c2.lineTo(s.x + arm, s.y);
+    c2.moveTo(s.x, s.y - arm); c2.lineTo(s.x, s.y - gap); c2.moveTo(s.x, s.y + gap); c2.lineTo(s.x, s.y + arm); c2.stroke();
+  }
+}
 function drawLabel(text, x, y) { if (LQ) LQ.push({ text, x, y }); else placeLabels(ctx, [{ text, x, y }], S.W, S.H, []); }
 function placeLabels(c2, items, W, H, dots) {
   c2.font = '500 12px "IBM Plex Mono", ui-monospace, monospace';
@@ -1864,7 +1884,11 @@ function dot(p) { ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, 7); ctx.fillStyle = '
 function drawMeas(img, m, live) {
   const ed = drag && drag.tool === 'edit' && drag.edit.m === m, sl = S.sel && S.sel.m === m;
   ctx.lineWidth = ed || sl ? 3 : 2; ctx.strokeStyle = '#ffc857'; ctx.setLineDash(live ? [6, 4] : []);
-  if (m.type === 'length') {
+  if (m.type === 'hu') {
+    const s = toScreen(m.p.x, m.p.y); drawPlus(ctx, s, live);
+    const v = huAt(img, m.p); if (v != null && !live) m.v = v;
+    drawLabel(huText(v != null ? v : m.v, img.modality === 'CT'), s.x + 8, s.y + 8);
+  } else if (m.type === 'length') {
     const a = toScreen(m.a.x, m.a.y), b = toScreen(m.b.x, m.b.y);
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); dot(a); dot(b);
     const f = phys(img);
@@ -2195,7 +2219,7 @@ function setTool(t) {
    measuring tool in use, otherwise Length) and a resting palm is ignored. Press and hold: magnifier.
    Double tap: zoom in there, or back to fit. Finger scrolling speeds up with the finger and glides after a flick. */
 const P = new Map(); let drag = null, pinch = null;
-const NAV = new Set(['scroll', 'wl', 'pan', 'zoom', 'rotate']), MEASURE = new Set(['length', 'angle', 'roi']);
+const NAV = new Set(['scroll', 'wl', 'pan', 'zoom', 'rotate']), MEASURE = new Set(['length', 'angle', 'roi', 'hu']);
 const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
 let penDown = false, hold = 0, lastTap = null, glide = null;
 const scrollStep = () => clamp(S.H * 0.8 / Math.max(curSeries() ? curSeries().images.length : 1, 1), 4, 24); // px per slice, slow drag
@@ -2217,7 +2241,8 @@ function startDrag(p, tool, ts) {
   drag = { tool, t0: now, a0: Math.atan2(p.y - S.oy, p.x - S.ox), ang0: S.ang, x0: p.x, y0: p.y, wc0: S.wc, ww0: S.ww, s0: S.s, ox0: S.ox, oy0: S.oy,
     moved: false, acc: 0, lastY: p.y, lastT: now, vy: 0, last: p, hist: [[now, p.y]] };
   const q = toImage(p.x, p.y);
-  if (tool === 'length') S.draft = { type: 'length', a: q, b: q };
+  if (tool === 'hu') S.draft = { type: 'hu', p: toImage(p.x, p.y - S.huOff) };
+  else if (tool === 'length') S.draft = { type: 'length', a: q, b: q };
   else if (tool === 'roi') S.draft = { type: 'roi', a: q, b: q };
   else if (tool === 'angle') {
     if (!S.draft || S.draft.type !== 'angle') S.draft = { type: 'angle', pts: [] };
@@ -2247,6 +2272,7 @@ function moveDrag(p, ts) {
     case 'zoom': zoomAbout(drag.x0, drag.y0, drag.s0, drag.ox0, drag.oy0, drag.s0 * Math.exp(-dy / 180)); linkZoom('ax'); render(); break;
     case 'length': S.draft.b = toImage(p.x, p.y); render(); break;
     case 'roi': S.draft.b = toImage(p.x, p.y); render(); break;
+    case 'hu': S.draft.p = toImage(p.x, p.y - S.huOff); render(); break;
     case 'angle': S.draft.pts[S.draft.pts.length - 1] = toImage(p.x, p.y); render(); break;
     case 'loupe': S.loupe = { x: p.x, y: p.y }; render(); break;
     case 'turn': moveTurn(drag.turn, p); break;
@@ -2263,6 +2289,7 @@ function endDrag(p) {
   }
   const img = cur(), d = S.draft; if (!img || !d || !drag) return;
   const dx = p.x - drag.x0, dy = p.y - drag.y0;
+  if (d.type === 'hu') { const v = huAt(img, d.p); commit({ type: 'hu', p: d.p, v }); S.draft = null; render(); return; }
   if (d.type === 'length') { if (Math.hypot(dx, dy) > 6) commit({ type: 'length', a: d.a, b: d.b }); S.draft = null; }
   else if (d.type === 'roi') {
     if (Math.abs(dx) > 6 && Math.abs(dy) > 6) commit({ type: 'roi', a: d.a, b: d.b, stats: roiStats(img, d.a, d.b) });
@@ -2298,7 +2325,7 @@ cv.addEventListener('pointerdown', e => {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   if (e.pointerType === 'touch' && penDown) return; // palm resting on the screen while using the Pencil
   cv.setPointerCapture(e.pointerId); P.set(e.pointerId, pos(e));
-  const p = pos(e);
+  const p = pos(e); S.huOff = e.pointerType === 'touch' ? HU_OFF : 0;
   if (P.size === 1 && S.vol && e.pointerType !== 'pen') {
     const h = hitHandle('ax', p);
     if (h && !proGate('Oblique MPR (tilting the planes)')) return;
@@ -2693,7 +2720,13 @@ function drawPlaneMeas(v) {
   for (const m of all) {
     const live = m === v.draft, sel = S.sel && S.sel.m === m, sc = q => mvToScreen(v, q.x, q.y);
     c2.strokeStyle = Y; c2.lineWidth = sel ? 3 : 2; c2.setLineDash(live ? [6, 4] : []);
-    if (m.type === 'angle') {
+    if (m.type === 'hu') {
+      const s = sc(m.p); drawPlus(c2, s, live);
+      const g = v.g, buf = v.buf, x = Math.floor(m.p.x), y = Math.floor(m.p.y);
+      const val = buf && buf.length === g.iw * g.ih && x >= 0 && y >= 0 && x < g.iw && y < g.ih ? buf[y * g.iw + x] * S.vol.sl + S.vol.ic : null;
+      if (val != null && !live) m.v = val;
+      label(huText(val != null ? val : m.v, S.vol.se.images[0].modality === 'CT'), s.x + 8, s.y + 8);
+    } else if (m.type === 'angle') {
       const p = m.pts.map(sc);
       c2.beginPath(); p.forEach((q, i) => i ? c2.lineTo(q.x, q.y) : c2.moveTo(q.x, q.y)); c2.stroke(); c2.setLineDash([]); p.forEach(q => dotAt(q, 4));
       if (p.length === 3) label(planeAngle(v, m.pts).toFixed(1) + '°', p[1].x + 10, p[1].y + 10);
@@ -2773,7 +2806,9 @@ function mvInput(v) {
         if (hit) d.edit = startEdit(hit, p, (x, y) => mvToImage(v, x, y), v.meas.get(mvKey(v)), mvKey(v));
         else {
           S.sel = null; d.measure = true;
+          d.off = e.pointerType === 'touch' ? HU_OFF : 0;
           if (tool === 'angle') { if (!midAngle) v.draft = { type: 'angle', pts: [] }; v.draft.pts.push(q); }
+          else if (tool === 'hu') v.draft = { type: 'hu', p: mvToImage(v, p.x, p.y - d.off) };
           else v.draft = { type: tool, a: q, b: q };
           render();
         }
@@ -2789,7 +2824,7 @@ function mvInput(v) {
     } else if (d) {
       const p = at(e); if (Math.hypot(p.x - d.x0, p.y - d.y0) > 6) d.moved = true;
       if (d.turn) { moveTurn(d.turn, p); return; }
-      if (d.measure && v.draft) { const q = mvToImage(v, p.x, p.y); if (v.draft.type === 'angle') v.draft.pts[v.draft.pts.length - 1] = q; else v.draft.b = q; render(); return; }
+      if (d.measure && v.draft) { const q = mvToImage(v, p.x, p.y); if (v.draft.type === 'angle') v.draft.pts[v.draft.pts.length - 1] = q; else if (v.draft.type === 'hu') v.draft.p = mvToImage(v, p.x, p.y - (d.off || 0)); else v.draft.b = q; render(); return; }
       if (d.edit) { moveEdit(d.edit, p); return; }
       if (d.cross) { const q = mvToImage(v, p.x + d.dx, p.y + d.dy); setP(planeToWorld(v, q.x, q.y), v.kind); return; }
       // move the plane along its normal, one voxel per step
@@ -2804,9 +2839,9 @@ function mvInput(v) {
     if (d && e.type === 'pointerup') {
       if (d.measure) {
         // a length or ROI is kept once dragged out; an angle is kept after its third point (until then the draft stays)
-        const m = v.draft, ang = m && m.type === 'angle', keep = ang && m.pts.length < 3;
-        const sa = m && !ang && mvToScreen(v, m.a.x, m.a.y), sb = m && !ang && mvToScreen(v, m.b.x, m.b.y);
-        const ok = m && (ang ? !keep : m.type === 'roi' ? Math.abs(sb.x - sa.x) > 6 && Math.abs(sb.y - sa.y) > 6 : Math.hypot(sb.x - sa.x, sb.y - sa.y) > 6);
+        const m = v.draft, ang = m && m.type === 'angle', keep = ang && m.pts.length < 3, hu = m && m.type === 'hu';
+        const sa = m && !ang && !hu && mvToScreen(v, m.a.x, m.a.y), sb = m && !ang && !hu && mvToScreen(v, m.b.x, m.b.y);
+        const ok = m && (hu ? true : ang ? !keep : m.type === 'roi' ? Math.abs(sb.x - sa.x) > 6 && Math.abs(sb.y - sa.y) > 6 : Math.hypot(sb.x - sa.x, sb.y - sa.y) > 6);
         if (ok) {
           if (m.type === 'roi') m.stats = planeRoiStats(v, m);
           const key = mvKey(v); v.meas = v.meas || new Map(); snap(v.meas, key); const l = v.meas.get(key) || []; l.push(m); v.meas.set(key, l);
@@ -3128,10 +3163,23 @@ $('#btnFocus').addEventListener('click', () => focusToggle(true));
 $('#focusExit').addEventListener('click', () => focusToggle(false));
 
 /* ---------- toolbar ---------- */
-TOOLS.forEach(([id, label]) => {
-  const b = document.createElement('button'); b.className = 'tool'; b.type = 'button'; b.dataset.tool = id;
-  b.innerHTML = '<svg viewBox="0 0 24 24">' + ICONS[id] + '</svg>' + label;
-  b.addEventListener('click', () => setTool(id)); $('#tools').append(b);
+// One HU button: tap for the point (+); press and hold to switch it to the circle (HU area) and back.
+const toolFace = (b, id) => { b.dataset.tool = id; b.innerHTML = '<svg viewBox="0 0 24 24">' + ICONS[id] + '</svg>' + TOOLS.find(x => x[0] === id)[1]; };
+TOOLS.forEach(([id]) => {
+  if (id === 'roi') return; // reached through the HU button
+  const b = document.createElement('button'); b.className = 'tool'; b.type = 'button'; toolFace(b, id);
+  if (id === 'hu') {
+    b.title = 'HU: tap for a point, press and hold for a circle (HU area)';
+    let hold = 0, held = false;
+    b.addEventListener('pointerdown', () => { held = false; clearTimeout(hold); hold = setTimeout(() => {
+      held = true; toolFace(b, b.dataset.tool === 'hu' ? 'roi' : 'hu'); setTool(b.dataset.tool);
+      if (navigator.vibrate) try { navigator.vibrate(15); } catch (e) { }
+    }, 450); });
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => clearTimeout(hold));
+    b.addEventListener('contextmenu', e => e.preventDefault());
+    b.addEventListener('click', () => { if (held) { held = false; return; } setTool(b.dataset.tool); });
+  } else b.addEventListener('click', () => setTool(id));
+  $('#tools').append(b);
 });
 $('#actInvert').addEventListener('click', toggleInvert);
 $('#actReset').addEventListener('click', () => {
