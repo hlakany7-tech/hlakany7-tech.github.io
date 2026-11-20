@@ -212,6 +212,11 @@ body.focus > header.bar, body.focus .presets-row, body.focus .dock { display: no
 .card h2 { margin: 0; font-size: 16px; font-weight: 600; }
 .card .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .list { display: flex; flex-direction: column; gap: 8px; }
+.prowhy { margin: 0; padding: 10px 12px; border-radius: 10px; background: rgba(140,196,255,.1); color: var(--accent); }
+.profeat { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.profeat li { display: flex; flex-direction: column; gap: 2px; padding-left: 14px; border-left: 2px solid var(--accent); }
+.profeat b { font-weight: 600; } .profeat span { color: var(--muted); font-size: 13px; }
+.probuy { justify-content: center; min-height: 50px; font-size: 16px; }
 .pgroup { display: flex; align-items: center; gap: 10px; margin-top: 6px; padding: 8px 2px 2px; border-top: 1px solid var(--line); }
 .pgroup:first-child, .closeall + .pgroup { border-top: 0; }
 .pgroup .who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -465,6 +470,22 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
   </div>
 </aside>
 
+<div class="sheet" id="sheetPro" hidden>
+  <div class="card" role="dialog" aria-label="Sliceview Pro">
+    <div class="head"><h2>Sliceview Pro</h2><button class="btn" data-close>Close</button></div>
+    <p class="prowhy" id="proWhy" hidden></p>
+    <ul class="profeat">
+      <li><b>Oblique MPR</b><span>Tilt the planes to straighten vessels such as the SMA, and measure along them</span></li>
+      <li><b>Compare</b><span>Up to 4 series side by side, synced, in axial, coronal or sagittal</span></li>
+      <li><b>Reports</b><span>Templates, your own templates, PDF, and sending to the patient on WhatsApp</span></li>
+    </ul>
+    <p class="note">Always free: opening studies, scrolling, window presets, measurements and straight MPR.</p>
+    <button class="btn primary probuy" type="button" id="proBuy" hidden>Get Pro</button>
+    <p class="note" id="proNote"></p>
+    <button class="btn" type="button" id="proRestore">Restore purchase</button>
+  </div>
+</div>
+
 <div class="sheet" id="sheetSeries" hidden>
   <div class="card" role="dialog" aria-label="Series">
     <div class="head"><h2>Series</h2><button class="btn" data-close>Close</button></div>
@@ -487,13 +508,14 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
     <div class="head"><h2>More</h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
+      <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
       <button class="item" type="button" data-do="btnReport">Write a report</button>
       <button class="item" type="button" data-do="btnServer">DICOMweb server</button>
       <button class="item" type="button" data-do="btnSample">Sample study</button>
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.20-1800</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.20-1937</p>
     <div hidden>
     </div>
   </div>
@@ -1811,12 +1833,32 @@ function updatePill() {
   pill.style.left = clamp(x, 8, Math.max(8, W - pw - 8)) + 'px'; pill.style.top = clamp(y, 8, Math.max(8, H - ph - 8)) + 'px';
 }
 function commit(m) { const k = mkey(); snap(S.meas, k); const l = S.meas.get(k) || []; l.push(m); S.meas.set(k, l); render(); }
-function drawLabel(text, x, y) {
-  ctx.font = '500 12px "IBM Plex Mono", ui-monospace, monospace';
-  const w = ctx.measureText(text).width + 12;
-  x = clamp(x, 4, S.W - w - 4); y = clamp(y, 4, S.H - 26);
-  ctx.fillStyle = 'rgba(8,12,14,.85)'; ctx.beginPath(); ctx.roundRect(x, y, w, 22, 6); ctx.fill();
-  ctx.fillStyle = '#ffc857'; ctx.textBaseline = 'middle'; ctx.fillText(text, x + 6, y + 11.5);
+// Measurement labels are collected while the shapes are drawn, then placed together so that no label covers
+// another label or a measurement's end points. A label that had to move gets a thin line back to its measurement.
+let LQ = null;
+function drawLabel(text, x, y) { if (LQ) LQ.push({ text, x, y }); else placeLabels(ctx, [{ text, x, y }], S.W, S.H, []); }
+function placeLabels(c2, items, W, H, dots) {
+  c2.font = '500 12px "IBM Plex Mono", ui-monospace, monospace';
+  const placed = [], hit = (r, q, m) => r.x < q.x + q.w + m && q.x < r.x + r.w + m && r.y < q.y + q.h + m && q.y < r.y + r.h + m;
+  const obst = dots.map(d => ({ x: d.x - 7, y: d.y - 7, w: 14, h: 14 }));
+  for (const it of items) {
+    const w = c2.measureText(it.text).width + 12, h = 22, ax = it.x - 8, ay = it.y - 8; // ax, ay: the point the label belongs to
+    const tries = [[0, 0], [0, 28], [0, -34], [-(w + 16), 0], [-(w + 16), -34], [0, 56], [0, -62], [-(w + 16), 28], [0, 84], [0, -90], [-(w + 16), 56], [0, 112], [0, -118]];
+    let best = null;
+    for (const [dx, dy] of tries) {
+      const r = { x: clamp(it.x + dx, 4, W - w - 4), y: clamp(it.y + dy, 4, H - h - 4), w, h };
+      if (!placed.some(q => hit(r, q, 3)) && !obst.some(q => hit(r, q, 1))) { best = r; break; }
+    }
+    if (!best) best = { x: clamp(it.x, 4, W - w - 4), y: clamp(it.y, 4, H - h - 4), w, h };
+    placed.push(best);
+    const near = { x: clamp(ax, best.x, best.x + w), y: clamp(ay, best.y, best.y + h) };
+    if (Math.hypot(near.x - ax, near.y - ay) > 14) { // moved away: a leader line to the measurement
+      c2.strokeStyle = 'rgba(255,200,87,.7)'; c2.lineWidth = 1; c2.setLineDash([]);
+      c2.beginPath(); c2.moveTo(ax, ay); c2.lineTo(near.x, near.y); c2.stroke();
+    }
+    c2.fillStyle = 'rgba(8,12,14,.85)'; c2.beginPath(); c2.roundRect(best.x, best.y, w, h, 6); c2.fill();
+    c2.fillStyle = '#ffc857'; c2.textBaseline = 'middle'; c2.fillText(it.text, best.x + 6, best.y + 11.5);
+  }
 }
 function dot(p) { ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, 7); ctx.fillStyle = '#ffc857'; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = '#000'; ctx.stroke(); }
 function drawMeas(img, m, live) {
@@ -2042,8 +2084,11 @@ function draw() {
       ctx.restore();
     }
   }
+  LQ = [];
   mlist().forEach(m => drawMeas(img, m, false));
   if (S.draft) drawMeas(img, S.draft, true);
+  { const dots = []; for (const m of mlist().concat(S.draft && S.draft.type !== 'angle' ? [S.draft] : [])) for (const q of measGrips(m)) dots.push(toScreen(q.x, q.y));
+    const lq = LQ; LQ = null; placeLabels(ctx, lq, S.W, S.H, dots); }
   drawAxialCrosshair(img);
   if (S.loupe) drawLoupeRing();
   updateOverlay();
@@ -2256,6 +2301,7 @@ cv.addEventListener('pointerdown', e => {
   const p = pos(e);
   if (P.size === 1 && S.vol && e.pointerType !== 'pen') {
     const h = hitHandle('ax', p);
+    if (h && !proGate('Oblique MPR (tilting the planes)')) return;
     if (h) { glide = null; drag = { tool: 'turn', turn: startTurn('ax', h, p), x0: p.x, y0: p.y, moved: false, t0: e.timeStamp, last: p, hist: [], lastT: e.timeStamp }; return; }
     if (NAV.has(S.tool) && S.vol.se === curSeries()) { // grab the crosshair centre and drag it
       const c = toScreen(S.vol.cx, S.vol.cy);
@@ -2642,12 +2688,7 @@ function planeAngle(v, p) {
 function drawPlaneMeas(v) {
   const list = (v.meas && v.meas.get(mvKey(v))) || [];
   const all = v.draft ? list.concat([v.draft]) : list, c2 = v.ctx, Y = '#ffc857';
-  const label = (txt, x, y) => {
-    c2.font = '500 12px "IBM Plex Mono", ui-monospace, monospace';
-    const w = c2.measureText(txt).width + 12; x = clamp(x, 4, v.W - w - 4); y = clamp(y, 4, v.H - 26);
-    c2.fillStyle = 'rgba(8,12,14,.85)'; c2.beginPath(); c2.roundRect(x, y, w, 22, 6); c2.fill();
-    c2.fillStyle = Y; c2.textBaseline = 'middle'; c2.fillText(txt, x + 6, y + 11.5);
-  };
+  const labels = [], label = (text, x, y) => labels.push({ text, x, y }); // placed together at the end
   const dotAt = (q, r) => { c2.beginPath(); c2.arc(q.x, q.y, r, 0, 7); c2.fillStyle = Y; c2.fill(); };
   for (const m of all) {
     const live = m === v.draft, sel = S.sel && S.sel.m === m, sc = q => mvToScreen(v, q.x, q.y);
@@ -2673,6 +2714,8 @@ function drawPlaneMeas(v) {
     }
     if (sel) for (const q of measGrips(m)) { const s = sc(q); c2.beginPath(); c2.arc(s.x, s.y, 7, 0, 7); c2.lineWidth = 2; c2.strokeStyle = '#fff'; c2.stroke(); }
   }
+  const dots = []; for (const m of all) if (m.type !== 'angle' || m.pts.length === 3) for (const q of measGrips(m)) dots.push(mvToScreen(v, q.x, q.y));
+  placeLabels(c2, labels, v.W, v.H, dots);
 }
 
 // Linked zoom: zooming one MPR view gives the other two the same physical scale (screen pixels per mm),
@@ -2720,6 +2763,7 @@ function mvInput(v) {
     if (P2.size === 1) {
       const p = at(e), h = hitHandle(v.kind, p);
       d = { x0: p.x, y0: p.y, ly: p.y, acc: 0, moved: false, t0: e.timeStamp };
+      if (h && !proGate('Oblique MPR (tilting the planes)')) { d = null; return; }
       if (h) d.turn = startTurn(v.kind, h, p);
       else if (e.pointerType === 'pen' || MEASURE.has(S.tool)) {
         const tool = MEASURE.has(S.tool) ? S.tool : 'length';
@@ -3015,7 +3059,7 @@ function cmpPicker(slot) {
   });
   openSheet('#sheetCmp');
 }
-$('#btnCmp').addEventListener('click', () => cmpOn() ? cmpStop() : cmpPicker());
+$('#btnCmp').addEventListener('click', () => cmpOn() ? cmpStop() : proGate('Compare') && cmpPicker());
 $('#cmpAdd').addEventListener('click', () => cmpPicker());
 $('#cmpSync').addEventListener('click', () => {
   S.cmpSync = !S.cmpSync;
@@ -4052,6 +4096,7 @@ async function rptCopy() {
   catch (e) { const ta = $('#r_findings'); say('Copy is blocked here: select the text and copy it', 3500); ta.focus(); ta.select(); }
 }
 function rptToggle(on) {
+  if ((on == null ? !RPT.open : on) && !proGate('Reports')) return;
   RPT.open = on == null ? !RPT.open : on;
   $('#rpanel').hidden = !RPT.open; document.body.classList.toggle('reporting', RPT.open); $('#btnReport').setAttribute('aria-pressed', RPT.open);
   if (RPT.open) { if (RPT.key !== rptKey()) rptLoad(); $('#rWa').hidden = true; }
@@ -4079,6 +4124,86 @@ function rptInit() {
   });
 }
 rptInit();
+
+/* ---------- Sliceview Pro ----------
+   Free: open, scroll, window presets, measurements, straight MPR. Pro: oblique MPR, Compare, Reports.
+   Pro is bought once through Google Play Billing (Digital Goods API + Payment Request), inside the Play Store app.
+   PRO_ENFORCE is set at build time: off (everything unlocked) until purchases are live. Each purchase is confirmed
+   by a small server (PRO_SERVER), as Google requires within three days. */
+const PRO_ENFORCE = false, PRO_SERVER = (s => s.startsWith('/*') ? '' : s)(''), PRO_SKU = 'sliceview_pro';
+const PRO = { owned: lsGet('sv.pro', null) === PRO_SKU, service: null, details: null, busy: false };
+const isPro = () => !PRO_ENFORCE || PRO.owned;
+function proGate(feature) { // true: go ahead; false: the upgrade screen was shown instead
+  if (isPro()) return true;
+  proSheet(feature); return false;
+}
+function proSet(owned) {
+  PRO.owned = owned; lsSet('sv.pro', owned ? PRO_SKU : null);
+  document.body.classList.toggle('pro', isPro()); proStatus();
+}
+function proStatus() {
+  const el = $('#moreProTxt'); if (!el) return;
+  el.textContent = !PRO_ENFORCE ? 'Sliceview Pro: all features unlocked' : PRO.owned ? 'Sliceview Pro: active, thank you' : 'Get Sliceview Pro';
+}
+async function proConfirm(token) { // the server checks the purchase with Google and acknowledges it
+  if (!PRO_SERVER) return true; // not configured yet (testing): Google refunds unconfirmed test purchases after 3 days
+  try {
+    const r = await fetch(PRO_SERVER.replace(/\/$/, '') + '/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, sku: PRO_SKU }) });
+    const j = await r.json().catch(() => ({})); return !!(r.ok && j.ok);
+  } catch (e) { return null; } // offline: try again later
+}
+async function proInit() {
+  proStatus(); document.body.classList.toggle('pro', isPro());
+  if (!('getDigitalGoodsService' in window)) return;
+  try { PRO.service = await window.getDigitalGoodsService('https://play.google.com/billing'); } catch (e) { PRO.service = null; return; }
+  try { const d = await PRO.service.getDetails([PRO_SKU]); PRO.details = d && d[0] || null; } catch (e) { }
+  proRestore(true);
+}
+async function proRestore(quiet) { // owned purchases: on start, and from the Restore button
+  if (!PRO.service) { if (!quiet) say('Purchases can be restored in the Sliceview app from Google Play', 4000); return; }
+  try {
+    const list = await PRO.service.listPurchases();
+    const p = list.find(x => x.itemId === PRO_SKU);
+    if (p) { const ok = await proConfirm(p.purchaseToken); if (ok !== false) proSet(true); }
+    else if (PRO.owned) proSet(false); // refunded or revoked
+    if (!quiet) say(PRO.owned ? 'Sliceview Pro restored' : 'No Pro purchase found for this Google account', 3500);
+  } catch (e) { if (!quiet) say('Could not reach Google Play, try again', 3500); }
+  proSheetFill();
+}
+async function proBuy() {
+  if (!PRO.service || PRO.busy) return;
+  PRO.busy = true; proSheetFill();
+  try {
+    const req = new PaymentRequest([{ supportedMethods: 'https://play.google.com/billing', data: { sku: PRO_SKU } }],
+      { total: { label: 'Total', amount: { currency: 'USD', value: '0' } } }); // the Play Console price is what is charged
+    const res = await req.show();
+    const ok = await proConfirm(res.details.purchaseToken);
+    if (ok === false) { await res.complete('fail'); say('The purchase could not be confirmed', 4000); }
+    else { await res.complete('success'); proSet(true); $('#sheetPro').hidden = true; say('Thank you: Sliceview Pro is active', 3500); }
+  } catch (e) { if (!(e && e.name === 'AbortError')) say('The purchase did not go through', 3500); }
+  PRO.busy = false; proSheetFill();
+}
+function proPrice() {
+  const d = PRO.details; if (!d || !d.price) return '';
+  try { return new Intl.NumberFormat(navigator.language, { style: 'currency', currency: d.price.currency }).format(d.price.value); } catch (e) { return d.price.value + ' ' + d.price.currency; }
+}
+function proSheetFill() {
+  const buy = $('#proBuy'), note = $('#proNote');
+  if (PRO.owned || !PRO_ENFORCE) { buy.hidden = true; note.textContent = PRO_ENFORCE ? 'Sliceview Pro is active on this device. Thank you!' : 'All Pro features are unlocked for now.'; return; }
+  if (!PRO.service) { buy.hidden = true; note.textContent = 'Pro is bought once in the Sliceview app from Google Play, then it is yours on every Android device with your Google account.'; return; }
+  buy.hidden = false; buy.disabled = PRO.busy;
+  buy.textContent = PRO.busy ? 'Opening Google Play…' : 'Get Pro' + (proPrice() ? ' · ' + proPrice() : '');
+  note.textContent = 'One payment, no subscription. Restore it any time on your other Android devices.';
+}
+function proSheet(feature) {
+  $('#proWhy').textContent = feature ? feature + ' is part of Sliceview Pro.' : '';
+  $('#proWhy').hidden = !feature;
+  proSheetFill(); openSheet('#sheetPro');
+}
+$('#proBuy').addEventListener('click', proBuy);
+$('#proRestore').addEventListener('click', () => proRestore(false));
+$('#btnProMore').addEventListener('click', () => { $('#sheetMore').hidden = true; proSheet(''); });
+proInit();
 
 /* ---------- keeping the study across a reload ----------
    Phones close background tabs that use a lot of memory; coming back then reloads the page and the files
