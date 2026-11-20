@@ -1,0 +1,36 @@
+{
+  "name": "Sliceview DICOM viewer",
+  "short_name": "Sliceview",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0e10",
+  "theme_color": "#0a0e10",
+  "description": "Fast DICOM viewer for phones and tablets: CT and MRI stacks, MPR, compare, measurements and reports.",
+  "categories": [
+    "medical",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
