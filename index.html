@@ -148,6 +148,7 @@ button:focus-visible, .rail:focus-visible { outline: 2px solid var(--accent); ou
   background: rgba(10, 14, 16, .82); font: 500 15px/1.4 var(--font-ui); color: var(--fg); z-index: 2;
 }
 .loading[hidden] { display: none; }
+.loading .hint { margin: 2px 0 0; max-width: min(320px, 80%); text-align: center; color: var(--muted); font-size: 12px; line-height: 1.4; }
 .loading b { font-weight: 500; font-variant-numeric: tabular-nums; }
 .loading .bar { width: min(320px, 70%); height: 4px; border-radius: 4px; background: var(--line); overflow: hidden; }
 .loading .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .12s linear; }
@@ -230,6 +231,11 @@ body.focus > header.bar, body.focus .presets-row, body.focus .dock { display: no
 .cmp-info.warn { color: #ff9a8f; }
 .cmpgroup { margin: 8px 2px 0; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .cmpgroup.warn { color: #ff9a8f; }
+.keys { width: 100%; border-collapse: collapse; font-size: 14px; }
+.keys th { text-align: left; padding: 14px 0 4px; color: var(--muted, #9aa4b2); font-weight: 600; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+.keys td { padding: 5px 0; border-top: 1px solid var(--line); vertical-align: top; }
+.keys td:first-child { width: 44%; padding-right: 12px; white-space: nowrap; }
+.keys kbd { font: 12px ui-monospace, Menlo, Consolas, monospace; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; }
 .item { display: flex; gap: 12px; align-items: center; text-align: left; width: 100%; min-height: 64px; padding: 8px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--line); }
 .item[aria-current="true"] { border-color: var(--accent); }
 .item canvas { width: 48px; height: 48px; border-radius: 6px; background: #000; flex: none; }
@@ -375,7 +381,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
   </div>
   <button class="focus-exit" id="focusExit" aria-label="Show the controls"><svg viewBox="0 0 24 24"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/></svg></button>
   <section class="mview" id="mvAx" hidden aria-label="Oblique axial view"><canvas class="mgl"></canvas><canvas class="mcv"></canvas></section>
-  <div class="loading" id="loading" role="status" hidden><b id="loadTxt">Opening study…</b><div class="bar"><i id="loadBar"></i></div></div>
+  <div class="loading" id="loading" role="status" hidden><b id="loadTxt">Opening study…</b><div class="bar"><i id="loadBar"></i></div><p class="hint" id="loadHint" hidden>Faster next time: in My Files, compress the folder and open the zip.</p></div>
 </main>
 <section class="mview" id="mvCor" aria-label="Coronal view"><canvas class="mgl"></canvas><canvas class="mcv"></canvas></section>
 <section class="mview" id="mvSag" aria-label="Sagittal view"><canvas class="mgl"></canvas><canvas class="mcv"></canvas></section>
@@ -505,6 +511,14 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
   </div>
 </div>
 
+<div class="sheet" id="sheetKeys" hidden>
+  <div class="card" role="dialog" aria-label="Keyboard and mouse">
+    <div class="head"><h2>Keyboard and mouse</h2><button class="btn" data-close>Close</button></div>
+    <p class="note">The same keys and mouse buttons as RadiAnt.</p>
+    <table class="keys"><tr><th colspan="2">Mouse</th></tr><tr><td><kbd>Left drag</kbd></td><td>The tool chosen in the toolbar</td></tr><tr><td><kbd>Middle drag</kbd></td><td>Window: left/right width, up/down level</td></tr><tr><td><kbd>Right drag</kbd></td><td>Zoom</td></tr><tr><td><kbd>Back side button</kbd></td><td>Pan</td></tr><tr><td><kbd>Forward side button</kbd></td><td>Length</td></tr><tr><td><kbd>Wheel</kbd></td><td>Next / previous slice (in MPR: the view under the mouse)</td></tr><tr><td><kbd>Ctrl + wheel</kbd></td><td>Zoom at the mouse</td></tr><tr><th colspan="2">Slices and series</th></tr><tr><td><kbd>↑ ↓</kbd></td><td>Previous / next slice</td></tr><tr><td><kbd>Page Up / Page Down</kbd></td><td>10 slices back / forward</td></tr><tr><td><kbd>← →</kbd></td><td>Previous / next series</td></tr><tr><td><kbd>Home / End</kbd></td><td>First / last series</td></tr><tr><td><kbd>Space</kbd></td><td>Cine play / stop</td></tr><tr><th colspan="2">Window</th></tr><tr><td><kbd>0</kbd></td><td>Default window</td></tr><tr><td><kbd>1</kbd></td><td>Full dynamic</td></tr><tr><td><kbd>2 … 7</kbd></td><td>CT Abdomen, Angio, Bone, Brain, Chest, Lungs</td></tr><tr><td><kbd>F11</kbd></td><td>Negative</td></tr><tr><td><kbd>Ctrl + F11</kbd></td><td>Custom window</td></tr><tr><th colspan="2">Tools</th></tr><tr><td><kbd>B</kbd></td><td>Scroll</td></tr><tr><td><kbd>W</kbd></td><td>Window</td></tr><tr><td><kbd>M</kbd></td><td>Pan</td></tr><tr><td><kbd>Z</kbd></td><td>Zoom</td></tr><tr><td><kbd>L</kbd></td><td>Length</td></tr><tr><td><kbd>H</kbd></td><td>HU point</td></tr><tr><td><kbd>E</kbd></td><td>HU area (circle)</td></tr><tr><td><kbd>A</kbd></td><td>Angle</td></tr><tr><td><kbd>R</kbd></td><td>Rotate</td></tr><tr><td><kbd>Delete</kbd></td><td>Delete the selected measurement</td></tr><tr><td><kbd>Ctrl + Z</kbd></td><td>Undo</td></tr><tr><td><kbd>Esc</kbd></td><td>Deselect, close</td></tr><tr><th colspan="2">View</th></tr><tr><td><kbd>Ctrl + + / Ctrl + −</kbd></td><td>Zoom in / out</td></tr><tr><td><kbd>Ctrl + 0</kbd></td><td>Fit</td></tr><tr><td><kbd>Ctrl + 1 … 4</kbd></td><td>Zoom 100% / 200% / 400% / 800%</td></tr><tr><td><kbd>Ctrl + arrows</kbd></td><td>Pan</td></tr><tr><td><kbd>Ctrl + [ / ]</kbd></td><td>Rotate 90° left / right</td></tr><tr><td><kbd>Ctrl + Shift + [ / ]</kbd></td><td>Flip horizontal / vertical</td></tr><tr><td><kbd>Ctrl + Shift + \</kbd></td><td>Clear rotation and flips</td></tr><tr><td><kbd>F</kbd></td><td>Focus: hide the controls</td></tr><tr><td><kbd>Shift + F12</kbd></td><td>Hide patient details</td></tr><tr><th colspan="2">MPR and Compare</th></tr><tr><td><kbd>Ctrl + Alt + 1 / 2 / 3</kbd></td><td>Coronal / sagittal / axial</td></tr><tr><td><kbd>C or Ctrl + F12</kbd></td><td>Crosshair on / off</td></tr><tr><td><kbd>F5</kbd></td><td>Compare: Sync on / off</td></tr><tr><th colspan="2">Files</th></tr><tr><td><kbd>Ctrl + O</kbd></td><td>Open files</td></tr><tr><td><kbd>Ctrl + Shift + O</kbd></td><td>Open a folder</td></tr><tr><td><kbd>Drag and drop</kbd></td><td>Files, zips or whole folders onto the window</td></tr><tr><td><kbd>?</kbd></td><td>This list</td></tr></table>
+  </div>
+</div>
+
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
     <div class="head"><h2>More</h2><button class="btn" data-close>Close</button></div>
@@ -512,12 +526,13 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
       <button class="item" type="button" data-do="btnReport">Write a report</button>
+      <button class="item" type="button" id="btnKeys">Keyboard and mouse shortcuts</button>
       <button class="item" type="button" data-do="btnServer">DICOMweb server</button>
       <button class="item" type="button" data-do="btnSample">Sample study</button>
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.20-2207</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.21-2243</p>
     <div hidden>
     </div>
   </div>
@@ -649,7 +664,7 @@ const Zip = (() => {
   // A reader is { size, read(start, end) -> Promise<ArrayBuffer> }, so a big zip
   // is read in pieces instead of being held in memory all at once.
   const fromBuffer = buf => ({ size: buf.byteLength, buf, read: async (a, b) => buf.slice(a, b), view: (a, b) => new Uint8Array(buf, a, b - a) });
-  const fromBlob = blob => ({ size: blob.size, read: (a, b) => blob.slice(a, b).arrayBuffer() });
+  const fromBlob = blob => ({ size: blob.size, blob, read: (a, b) => blob.slice(a, b).arrayBuffer() });
 
   async function isZip(r) {
     if (r.size < 22) return false;
@@ -659,14 +674,15 @@ const Zip = (() => {
 
   // Lists the files in a zip from its central directory.
   async function entries(r) {
-    const tailStart = Math.max(0, r.size - 65557);
+    // the end of the zip with its table of contents, in one read (each read can wait about a second on a phone)
+    const tailStart = Math.max(0, r.size - (r.buf ? 65557 : 2e6));
     const tail = await r.read(tailStart, r.size), tv = new DataView(tail);
     let at = -1;
     for (let i = tail.byteLength - 22; i >= 0; i--) if (tv.getUint32(i, true) === 0x06054B50) { at = i; break; }
     if (at < 0) throw new Error('Not a valid zip file');
     const count = tv.getUint16(at + 10, true), cdSize = tv.getUint32(at + 12, true), cdOff = tv.getUint32(at + 16, true);
     if (count === 0xFFFF || cdOff === 0xFFFFFFFF) throw new Error('Zip64 archives are not supported');
-    const cd = await r.read(cdOff, cdOff + cdSize), dv = new DataView(cd), td = new TextDecoder();
+    const cd = cdOff >= tailStart && cdOff + cdSize <= r.size ? tail.slice(cdOff - tailStart, cdOff - tailStart + cdSize) : await r.read(cdOff, cdOff + cdSize), dv = new DataView(cd), td = new TextDecoder();
     const out = []; let p = 0;
     for (let i = 0; i < count; i++) {
       if (p + 46 > cd.byteLength || dv.getUint32(p, true) !== 0x02014B50) throw new Error('Damaged zip directory');
@@ -2180,6 +2196,8 @@ function setIdx(i) {
 }
 function selectSeries(i) {
   const se = S.series[i]; if (!se) return;
+  if (needsReload(se)) { reloadSeries(se, S.cmps.map(C => C.se)).then(ok => { const j = S.series.indexOf(se); if (ok && j >= 0) selectSeries(j); }); return; }
+  se.used = performance.now();
   if (typeof RPT !== 'undefined' && RPT && RPT.open) setTimeout(() => { if (RPT.key !== rptKey()) { rptSave(); rptLoad(); } }, 0);
   if (S.vol && S.vol.se !== se) mprToggle(false);
   if (S.cmps.some(C => C.se === se)) { S.cmps = S.cmps.filter(C => C.se !== se); setTimeout(cmpLayout, 0); }
@@ -2195,7 +2213,7 @@ function buildPresets() {
     b.append(label);
     if (wc != null) { const s = document.createElement('small'); s.textContent = Math.round(wc) + '/' + Math.round(ww); b.append(s); }
     b.addEventListener('click', fn); box.append(b);
-    if (key != null) S.keys[key] = fn;
+    if (key != null) { S.keys[key] = fn; b.title = 'Key ' + key; }
   };
   add(0, 'Default', se.def.wc, se.def.ww, () => setWindow(se.def.wc, se.def.ww, 'Default'));
   add(1, 'Full dynamic', null, null, () => { const [lo, hi] = minmax(cur()); setWindow((lo + hi) / 2, Math.max(1, hi - lo), 'Full dynamic'); });
@@ -2223,8 +2241,25 @@ function setTool(t) {
    measuring tool in use, otherwise Length) and a resting palm is ignored. Press and hold: magnifier.
    Double tap: zoom in there, or back to fit. Finger scrolling speeds up with the finger and glides after a flick. */
 const P = new Map(); let drag = null, pinch = null;
+// Mouse, as in RadiAnt: left = the toolbar tool, middle = window, right = zoom, back = pan, forward = length.
+// Returns null for the left button (use the toolbar tool), a tool name for the others, false to ignore.
+const MOUSE_TOOLS = { 1: 'wl', 2: 'zoom', 3: 'pan', 4: 'length' };
+const mouseTool = e => e.pointerType !== 'mouse' || e.button === 0 ? null : MOUSE_TOOLS[e.button] || false;
+// Wheel: one slice per notch; a touchpad's small steps add up to one.
+const wheelDy = e => (e.deltaY || e.deltaX) * (e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 400 : 1);
+const wheelAcc = new WeakMap();
+function wheelSteps(e, key) {
+  const d = wheelDy(e); if (!d) return 0;
+  if (Math.abs(d) >= 50) { wheelAcc.set(key, 0); return Math.sign(d); }
+  const a = (wheelAcc.get(key) || 0) + d; if (Math.abs(a) < 40) { wheelAcc.set(key, a); return 0; }
+  wheelAcc.set(key, 0); return Math.sign(a);
+}
+// the side buttons must not go back/forward in the app, nor the middle button start auto-scrolling
+for (const ev of ['mousedown', 'mouseup', 'auxclick']) window.addEventListener(ev, e => { if (e.button === 3 || e.button === 4 || (e.button === 1 && e.target.closest && e.target.closest('canvas'))) e.preventDefault(); });
 const NAV = new Set(['scroll', 'wl', 'pan', 'zoom', 'rotate']), MEASURE = new Set(['length', 'angle', 'roi', 'hu']);
 const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+// Dragging a finger (or the scroll tool) up moves down through the study, to the next slices, like pushing a page up.
+const DRAG_DIR = -1;
 let penDown = false, hold = 0, lastTap = null, glide = null;
 const scrollStep = () => clamp(S.H * 0.8 / Math.max(curSeries() ? curSeries().images.length : 1, 1), 4, 24); // px per slice, slow drag
 const gainFor = v => clamp(1 + (Math.abs(v) - 0.5) * 1.5, 1, 4); // v in px/ms: precise when slow, up to 4x when fast
@@ -2263,7 +2298,7 @@ function moveDrag(p, ts) {
       const now = ts || performance.now(), dt = Math.max(1, now - drag.lastT), dyy = p.y - drag.lastY;
       drag.vy = 0.6 * drag.vy + 0.4 * (dyy / dt); drag.lastY = p.y; drag.lastT = now;
       drag.hist.push([now, p.y]); if (drag.hist.length > 8) drag.hist.shift();
-      drag.acc += dyy / scrollStep() * gainFor(drag.vy);
+      drag.acc += DRAG_DIR * dyy / scrollStep() * gainFor(drag.vy);
       const k = Math.trunc(drag.acc); if (k) { drag.acc -= k; setIdx(S.idx + k); }
       break;
     }
@@ -2326,11 +2361,11 @@ function movePinch() {
   S.ox += mx - pinch.mx; S.oy += my - pinch.my; linkZoom('ax'); render();
 }
 cv.addEventListener('pointerdown', e => {
-  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  const mt = mouseTool(e); if (mt === false) return; // mouse: the other buttons have their own tools (RadiAnt layout)
   if (e.pointerType === 'touch' && penDown) return; // palm resting on the screen while using the Pencil
   cv.setPointerCapture(e.pointerId); P.set(e.pointerId, pos(e));
   const p = pos(e); S.huOff = e.pointerType === 'touch' ? HU_OFF : 0;
-  if (P.size === 1 && S.vol && e.pointerType !== 'pen') {
+  if (P.size === 1 && S.vol && e.pointerType !== 'pen' && !mt) {
     const h = hitHandle('ax', p);
     if (h && !proGate('Oblique MPR (tilting the planes)')) return;
     if (h) { glide = null; drag = { tool: 'turn', turn: startTurn('ax', h, p), x0: p.x, y0: p.y, moved: false, t0: e.timeStamp, last: p, hist: [], lastT: e.timeStamp }; return; }
@@ -2340,7 +2375,7 @@ cv.addEventListener('pointerdown', e => {
     }
   }
   if (P.size === 1) {
-    const pen = e.pointerType === 'pen', tool = pen ? (MEASURE.has(S.tool) ? S.tool : 'length') : S.tool;
+    const pen = e.pointerType === 'pen', tool = pen ? (MEASURE.has(S.tool) ? S.tool : 'length') : mt || S.tool;
     if (pen) penDown = true;
     // with a measuring tool, touching an existing measurement adjusts it instead of starting a new one
     // (except while an angle is half-way through its three taps)
@@ -2348,9 +2383,9 @@ cv.addEventListener('pointerdown', e => {
     const h = MEASURE.has(tool) && !midAngle && hitMeas(p, e.pointerType === 'touch');
     if (MEASURE.has(tool) && !h) S.sel = null;
     if (h) { glide = null; clearTimeout(hold); drag = { tool: 'edit', edit: startEdit(h, p), x0: p.x, y0: p.y, moved: false, t0: e.timeStamp, last: p, hist: [], lastT: e.timeStamp }; render(); return; }
-    startDrag(p, tool, e.timeStamp);
+    startDrag(p, tool, e.timeStamp); if (drag) drag.mt = mt;
     clearTimeout(hold);
-    if (!pen && NAV.has(tool)) hold = setTimeout(() => { if (drag && !drag.moved && P.size === 1) beginLoupe(drag.last); }, 450);
+    if (!pen && NAV.has(tool) && e.pointerType !== 'mouse') hold = setTimeout(() => { if (drag && !drag.moved && P.size === 1) beginLoupe(drag.last); }, 450);
   } else if (P.size === 2) { clearTimeout(hold); glide = null; S.loupe = null; drag = null; S.draft = null; startPinch(); render(); }
 });
 cv.addEventListener('pointermove', e => {
@@ -2368,17 +2403,17 @@ const endPtr = e => {
       // a flick: keep gliding with the speed the finger had when it left the screen
       // finger speed over its last ~120 ms of movement (robust to uneven touch event timing)
       let fling = 0;
-      if (d.tool === 'scroll' && d.moved && e.timeStamp - d.lastT < 100 && d.hist.length > 1) {
+      if (d.tool === 'scroll' && d.moved && e.pointerType !== 'mouse' && e.timeStamp - d.lastT < 100 && d.hist.length > 1) {
         const [tl, yl] = d.hist[d.hist.length - 1]; let o = d.hist[0];
         for (const h of d.hist) if (tl - h[0] <= 120) { o = h; break; }
         const v = tl > o[0] ? (yl - o[1]) / (tl - o[0]) : 0;
-        fling = v / scrollStep() * gainFor(v) * 1000;
+        fling = DRAG_DIR * v / scrollStep() * gainFor(v) * 1000;
       }
       if (d.tool !== 'loupe' && (p.x !== d.last.x || p.y !== d.last.y)) moveDrag(p, e.timeStamp);
       endDrag(p);
       if (d.tool === 'rotate' && d.moved) snapAngle();
       if (Math.abs(fling) > 8) startGlide(fling);
-      if (!d.moved && NAV.has(d.tool) && e.timeStamp - d.t0 < 300) tapped(p);
+      if (!d.moved && !d.mt && NAV.has(d.tool) && e.timeStamp - d.t0 < 300) tapped(p);
     }
     if (d.tool === 'loupe') { S.loupe = null; render(); }
     drag = null;
@@ -2389,21 +2424,70 @@ cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', e
 cv.addEventListener('contextmenu', e => e.preventDefault());
 cv.addEventListener('wheel', e => {
   e.preventDefault(); const p = pos(e);
-  if (e.ctrlKey || S.tool === 'zoom') { zoomAbout(p.x, p.y, S.s, S.ox, S.oy, S.s * Math.exp(-e.deltaY / 300)); linkZoom('ax'); }
-  else setIdx(S.idx + (e.deltaY > 0 ? 1 : -1));
+  if (e.ctrlKey || S.tool === 'zoom') { zoomAbout(p.x, p.y, S.s, S.ox, S.oy, S.s * Math.exp(-wheelDy(e) / 300)); linkZoom('ax'); }
+  else { const k = wheelSteps(e, cv); if (k) setIdx(S.idx + k); }
   render();
 }, { passive: false });
+// Keyboard, as in RadiAnt (see "Keyboard and mouse" in the ⋯ menu)
+const KEY_TOOLS = { b: 'scroll', w: 'wl', m: 'pan', z: 'zoom', l: 'length', a: 'angle', e: 'roi', h: 'hu', r: 'rotate' };
+function pickTool(t) {
+  if (t === 'roi' || t === 'hu') { const b = document.querySelector('.tool[data-tool=hu],.tool[data-tool=roi]'); if (b && b.dataset.tool !== t) toolFace(b, t); }
+  setTool(t);
+}
+function zoomBy(k) { // keyboard zoom about the centre of the view the mouse is over (or the main view)
+  const v = S.hov && S.vol ? S.hov : null;
+  if (v) mvZoomAt(v, v.W / 2, v.H / 2, v.s * k);
+  else { zoomAbout(S.W / 2, S.H / 2, S.s, S.ox, S.oy, S.s * k); linkZoom('ax'); render(); }
+}
+function zoomTo(s) { zoomAbout(S.W / 2, S.H / 2, S.s, S.ox, S.oy, s); linkZoom('ax'); render(); }
+function stepImages(k) { const v = S.hov && S.vol ? S.hov : null; if (v) mvStep(v, k); else setIdx(S.idx + k); }
+function stepSeries(k, abs) {
+  if (!S.series.length) return;
+  const i = abs ? (k < 0 ? 0 : S.series.length - 1) : clamp(S.si + k, 0, S.series.length - 1);
+  if (i !== S.si) selectSeries(i);
+}
 window.addEventListener('keydown', e => {
-  if (/INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
-  if (e.key === 'ArrowDown' || e.key === 'ArrowRight') setIdx(S.idx + 1);
-  else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') setIdx(S.idx - 1);
-  else if (/^[0-7]$/.test(e.key) && S.keys && S.keys[e.key]) S.keys[e.key]();
-  else if (e.key === ' ') { e.preventDefault(); cineToggle(); }
-  else if (e.key === 'f') focusToggle();
-  else if ((e.key === 'c' || e.key === 'C') && S.vol && !e.ctrlKey && !e.metaKey) xhairToggle();
-  else if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undo(); }
-  else if ((e.key === 'Delete' || e.key === 'Backspace') && S.sel) { e.preventDefault(); delSel(); }
-  else if (e.key === 'Escape') { S.sel = null; focusToggle(false); S.draft = null; document.querySelectorAll('.sheet').forEach(s => s.hidden = true); render(); }
+  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || document.activeElement.isContentEditable) return;
+  const k = e.key, lk = k.length === 1 ? k.toLowerCase() : k, ctrl = e.ctrlKey || e.metaKey, done = () => e.preventDefault();
+  if (ctrl && e.altKey && /^Digit[123]$/.test(e.code)) { // MPR: coronal / sagittal / axial
+    done(); if (!S.vol) mprToggle(true); if (!S.vol) return;
+    const b = document.querySelector('#vswitch [data-v=' + ['cor', 'sag', 'ax'][+e.code.slice(5) - 1] + ']'); if (b) b.click(); return;
+  }
+  if (ctrl) {
+    if (lk === 'o') { done(); (e.shiftKey ? $('#inFolder') : $('#inFiles')).click(); }
+    else if (lk === 'z') { done(); undo(); }
+    else if (k === '+' || k === '=' || e.code === 'NumpadAdd') { done(); zoomBy(1.25); }
+    else if (k === '-' || k === '_' || e.code === 'NumpadSubtract') { done(); zoomBy(1 / 1.25); }
+    else if (e.code === 'Digit0' || e.code === 'Numpad0') { done(); if (S.hov && S.vol) { mvFit(S.hov); linkZoom(S.hov.kind); render(); } else { fit(); linkZoom('ax'); render(); } }
+    else if (/^Digit[1-4]$/.test(e.code)) { done(); zoomTo(2 ** (+e.code.slice(5) - 1) / S.dpr); } // 100% 200% 400% 800%: image pixels to screen pixels
+    else if (k.startsWith('Arrow')) { done(); const d = 0.1, dx = k === 'ArrowLeft' ? -1 : k === 'ArrowRight' ? 1 : 0, dy = k === 'ArrowUp' ? -1 : k === 'ArrowDown' ? 1 : 0; S.ox += dx * S.W * d; S.oy += dy * S.H * d; S.fit = false; render(); }
+    else if (e.code === 'BracketLeft' || e.code === 'BracketRight') { done(); const r = e.code === 'BracketRight';
+      if (e.shiftKey) orient(S.ang, r ? S.fh : -S.fh, r ? -S.fv : S.fv); else orient(S.ang + (r ? 1 : -1) * Math.PI / 2, S.fh, S.fv); }
+    else if (e.code === 'Backslash' && e.shiftKey) { done(); orient(0, 1, 1); }
+    else if (k === 'F11') { done(); const c = [...document.querySelectorAll('#presets .chip')].find(b => b.dataset.key === 'Custom…' || /Custom/.test(b.textContent)); if (c) c.click(); }
+    else if (k === 'F12') { done(); if (S.vol) xhairToggle(); }
+    return;
+  }
+  if (e.altKey) return;
+  if (k === 'ArrowDown') { done(); stepImages(1); }
+  else if (k === 'ArrowUp') { done(); stepImages(-1); }
+  else if (k === 'PageDown') { done(); stepImages(10); }
+  else if (k === 'PageUp') { done(); stepImages(-10); }
+  else if (k === 'ArrowRight') { done(); stepSeries(1); }
+  else if (k === 'ArrowLeft') { done(); stepSeries(-1); }
+  else if (k === 'Home') { done(); stepSeries(-1, true); }
+  else if (k === 'End') { done(); stepSeries(1, true); }
+  else if (/^[0-9]$/.test(k)) { if (S.keys && S.keys[k]) S.keys[k](); }
+  else if (k === 'F11') { done(); toggleInvert(); }
+  else if (k === 'F12' && e.shiftKey) { done(); $('#btnPrivacy').click(); }
+  else if (k === 'F5' && cmpOn()) { done(); $('#cmpSync').click(); }
+  else if (k === ' ') { done(); cineToggle(); }
+  else if (lk === 'f') focusToggle();
+  else if (lk === 'c' && S.vol) xhairToggle();
+  else if (KEY_TOOLS[lk] && !e.shiftKey) pickTool(KEY_TOOLS[lk]);
+  else if (k === '?') openSheet('#sheetKeys');
+  else if ((k === 'Delete' || k === 'Backspace') && S.sel) { done(); delSel(); }
+  else if (k === 'Escape') { S.sel = null; focusToggle(false); S.draft = null; document.querySelectorAll('.sheet').forEach(s => s.hidden = true); render(); }
 });
 // The scroller: grab the thumb and drag it (it moves with the finger, no jumping). Touches on the track
 // go through to the image, so a stray touch near the edge just scrolls normally.
@@ -2440,8 +2524,11 @@ function volPlan(se, minK = 0) {
   const sl = a.slope || 1, ic = a.intercept || 0;
   const lo = signed ? -32768 : 0, hi = signed ? 32767 : 65535;
   const empty = clamp(Math.round((-2000 - ic) / sl), lo, hi); // renders black at any usual window
-  const data = new Arr(n * w * h); data.fill(empty);
-  return { se, n, w, h, k, data, Arr, sl, ic, lo, hi, filled: new Uint8Array(n), count: 0, index: new Map(im.map((x, i) => [x, i])),
+  // slices already living in a volume built before (MPR opened earlier): that volume is used again, no new copy
+  const prev = k === 0 && im[0].pixels && im[0].pixels.buffer, reuse = prev && prev.byteLength === n * w * h * Arr.BYTES_PER_ELEMENT && prev !== (S.vol && S.vol.data.buffer) &&
+    im.every((x, z) => x.pixels && x.pixels.buffer === prev && x.pixels.byteOffset === z * w * h * Arr.BYTES_PER_ELEMENT && x.pixels instanceof Arr);
+  const data = reuse ? new Arr(prev) : new Arr(n * w * h); if (!reuse) data.fill(empty);
+  return { se, n, w, h, k, data, Arr, sl, ic, lo, hi, filled: reuse ? new Uint8Array(n).fill(1) : new Uint8Array(n), count: reuse ? n : 0, reused: !!reuse, index: new Map(im.map((x, i) => [x, i])),
     flip: locs.every(v => v != null) && locs[n - 1] > locs[0], // first slice is inferior: put superior at the top
     sx: sp[1] * 2 ** k, sy: sp[0] * 2 ** k, dz, cx: a.cols / 2, cy: a.rows / 2, ver: 0, empty, nCor: [0, 1, 0], nSag: [1, 0, 0], nAx: [0, 0, 1] };
 }
@@ -2456,10 +2543,19 @@ function volPutV(V, img, data, w, h) {
   const same = (img.slope || 1) === V.sl && (img.intercept || 0) === V.ic;
   const conv = v => same ? v : clamp(Math.round((v * img.slope + img.intercept - V.ic) / V.sl), V.lo, V.hi);
   if (f <= 1 && w === V.w && h === V.h) {
-    if (same && (data instanceof V.Arr)) dst.set(data, base);
+    if (same && (data instanceof V.Arr)) {
+      dst.set(data, base);
+      // the slice now lives in the volume: the axial view reads it from there, so MPR costs no second copy in memory
+      if (!V.rf && img.pixels === data && !coded(img)) img.pixels = dst.subarray(base, base + w * h);
+    }
     else for (let i = 0, n = w * h; i < n; i++) dst[base + i] = conv(data[i]);
     // previews of the same size can live inside the volume: no second copy in memory
     if (img.preview && img.preview.data === data && same && data instanceof V.Arr) img.preview = { w, h, data: dst.subarray(base, base + w * h) };
+  } else if (same && f === 2 && w === V.w * 2 && h === V.h * 2) { // the usual case for big studies: 2×2 blocks, in a tight loop
+    for (let y = 0, o = base; y < V.h; y++) {
+      let r0 = 2 * y * w, r1 = r0 + w;
+      for (let x = 0; x < V.w; x++, o++, r0 += 2, r1 += 2) dst[o] = (data[r0] + data[r0 + 1] + data[r1] + data[r1 + 1] + 2) >> 2;
+    }
   } else {
     const ff = f * f;
     for (let y = 0; y < V.h; y++) for (let x = 0; x < V.w; x++) {
@@ -2468,16 +2564,31 @@ function volPutV(V, img, data, w, h) {
       dst[base + y * V.w + x] = conv(Math.round(s / (c || ff)));
     }
   }
-  V.filled[z] = 1; V.count++; V.ver++;
+  V.filled[z] = 1; V.count++;
+  // the planes are cut again from the volume when it has grown, at most a few times a second while it builds
+  const now = performance.now();
+  if (V.count === V.n || now - (V.verT || 0) > 400) { V.ver++; V.verT = now; } else if (!V.verPend) { V.verPend = setTimeout(() => { V.verPend = 0; V.ver++; V.verT = performance.now(); render(); }, 410); }
   if (V.count === V.n && !V.rf && typeof volCacheSave === 'function') volCacheSave(V); // complete: keep it for the next opening
   render();
 }
+// Slices already in memory go into the volume in short bursts between frames, never in one long freeze: every
+// 16th slice first, then every 8th, and so on, so the coronal and sagittal show the whole body at once and sharpen.
 function volFillFromMemory() {
   const V = S.vol; if (!V) return;
-  for (const img of V.se.images) {
-    if (img.preview && img.preview.w === V.w && img.preview.h === V.h) volPut(img, img.preview.data, V.w, V.h);
-    else if (img.pixels) volPut(img, img.pixels, img.cols, img.rows);
-  }
+  const ims = V.se.images, n = ims.length, order = [], seen = new Uint8Array(n);
+  for (let s = 16; s >= 1; s >>= 1) for (let i = 0; i < n; i += s) if (!seen[i]) { seen[i] = 1; order.push(i); }
+  let j = 0;
+  const step = () => {
+    if (S.vol !== V) return;
+    const t0 = performance.now();
+    while (j < order.length && performance.now() - t0 < 24) {
+      const img = ims[order[j++]];
+      if (img.preview && img.preview.w === V.w && img.preview.h === V.h) volPut(img, img.preview.data, V.w, V.h);
+      else if (img.pixels) volPut(img, img.pixels, img.cols, img.rows);
+    }
+    if (j < order.length) { const ch = new MessageChannel(); ch.port1.onmessage = step; ch.port2.postMessage(0); } // straight back, without the 4 ms timer delay
+  };
+  step();
 }
 // Cuts the plane for a view out of the volume: coronal (fixed row) or sagittal (fixed column).
 /* ---------- planes: straight or oblique ----------
@@ -2807,15 +2918,23 @@ function keepCrossInView(except) {
 function mvInput(v) {
   const el = v.cv, P2 = new Map(); let d = null, pz = null, last = null;
   const at = e => { const r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  el.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') S.hov = v; });
+  el.addEventListener('pointerleave', e => { if (S.hov === v) S.hov = null; });
+  el.addEventListener('wheel', e => {
+    e.preventDefault(); if (!S.vol || !v.g) return;
+    if (e.ctrlKey || S.tool === 'zoom') { const p = at(e); mvZoomAt(v, p.x, p.y, v.s * Math.exp(-wheelDy(e) / 300)); return; }
+    const k = wheelSteps(e, el); if (k) mvStep(v, k);
+  }, { passive: false });
   el.addEventListener('pointerdown', e => {
+    const mt = mouseTool(e); if (mt === false) return;
     if (!S.vol || !v.g) return; el.setPointerCapture(e.pointerId); P2.set(e.pointerId, at(e));
     if (P2.size === 1) {
-      const p = at(e), h = hitHandle(v.kind, p);
-      d = { x0: p.x, y0: p.y, ly: p.y, acc: 0, moved: false, t0: e.timeStamp };
+      const tl = mt || S.tool, p = at(e), h = !mt && hitHandle(v.kind, p);
+      d = { x0: p.x, y0: p.y, ly: p.y, acc: 0, moved: false, t0: e.timeStamp, mt };
       if (h && !proGate('Oblique MPR (tilting the planes)')) { d = null; return; }
       if (h) d.turn = startTurn(v.kind, h, p);
-      else if (e.pointerType === 'pen' || MEASURE.has(S.tool)) {
-        const tool = MEASURE.has(S.tool) ? S.tool : 'length';
+      else if (e.pointerType === 'pen' || MEASURE.has(tl)) {
+        const tool = MEASURE.has(tl) ? tl : 'length';
         const q = mvToImage(v, p.x, p.y), R = e.pointerType === 'touch' ? 24 : 12;
         const midAngle = v.draft && v.draft.type === 'angle';
         const hit = !midAngle && mvHit(v, p, R);
@@ -2830,10 +2949,10 @@ function mvInput(v) {
         }
       }
       else {
-        const c = crossScreen(v); if (S.xhair && Math.hypot(p.x - c.x, p.y - c.y) < CENTRE_GRAB) { d.cross = true; d.dx = c.x - p.x; d.dy = c.y - p.y; }
+        const c = crossScreen(v); if (!mt && S.xhair && Math.hypot(p.x - c.x, p.y - c.y) < CENTRE_GRAB) { d.cross = true; d.dx = c.x - p.x; d.dy = c.y - p.y; }
         // the toolbar tools work here as on the axial: Window, Pan, Zoom, Rotate (Scroll moves the plane)
-        else if (S.tool === 'wl' || S.tool === 'pan' || S.tool === 'zoom' || S.tool === 'rotate')
-          Object.assign(d, { tool: S.tool, wc0: S.wc, ww0: S.ww, ox0: v.ox, oy0: v.oy, s0: v.s, rot0: v.rot || 0, a0: Math.atan2(p.y - v.H / 2, p.x - v.W / 2) });
+        else if (tl === 'wl' || tl === 'pan' || tl === 'zoom' || tl === 'rotate')
+          Object.assign(d, { tool: tl, wc0: S.wc, ww0: S.ww, ox0: v.ox, oy0: v.oy, s0: v.s, rot0: v.rot || 0, a0: Math.atan2(p.y - v.H / 2, p.x - v.W / 2) });
       }
     } else if (P2.size === 2) { d = null; v.draft = null; const [a, b] = [...P2.values()]; pz = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, s0: v.s, ox0: v.ox, oy0: v.oy }; }
   });
@@ -2863,7 +2982,7 @@ function mvInput(v) {
       }
       // move the plane along its normal, one voxel per step
       const step = clamp(v.H * 0.8 / Math.max(v.g.iw, 64), 2, 12);
-      d.acc += (p.y - d.ly) / step; d.ly = p.y;
+      d.acc += DRAG_DIR * (p.y - d.ly) / step; d.ly = p.y;
       const k = Math.trunc(d.acc);
       if (k) { d.acc -= k; const V = S.vol; setP(v3.add(V.P, v.g.n, k * (v.kind === 'oax' ? V.dz : Math.min(V.sx, V.sy))), v.kind); }
     }
@@ -2888,7 +3007,7 @@ function mvInput(v) {
         if (d.moved) { snap(v.meas, d.edit.key, d.edit.prev); S.sel = { m: d.edit.m, map: v.meas, key: d.edit.key, kind: v.kind }; }
         else selToggle(d.edit.m, v.meas, d.edit.key, v.kind);
         render();
-      } else if (!d.turn && !d.edit && !(d.cross && d.moved) && !d.moved && e.timeStamp - d.t0 < 300) {
+      } else if (!d.mt && !d.turn && !d.edit && !(d.cross && d.moved) && !d.moved && e.timeStamp - d.t0 < 300) {
         const p = at(e), now = e.timeStamp;
         const hm = mvHit(v, p, 24, true);
         if (hm) { selToggle(hm.m, v.meas, mvKey(v), v.kind); last = null; }
@@ -2901,6 +3020,13 @@ function mvInput(v) {
   el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
 }
 
+function mvStep(v, k) { // move a view's plane k voxels along its normal (wheel, arrow keys)
+  const V = S.vol; if (!V || !v.g) return;
+  setP(v3.add(V.P, v.g.n, k * (v.kind === 'oax' ? V.dz : Math.min(V.sx, V.sy))), v.kind);
+}
+function mvZoomAt(v, x, y, s) {
+  s = clamp(s, 0.05, 60); v.ox = x - (x - v.ox) * (s / v.s); v.oy = y - (y - v.oy) * (s / v.s); v.s = s; v.fit = false; linkZoom(v.kind); render();
+}
 function mprToggle(on) {
   const want = on == null ? !S.vol : on;
   if (!want) { S.vol = null; $('#mvAx').hidden = true; $('#planesReset').hidden = true; $('#views').classList.remove('mpr'); $('#vswitch').hidden = true; delete $('#views').dataset.main; delete $('#views').dataset.layout; $('#btnMPR').setAttribute('aria-pressed', 'false'); render(); return; }
@@ -3011,9 +3137,17 @@ function cmpInput(v) { // bound once per pane; acts on whichever series the pane
   const el = v.cv, P2 = new Map(); let d = null, pz = null, last = null; let C = null;
   const at = e => { const r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
   const toMain = p => ({ x: p.x - v.W / 2 + S.W / 2, y: p.y - v.H / 2 + S.H / 2 });
+  el.addEventListener('wheel', e => {
+    const C = v.__C; if (!C || !(C.main ? S.rf : S.cmps.includes(C))) return; e.preventDefault();
+    const k = wheelSteps(e, el); if (!k) return;
+    if (S.rf) { rfInput(v, C, e, 'move', { wl: false, acc: k, ly: 0, x0: 0, y0: 0, p: { x: 0, y: 0 } }); return; }
+    if (S.cmpSync) setIdx(S.idx + k); else { C.idx = clamp(C.idx + k, 0, C.se.images.length - 1); render(); pump(); }
+  }, { passive: false });
   el.addEventListener('pointerdown', e => {
+    const mt = mouseTool(e); if (mt === false || (mt && mt !== 'wl')) return; // the middle button windows here too
     C = v.__C; if (!C || !(C.main ? S.rf : S.cmps.includes(C))) return; el.setPointerCapture(e.pointerId); P2.set(e.pointerId, at(e));
-    if (P2.size === 1) { const p = at(e); d = { x0: p.x, y0: p.y, ly: p.y, acc: 0, moved: false, t0: performance.now(), wl: S.tool === 'wl' && !C.main && !cmpShared(C), wc0: C.wc, ww0: C.ww }; if (S.rf) rfInput(v, C, e, 'down', d); }
+    const wlOn = mt === 'wl' || S.tool === 'wl';
+    if (P2.size === 1) { const p = at(e); d = { x0: p.x, y0: p.y, ly: p.y, acc: 0, moved: false, t0: performance.now(), mt, wl: wlOn && !C.main && !cmpShared(C), swl: wlOn && !S.rf && (C.main || cmpShared(C)), wc0: C.wc, ww0: C.ww, swc0: S.wc, sww0: S.ww }; if (S.rf) { rfInput(v, C, e, 'down', d); if (mt) d.wl = true; } }
     else if (P2.size === 2 && S.rf) { d = null; pz = {}; rfPinch(v, ...P2.values(), pz); }
     else if (P2.size === 2) { d = null; const [a, b] = [...P2.values()], m = toMain({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }); pz = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: m.x, my: m.y, s0: S.s, ox0: S.ox, oy0: S.oy }; }
   });
@@ -3027,18 +3161,19 @@ function cmpInput(v) { // bound once per pane; acts on whichever series the pane
     } else if (d) {
       const p = at(e); if (Math.hypot(p.x - d.x0, p.y - d.y0) > 6) d.moved = true;
       if (S.rf) { d.p = p; rfInput(v, C, e, 'move', d); return; }
+      if (d.swl) { const range = Math.max(400, d.sww0 * 2); setWindow(d.swc0 + (p.y - d.y0) * range / v.H * 1.2, d.sww0 + (p.x - d.x0) * range / v.W * 1.5); return; }
       if (d.wl) { // this pane's own window (MRI and other non-CT series)
         const range = Math.max(1, C.range || 1000);
         C.wc = d.wc0 + (p.y - d.y0) * range / v.H * 1.2; C.ww = Math.max(1, d.ww0 + (p.x - d.x0) * range / v.W * 1.5); render(); return;
       }
-      d.acc += (p.y - d.ly) / scrollStep(); d.ly = p.y;
+      d.acc += DRAG_DIR * (p.y - d.ly) / scrollStep(); d.ly = p.y;
       const k = Math.trunc(d.acc);
       if (k) { d.acc -= k; if (S.cmpSync) setIdx(S.idx + k); else { C.idx = clamp(C.idx + k, 0, C.se.images.length - 1); render(); pump(); } }
     }
   });
   const up = e => {
     if (!P2.has(e.pointerId)) return; P2.delete(e.pointerId);
-    if (d && e.type === 'pointerup' && !d.moved && performance.now() - d.t0 < 300) {
+    if (d && !d.mt && e.type === 'pointerup' && !d.moved && performance.now() - d.t0 < 300) {
       const now = performance.now(), p = at(e);
       if (last && now - last.t < 320 && Math.hypot(p.x - last.x, p.y - last.y) < 40) { last = null; if (S.rf) S.rf.fit = true; else fit(); render(); } else last = { t: now, x: p.x, y: p.y };
     }
@@ -3080,6 +3215,8 @@ function cmpLayout() {
 // Compare panes keep their own input handlers, bound per slot: route them to the series now in that slot.
 function cmpAdd(se, slot) {
   if (!se || se === curSeries()) return;
+  if (needsReload(se)) { reloadSeries(se, [curSeries(), ...S.cmps.map(C => C.se)]).then(ok => { if (ok && S.series.includes(se)) cmpAdd(se, slot); }); return; }
+  se.used = performance.now();
   if (S.vol) mprToggle(false);
   if (slot == null) { const used = S.cmps.map(C => C.slot); slot = [0, 1, 2].find(s => !used.includes(s)); if (slot == null) return; }
   const C = cmpMake(se, slot);
@@ -3214,9 +3351,11 @@ TOOLS.forEach(([id]) => {
     b.addEventListener('contextmenu', e => e.preventDefault());
     b.addEventListener('click', () => { if (held) { held = false; return; } setTool(b.dataset.tool); });
   } else b.addEventListener('click', () => setTool(id));
+  const letter = Object.keys(KEY_TOOLS).find(x => KEY_TOOLS[x] === id); if (letter && !b.title) b.title = TOOLS.find(x => x[0] === id)[1] + ' (' + letter.toUpperCase() + ')';
   $('#tools').append(b);
 });
 $('#actInvert').addEventListener('click', toggleInvert);
+$('#btnKeys').addEventListener('click', () => { $('#sheetMore').hidden = true; openSheet('#sheetKeys'); });
 $('#actReset').addEventListener('click', () => {
   const se = curSeries(); if (!se) return;
   S.invert = false; $('#actInvert').setAttribute('aria-pressed', 'false'); S.ang = 0; S.fh = 1; S.fv = 1; S.draft = null;
@@ -3237,13 +3376,15 @@ document.querySelectorAll('.sheet').forEach(sh => {
 });
 function thumbFor(img) {
   const c = document.createElement('canvas'); c.width = c.height = 48;
+  if (img.thumb) { c.getContext('2d').drawImage(img.thumb, 0, 0); return c; } // made before its images were let go
   const src = srcOf(img); if (!src) return c;
   const t = document.createElement('canvas'); t.width = src.w; t.height = src.h;
   const d = defaultWindow(img), id = new ImageData(src.w, src.h);
   toImageData(img, d.wc, d.ww, false, id, src); t.getContext('2d').putImageData(id, 0, 0);
   const g = c.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, 48, 48);
   const k = Math.min(48 / img.cols, 48 / img.rows); g.drawImage(t, (48 - img.cols * k) / 2, (48 - img.rows * k) / 2, img.cols * k, img.rows * k);
-  return c;
+  img.thumb = c; const out = document.createElement('canvas'); out.width = out.height = 48; out.getContext('2d').drawImage(c, 0, 0);
+  return out;
 }
 // patients: the same Patient ID, or (without IDs) the same name
 const patName = se => se.uid === 'sample-phantom' ? 'Sample phantom (not a patient)' : (pn(se.patient) || 'Unnamed patient');
@@ -3311,7 +3452,7 @@ function closeSeries(list) {
 $('#btnSeries').addEventListener('click', () => {
   listSeries();
   const e = DEC.engine || '';
-  $('#engineNote').textContent = e ? 'JPEG 2000 decoder: ' + (e.startsWith('wasm') ? 'WebAssembly (fast)' : 'JavaScript (WebAssembly unavailable)') + (e.includes('main') ? ', single thread' : ', ' + DEC.workers.length + ' background workers') : '';
+  $('#engineNote').textContent = [LOADSTAT, e ? 'JPEG 2000 decoder: ' + (e.startsWith('wasm') ? 'WebAssembly (fast)' : 'JavaScript (WebAssembly unavailable)') + (e.includes('main') ? ', single thread' : ', ' + DEC.workers.length + ' background workers') + '.' : ''].filter(Boolean).join(' ');
   openSheet('#sheetSeries');
 });
 
@@ -3412,6 +3553,8 @@ function previewLevel(se) {
 }
 const coded = im => !!(im && (im.frag || im.zsrc));
 const zjob = s => ({ data: s.zbuf.slice(s.start, s.start + s.csize), method: s.method, pixelOffset: s.pixelOffset, frame: s.frame, frames: s.frames });
+const LAST_INPUT = { t: 0, wait: 0 }; // the last touch, drag, wheel or key anywhere in the app
+for (const ev of ['wheel', 'pointerdown', 'pointermove', 'keydown']) addEventListener(ev, e => { if (ev !== 'pointermove' || e.buttons) LAST_INPUT.t = performance.now(); }, { capture: true, passive: true });
 function pump() {
   const se = curSeries(); if (!se || document.hidden) return; // nothing new is decoded while the app is in the background
   const ims = se.images, n = ims.length, idx = S.idx, dir = S.dir || 1;
@@ -3494,6 +3637,9 @@ function pump() {
       else if (coded(im) && !im.busyV && !im.err && !go(im, 'v')) return;
     }
   }
+  // Everything below is background work for slices further away: it waits while the user is touching the screen,
+  // so scrolling right after a study opens is as smooth as later on.
+  if (performance.now() - Math.max(S.moved || 0, LAST_INPUT.t) < 700) { if (!LAST_INPUT.wait) LAST_INPUT.wait = setTimeout(() => { LAST_INPUT.wait = 0; pump(); }, 750); return; }
   // 5. full resolution around the reading position: scrolling here stays sharp, with no preview in between
   const win = se.win || 60;
   for (let d = 5; d <= Math.min(60, win); d++) for (const i of near(d)) if (needF(ims[i]) && !go(ims[i], 'f')) return;
@@ -3523,8 +3669,10 @@ function addBuffer(buf, name, lazy) {
   const sp = (info.pixelSpacing && info.pixelSpacing.length >= 2) ? info.pixelSpacing : (info.imagerSpacing && info.imagerSpacing.length >= 2 ? info.imagerSpacing : null);
   for (let f = 0; f < info.frames; f++) {
     se.images.push({
-      pixels: info.codec ? null : DICOM.framePixels(buf, info, f), frag: info.codec && !lazy ? DICOM.encodedFrame(buf, info, f) : null,
-      zsrc: lazy ? Object.assign({ frame: f, frames: info.frames }, lazy.z) : null,
+      pixels: lazy && lazy.pixels ? lazy.pixels[f] : info.codec || lazy ? null : DICOM.framePixels(buf, info, f),
+      frag: info.codec ? (lazy ? (lazy.frames ? lazy.frames[f] : null) : DICOM.encodedFrame(buf, info, f)) : null,
+      zsrc: lazy && lazy.z ? Object.assign({ frame: f, frames: info.frames }, lazy.z) : null,
+      src: lazy && lazy.src ? lazy.src : null, srcFrame: f, // where its pixels can be read again (zip entry or file)
       bitsStored: info.bitsStored, pixelRep: info.pixelRep, rows: info.rows, cols: info.cols, spp: info.spp,
       mono1: info.photometric === 'MONOCHROME1', slope: info.slope, intercept: info.intercept, modality: info.modality,
       wc: info.wc && info.wc.length ? info.wc[0] : null, ww: info.ww && info.ww.length ? info.ww[0] : null,
@@ -3563,6 +3711,7 @@ function showLoading(st) {
   box.hidden = false;
   $('#loadTxt').textContent = st.total > 1 ? 'Opening study · ' + st.n + ' / ' + st.total : 'Opening study…';
   $('#loadBar').style.width = (st.total > 0 ? Math.min(100, st.n / st.total * 100) : 0) + '%';
+  $('#loadHint').hidden = !st.hint;
 }
 async function progress(st) {
   const now = Date.now();
@@ -3607,31 +3756,240 @@ async function ingest(r, name, st, depth) {
   } catch (err) { st.bad.push(name + ': ' + err.message); }
   await progress(st);
 }
+/* Reading a study. Background workers read the files, several at a time each, and take them apart: an uncompressed
+   slice comes back as its ready pixels, a JPEG 2000 slice as its compressed frames. The page itself only files them,
+   so the progress bar never stalls, and a zip is read entry by entry instead of being copied whole first. When the
+   bar finishes, every slice is in memory, exactly as before: scrolling never waits for the disk. */
+async function rdEntry(D, m) {
+  let start = m.start || 0, data = null;
+  // m.ab: a chunk of a zip already in memory (entries are cut from it); otherwise read from the file
+  const size = m.ab ? m.ab.byteLength : m.blob.size, rd = async (a, b) => m.ab ? m.ab.slice(a, Math.min(b, size)) : await m.blob.slice(a, b).arrayBuffer();
+  if (m.csize == null) m.csize = size; // asked here: on the page, asking thousands of files their size costs a second
+  if (m.lho != null) { // a zip entry: the local header, then the data, in one read when the header is short
+    if (m.lho + 30 > size) return { kind: 'slow' };
+    const lh = m.ab ? new DataView(m.ab, m.lho, 30) : new DataView(await rd(m.lho, m.lho + 30 + 1024 + m.csize)), ab0 = m.ab ? null : lh.buffer;
+    if (lh.getUint32(0, true) !== 0x04034B50) return { kind: 'slow' };
+    const skip = 30 + lh.getUint16(26, true) + lh.getUint16(28, true);
+    start = m.lho + skip;
+    if (start + m.csize > size) return { kind: 'slow' };
+    data = ab0 && ab0.byteLength >= skip + m.csize ? ab0.slice(skip, skip + m.csize) : await rd(start, start + m.csize);
+  } else data = await rd(start, start + m.csize);
+  m.read = data.byteLength;
+  if (m.method === 8) data = await new Response(new Response(data).body.pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+  const u = new Uint8Array(data, 0, Math.min(4, data.byteLength));
+  if (u[0] === 0x50 && u[1] === 0x4B && u[2] === 3 && u[3] === 4) return m.lho == null ? { kind: 'zip' } : { kind: 'buf', buf: data };
+  let info;
+  try { info = D.parse(data); } catch (err) { return { kind: 'buf', buf: data }; } // the page reads it again and reports the error as usual
+  if (info.codec === 'j2k') { const frames = []; for (let f = 0; f < info.frames; f++) frames.push(D.encodedFrame(data, info, f)); delete info.frags; return { kind: 'enc', info, frames, bytes: m.read }; }
+  if (info.codec) return { kind: 'buf', buf: data };
+  const pixels = [], bps = info.bitsAllocated >> 3;
+  if (info.frames === 1 && info.spp === 1 && info.pixelOffset % bps === 0 && info.pixelOffset + info.rows * info.cols * bps <= data.byteLength) {
+    const C = bps === 1 ? (info.pixelRep === 1 ? Int8Array : Uint8Array) : bps === 2 ? (info.pixelRep === 1 ? Int16Array : Uint16Array) : (info.pixelRep === 1 ? Int32Array : Uint32Array);
+    pixels.push(new C(data, info.pixelOffset, info.rows * info.cols)); // a view: no copy of the slice
+  } else for (let f = 0; f < info.frames; f++) pixels.push(D.framePixels(data, info, f));
+  return { kind: 'px', info, pixels, bytes: m.read };
+}
+const RD_SRC = [dicomModule, rdEntry].map(f => f.toString()).join('\n') +
+  '\nconst D = dicomModule();\nonmessage = async e => { const c = e.data.chunk;' +
+  ' if (c) { const ab = await c.blob.slice(c.start, c.end).arrayBuffer(); for (const m of e.data.items) { m.ab = ab; m.lho -= c.start; } }' +
+  ' const tr = [], out = await Promise.all(e.data.items.map(m => rdEntry(D, m).catch(() => ({ kind: "slow" }))));' +
+  ' for (const r of out) { if (r.buf) tr.push(r.buf); if (r.frames) tr.push(...r.frames); if (r.pixels) for (const p of r.pixels) if (!tr.includes(p.buffer)) tr.push(p.buffer); } postMessage({ id: e.data.id, out }, tr); };';
+const RD = { ws: null, free: [], wait: [], jobs: new Map(), id: 1 };
+function rdInit() {
+  if (RD.ws) return RD.ws.length > 0;
+  RD.ws = [];
+  if (typeof Worker === 'undefined' || typeof DecompressionStream === 'undefined' || window.__noRd) return false;
+  try {
+    const url = URL.createObjectURL(new Blob([RD_SRC], { type: 'text/javascript' }));
+    for (let i = 0; i < clamp((navigator.hardwareConcurrency || 4) - 2, 2, 6); i++) { // unpacking a zip is processor work: all but two cores
+      const w = new Worker(url);
+      w.onmessage = e => { const job = RD.jobs.get(e.data.id); RD.jobs.delete(e.data.id); job(e.data.out); };
+      w.onerror = e => { if (e.preventDefault) e.preventDefault(); };
+      RD.ws.push(w); RD.free.push(w);
+    }
+  } catch (err) { RD.ws = []; }
+  return RD.ws.length > 0;
+}
+setTimeout(rdInit, 600); // start the readers early, while the user is still choosing files
+// A worker takes several messages at a time (they wait on storage, not on its processor): the next free one in turn.
+async function rdRun(items, chunk) {
+  const w = RD.ws[RD.next = ((RD.next || 0) + 1) % RD.ws.length], id = RD.id++;
+  return new Promise(res => { RD.jobs.set(id, res); w.postMessage({ id, items, chunk }); });
+}
+// entries: { blob, start, csize, method, lho (zip entries), name, depth, en and r (zip entry and its zip, for the slow path) }
+// On Android, Chrome hands the files of a folder to the page at about 10 a second, however they are asked for:
+// a zip is one file, so its entries come in chunks of about 12 MB, one read each, one per reader at a time and two waiting, and it opens far faster.
+async function rdAll(list, st, chunked, tight) {
+  const batches = [];
+  if (chunked) { // zip entries, in the order they sit in the zip
+    const es = list.slice().sort((a, b) => a.lho - b.lho); let cur = null;
+    for (const e of es) {
+      const end = e.lho + 30 + 1024 + e.csize;
+      // tight: only the bytes of these entries, skipping what lies between them (the first series of a zip whose series are mixed)
+      if (!cur || end - cur.start > (tight ? 24e6 : 12e6) || cur.items.length >= (tight ? 160 : 32) || (tight && e.lho > cur.end + 65536)) { cur = { start: e.lho, end, items: [] }; batches.push(cur); }
+      cur.items.push(e); cur.end = Math.min(e.blob.size, Math.max(cur.end, end));
+    }
+    if (tight) { st.rdN = batches.length; st.rdMB = batches.reduce((a, b) => a + b.end - b.start, 0) / 1e6; }
+  } else for (let i = 0; i < list.length; i += 8) batches.push({ items: list.slice(i, i + 8) });
+  // a folder: about 40 files asked for at a time (on a phone, asking for more at once measured no faster)
+  await pool(batches, chunked ? RD.ws.length + 2 : 5, async bt => {
+    const batch = bt.items;
+    if (st.opened && performance.now() - Math.max(S.moved || 0, LAST_INPUT.t) < 300) { // in the background: the user first
+      const p0 = performance.now(), mine = !st.pausing; st.pausing = true; // the time is counted once, not once per waiting read
+      while (performance.now() - Math.max(S.moved || 0, LAST_INPUT.t) < 300) await new Promise(r => setTimeout(r, 100));
+      if (mine) { st.paused = (st.paused || 0) + performance.now() - p0; st.pausing = false; }
+    }
+    const out = await rdRun(batch.map(e => ({ blob: e.blob, start: e.start, csize: e.csize, method: e.method, lho: e.lho })), chunked ? { blob: batch[0].blob, start: bt.start, end: bt.end } : null);
+    for (let k = 0; k < batch.length; k++) {
+      const e = batch[k], r = out[k];
+      try {
+        if (r.bytes) st.bytes = (st.bytes || 0) + r.bytes;
+        if (e.imgs) { // a series read again: its pixels go back into its images
+          if (r.kind !== 'px') throw new Error('could not be read again');
+          for (const im of e.imgs) { im.pixels = r.pixels[im.srcFrame]; im.dropped = false; }
+          st.n += e.imgs.length; continue;
+        }
+        if (r.kind === 'px' || r.kind === 'enc') { const res = addBuffer(null, e.name, r.kind === 'px' ? { info: r.info, pixels: r.pixels, src: { blob: e.blob, start: e.start, csize: e.csize, method: e.method, lho: e.lho } } : { info: r.info, frames: r.frames }); st.n++; st.ok++; st.seen.add(res.se); }
+        else if (r.kind === 'zip') await rdZip(Zip.fromBlob(e.blob), e.name, st, e.depth);
+        else if (r.kind === 'buf') await ingest(Zip.fromBuffer(r.buf), e.name, st, e.depth + 1);
+        else if (e.en) await ingest(Zip.fromBuffer(await Zip.read(e.r, e.en)), e.name, st, e.depth + 1); // read on the page instead
+        else await ingest(Zip.fromBlob(e.blob), e.name, st, e.depth);
+      } catch (err) { st.bad.push(e.name + ': ' + err.message); st.n++; }
+    }
+    const now = Date.now(); if (!st.opened && now - st.last > 80) { st.last = now; showLoading(st); }
+  });
+}
+async function rdZip(r, name, st, depth) {
+  if (depth >= 3) { st.n++; st.bad.push(name + ': archive nested too deep'); return; }
+  let list;
+  try { list = await Zip.entries(r); } catch (err) { st.n++; st.bad.push(name + ': ' + err.message); return; }
+  // a small study: one read of the whole zip is quicker than reading entry by entry
+  if (r.size <= 150e6 && list.reduce((s, en) => s + (en.usize || 0), 0) <= 120e6) { if (depth === 0) makeRoom(list.reduce((s, en) => s + (en.usize || 0), 0), st.seen); return ingest(r.buf ? r : Zip.fromBuffer(await r.read(0, r.size)), name, st, depth); }
+  if (depth === 0) makeRoom(list.reduce((s, en) => s + (en.usize || 0), 0), st.seen);
+  st.total += list.length - 1;
+  const fast = [], slow = [];
+  for (const en of list) {
+    const nm = name + '/' + en.name;
+    if (!(en.flags & 1) && (en.method === 0 || en.method === 8)) fast.push({ blob: r.blob, lho: en.offset, csize: en.csize, method: en.method, name: nm, depth: depth + 1, en, r });
+    else slow.push([en, nm]);
+  }
+  // The main series first: PACS zips keep each series in a folder of its own. The biggest folder is read first and
+  // its series opens, complete, as soon as it is in; the other series follow quietly and appear in the Series list.
+  const groups = new Map(); for (const e of fast) { const d = e.en.name.replace(/[^/]*$/, ''); if (!groups.has(d)) groups.set(d, []); groups.get(d).push(e); }
+  const gs = [...groups.values()].sort((a, b) => b.length - a.length);
+  if (st.early && gs.length > 1 && gs[0].length >= 16) {
+    await rdAll(gs[0], st, true, true);
+    st.early();
+    await rdAll(gs.slice(1).flat(), st, true);
+  } else await rdAll(fast, st, true);
+  for (const [en, nm] of slow) { try { await ingest(Zip.fromBuffer(await Zip.read(r, en)), nm, st, depth + 1); } catch (err) { st.bad.push(nm + ': ' + err.message); st.n++; } }
+}
+/* Memory. A phone gives a page about 1.5 GB; past that the page is thrown away (the moon and cloud screen) and
+   everything is lost. Nothing is ever closed for room: when memory runs short, series not on screen let go of their
+   images (least recently used first) and keep everything else. Shown again (tapped, or picked in Compare), a series
+   reads its images back from its zip or files, in a second or three. */
+const memLimit = () => performance.memory && performance.memory.jsHeapSizeLimit ? performance.memory.jsHeapSizeLimit * 0.7 : (navigator.deviceMemory || 4) * 0.3e9;
+const seBytes = se => se.images.reduce((a, im) => a + (im.pixels && !coded(im) ? im.pixels.byteLength : 0), 0);
+const needsReload = se => !!(se && se.images.some(im => im.dropped));
+function makeRoom(bytes, keep) {
+  let used = S.series.reduce((a, s) => a + seBytes(s), 0);
+  if (used + bytes <= memLimit()) return;
+  const cand = S.series.filter(s => !keep.has(s) && s.images.some(im => im.src && im.pixels && !coded(im))).sort((a, b) => (a.used || 0) - (b.used || 0));
+  for (const s of cand) { if (used + bytes <= memLimit()) break; used -= seBytes(s); dropSeries(s); }
+}
+function dropSeries(se) {
+  if (S.vol && S.vol.se === se) mprToggle(false);
+  if (S.rfVols) S.rfVols.delete(se);
+  const mid = se.images[Math.floor((se.images.length - 1) / 2)]; if (mid) thumbFor(mid); // its picture in the lists is kept
+  for (const im of se.images) if (im.src && im.pixels && !coded(im)) { im.pixels = null; im.dropped = true; }
+}
+async function reloadSeries(se, keep) {
+  const ims = se.images.filter(im => im.dropped); if (!ims.length) return true;
+  makeRoom(ims.length * ims[0].rows * ims[0].cols * 2, new Set([se, ...keep]));
+  const by = new Map(); for (const im of ims) { if (!by.has(im.src)) by.set(im.src, []); by.get(im.src).push(im); }
+  const ents = [...by].map(([s, imgs]) => ({ blob: s.blob, start: s.start, csize: s.csize, method: s.method, lho: s.lho, imgs, name: se.desc || 'series' }));
+  const st = { ok: 0, n: 0, total: ims.length, bad: [], last: 0, seen: new Set(), t0: performance.now() };
+  showLoading(st); rdInit();
+  try {
+    const z = ents.filter(e => e.lho != null), f = ents.filter(e => e.lho == null);
+    if (z.length) await rdAll(z, st, true, true);
+    if (f.length) await rdAll(f, st);
+  } finally { showLoading(null); }
+  if (needsReload(se)) { say('Some images of this series could not be read again. Open its zip or folder again.', 6000); return false; }
+  return true;
+}
+let LOADSTAT = '';
 async function addFiles(files, opts) {
   const list = [...files]; if (!list.length) return;
-  const st = { ok: 0, n: 0, total: list.length, bad: [], last: 0, seen: new Set() };
-  $('#status').classList.add('off'); showLoading(st); await tick();
-  await pool(list, CONC, async f => {
-    try { await ingest(Zip.fromBlob(f), f.name, st, 0); } catch (err) { st.bad.push(f.name + ': ' + err.message); }
-  });
-  finishLoad();
-  showLoading(null);
-  if (st.seen.size) { // open the largest series that was just read, at its first slice
+  const st = { ok: 0, n: 0, total: list.length, bad: [], last: 0, seen: new Set(), t0: performance.now() };
+  const openMain = () => { // the largest series read so far, at its first slice
     const main = [...st.seen].sort((a, b) => b.images.length - a.images.length)[0];
     selectSeries(S.series.indexOf(main));
+    const ph = S.series.find(s => s.uid === 'sample-phantom'); if (ph && S.series.length > 1) closeSeries([ph]);
+  };
+  if (!(opts && opts.restore)) st.early = () => { // the main series is complete: show it, the rest goes on behind it
+    if (st.opened || !st.seen.size) return;
+    finishLoad(); showLoading(null); openMain(); st.opened = true; st.tFirst = performance.now() - st.t0;
+  };
+  $('#status').classList.add('off'); showLoading(st); await tick();
+  if (rdInit()) { // a .zip goes straight to its table of contents, without a first read to check what it is
+    const zips = list.filter(f => /\.zip$/i.test(f.name) && f.size > 22), rest = list.filter(f => !zips.includes(f));
+    for (const f of zips) { try { await rdZip(Zip.fromBlob(f), f.name, st, 0); } catch (err) { st.bad.push(f.name + ': ' + err.message); } }
+    if (rest.length) {
+      makeRoom(rest.length * rest[0].size, st.seen);
+      const ents = rest.map(f => ({ blob: f, start: 0, method: 0, name: f.name, depth: 0 }));
+      // a folder (a CD or PACS export) usually keeps each series in a subfolder of its own: the biggest subfolder is
+      // read first and its series opens, complete, as soon as it is in; the others follow behind it
+      const dir = f => (f.webkitRelativePath || f.__path || '').replace(/[^/]*$/, ''), groups = new Map();
+      for (const e of ents) { const d = dir(e.blob); if (!groups.has(d)) groups.set(d, []); groups.get(d).push(e); }
+      const gs = [...groups.values()].sort((a, b) => b.length - a.length);
+      st.hint = rest.length >= 300 && matchMedia('(pointer: coarse)').matches; // a phone or tablet: folders are slow there
+      if (st.early && gs.length > 1 && gs[0].length >= 16) { st.firstN = gs[0].length; await rdAll(gs[0], st); st.early(); await rdAll(gs.slice(1).flat(), st); }
+      else await rdAll(ents, st);
+    }
   }
+  else await pool(list, CONC, async f => {
+    try { await ingest(Zip.fromBlob(f), f.name, st, 0); } catch (err) { st.bad.push(f.name + ': ' + err.message); }
+  });
+  if (st.opened) { // the other series came in behind: the slice on screen stays where it is
+    const keep = cur(), touched = finishLoad(), se = curSeries();
+    if (keep && touched.includes(se)) { const i = se.images.indexOf(keep); if (i >= 0) S.idx = i; }
+    render();
+  } else finishLoad();
+  showLoading(null);
+  { // how long opening took, shown in the Series sheet: to find what makes a study slow on a given device
+    const sec = (performance.now() - st.t0) / 1000, mb = (st.bytes || list.reduce((a, f) => a + (f.size || 0), 0)) / 1e6;
+    const zip = list.length === 1 && /\.zip$/i.test(list[0].name);
+    LOADSTAT = 'Last study opened: ' + st.ok + ' images from ' + (zip ? 'a zip' : list.length + ' files') + ', ' + Math.round(mb) + ' MB in ' + sec.toFixed(1) + ' s (' + Math.round(mb / Math.max(0.1, sec)) + ' MB/s)' +
+      '; ' + (RD.ws && RD.ws.length ? RD.ws.length + ' readers' : 'read on the page') + '; device ' + (navigator.hardwareConcurrency || '?') + ' cores, ' + (navigator.deviceMemory || '?') + ' GB' +
+      (st.tFirst ? '; first series on screen after ' + (st.tFirst / 1000).toFixed(1) + ' s (' + (st.rdN != null ? st.rdN + ' reads, ' + Math.round(st.rdMB) + ' MB' : st.firstN + ' files') + ')' + (st.paused > 50 ? '; the rest waited ' + (st.paused / 1000).toFixed(1) + ' s while you used the screen' : '') : '') +
+      (performance.memory ? '; memory in use ' + Math.round(performance.memory.usedJSHeapSize / 1e6) + ' MB of ' + Math.round(performance.memory.jsHeapSizeLimit / 1e6) + ' MB' : '') + '.';
+  }
+  if (st.seen.size && !st.opened) openMain();
   if (st.seen.size) { if (st.bad.length) say(st.bad.length + ' file' + (st.bad.length === 1 ? '' : 's') + ' could not be read and ' + (st.bad.length === 1 ? 'was' : 'were') + ' skipped', 4000); }
   else say(st.bad.length ? st.bad[0] : 'No DICOM images found', 9000);
   if (st.bad.length) console.warn(st.bad.join('\n'));
   if (st.seen.size && !(opts && opts.restore)) keepStudy(list);
-  const ph = S.series.find(s => s.uid === 'sample-phantom'); if (st.seen.size && ph && S.series.length > 1) closeSeries([ph]);
 }
 $('#inFiles').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; if (f.length) addFiles(f); });
 $('#inFolder').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; if (f.length) addFiles(f); });
 window.addEventListener('error', ev => say('Error: ' + ev.message, 9000));
 window.addEventListener('unhandledrejection', ev => say('Error: ' + ((ev.reason && ev.reason.message) || ev.reason), 9000));
-stage.addEventListener('dragover', e => e.preventDefault());
-stage.addEventListener('drop', e => { e.preventDefault(); addFiles(e.dataTransfer.files); });
+// Drag and drop anywhere on the window: files, zips, or whole folders (a CD or a PACS export), read to the bottom.
+async function droppedFiles(dt) {
+  const ents = [...(dt.items || [])].map(i => i.kind === 'file' && i.webkitGetAsEntry ? i.webkitGetAsEntry() : null).filter(Boolean);
+  if (!ents.length) return [...dt.files];
+  const out = [];
+  const walk = async en => {
+    if (en.isFile) { const f = await new Promise(res => en.file(res, () => res(null))); if (f) try { f.__path = en.fullPath; } catch (e) { } if (f && !/^(DICOMDIR|LOCKFILE|VERSION|AUTORUN\.INF|.*\.(exe|dll|ini|txt|htm|html|xml|pdf|jpg|png|js|css))$/i.test(f.name)) out.push(f); }
+    else if (en.isDirectory) { const r = en.createReader(); for (;;) { const batch = await new Promise(res => r.readEntries(res, () => res([]))); if (!batch.length) break; for (const b of batch) await walk(b); } }
+  };
+  for (const en of ents) await walk(en);
+  return out;
+}
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', async e => { e.preventDefault(); const f = await droppedFiles(e.dataTransfer); if (f.length) addFiles(f); });
+document.addEventListener('contextmenu', e => { if (e.target.tagName === 'CANVAS') e.preventDefault(); });
 
 /* ---------- sample phantom ---------- */
 function makePhantom() {
@@ -3895,7 +4253,7 @@ function rfInput(v, C, e, phase, st) { // phase: down/move/up for one finger; pi
     }
     // move the plane through the body: one volume voxel per step
     const g = rfGeom(R.main.se), V = rfVol(R.main.se), f = V ? 2 ** V.k : 1, stepMm = (R.plane === 'cor' ? g.sy : g.sx) * f;
-    st.acc += (p.y - st.ly) / clamp(v.H * 0.8 / ((R.plane === 'cor' ? g.rows : g.cols) / f), 2, 12); st.ly = p.y;
+    st.acc += DRAG_DIR * (p.y - st.ly) / clamp(v.H * 0.8 / ((R.plane === 'cor' ? g.rows : g.cols) / f), 2, 12); st.ly = p.y;
     const k = Math.trunc(st.acc);
     if (k) {
       st.acc -= k; const i = R.plane === 'cor' ? 1 : 0;
@@ -4308,12 +4666,17 @@ async function kv(mode, fn) {
   return new Promise(res => { try { const tx = db.transaction('kv', mode), st = tx.objectStore('kv'), q = fn(st); tx.oncomplete = () => res(q && q.result); tx.onerror = tx.onabort = () => res(null); } catch (e) { res(null); } });
 }
 async function keepStudy(files) {
-  KEEP.files = KEEP.files.concat(files); return keepSave();
+  KEEP.files = KEEP.files.concat(files);
+  // the copy is written once the user has left the screen alone for a few seconds: writing hundreds of MB
+  // while someone scrolls makes the first minute choppy on a phone
+  const list = KEEP.files;
+  while (performance.now() - Math.max(S.moved || 0, LAST_INPUT.t) < 3000) { await new Promise(r => setTimeout(r, 1000)); if (KEEP.files !== list) return; }
+  return keepSave();
 }
 async function keepSave() { // write the current list of files (after opening more, or closing some)
   if (!KEEP.files.length) return keepForget(true);
   const size = KEEP.files.reduce((a, f) => a + (f.size || 0), 0);
-  if (size > 1.5e9) return; // too big to keep a copy
+  if (size > 300e6) return keepForget(true); // a big study is not copied: writing hundreds of MB costs a phone memory and time
   try { if (navigator.storage && navigator.storage.estimate) { const e = await navigator.storage.estimate(); if (e.quota && size > e.quota * 0.6) return; } } catch (e) { }
   const se = curSeries();
   await kv('readwrite', st => st.put({ files: KEEP.files, t: Date.now(), size, patient: se ? pn(se.patient) : '', study: se ? (se.studyDesc || se.desc || '') : '' }, 'study'));
@@ -4335,7 +4698,7 @@ async function keepRestore(auto) {
     if (i >= 0) {
       if (S.si !== i) selectSeries(i);
       setIdx(v.idx); if (v.ww) setWindow(v.wc, v.ww, v.preset);
-      if (v.mpr) mprToggle(true);
+      // MPR is not reopened: a study always comes back in the plain axial view; MPR opens only when asked for
     }
   };
   const v = lsGet('sv.view', null), recent = v && Date.now() - v.t < 3 * 3600e3;
@@ -4366,6 +4729,7 @@ function keepTrim() {
 // instead of rebuilding them. One volume is kept: the last one completed.
 function volCacheSave(V) {
   if (!KEEP.files.length || V.cached) return; V.cached = true;
+  if (V.data.byteLength > 150e6) return; // a big volume: writing it would hold the app for a second or more, and it rebuilds quickly anyway
   const names = new Set(V.se.images.map(im => (im.name || '').split('/')[0]));
   if (!KEEP.files.some(f => names.has(f.name))) return; // only for a study that is kept on this device
   setTimeout(() => kv('readwrite', st => st.put({ uid: V.se.uid, n: V.n, w: V.w, h: V.h, k: V.k, sl: V.sl, ic: V.ic, data: V.data }, 'vol')), 300);
@@ -4383,7 +4747,7 @@ async function volCacheLoad(V) {
   render();
 }
 
-keepRestore(true);
+keepRestore(false); // the app starts empty: the last study comes back only when asked for (the Reopen card)
 window.__sliceview = { rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen } };
 })();
 </script>
