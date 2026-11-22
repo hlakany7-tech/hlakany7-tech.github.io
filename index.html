@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- Sliceview. Copyright (c) 2026 Dr. Hashem El-Lakany. All rights reserved. No copying or redistribution without written permission. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -246,6 +247,7 @@ body.focus > header.bar, body.focus .presets-row, body.focus .dock { display: no
 .field label { font-size: 12px; color: var(--muted); }
 .field input { min-height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); padding: 0 12px; font: inherit; -webkit-user-select: text; user-select: text; }
 .note { color: var(--muted); font-size: 12px; margin: 0; }
+.note.owner { margin-top: 6px; line-height: 1.5; }
 .err { color: var(--danger); font-size: 13px; margin: 0; white-space: pre-line; }
 .anon .pii { visibility: hidden; }
 /* Phones (and small landscape screens): everything the image does not need gets smaller or moves to More. */
@@ -532,7 +534,8 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.21-2243</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.22-0739</p>
+    <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
   </div>

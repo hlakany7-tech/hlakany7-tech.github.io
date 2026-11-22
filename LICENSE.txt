@@ -1,0 +1,8 @@
+Sliceview DICOM viewer
+Copyright (c) 2026 Dr. Hashem El-Lakany. All rights reserved.
+
+This software and its source code are the property of Dr. Hashem El-Lakany.
+No part of it may be copied, modified, redistributed, published or sold, in whole or in part,
+without prior written permission from the copyright holder.
+
+Sliceview is not a certified medical device and is not intended for primary diagnosis.
