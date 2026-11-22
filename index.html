@@ -534,7 +534,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.22-0739</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.22-1139</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -1363,6 +1363,484 @@ function j2kModule(wasm) {
   }
   return { decode };
 }
+// Decoders for the compressed DICOM encodings other than JPEG 2000, the ones departments around the world use:
+//   JPEG Lossless (ITU T.81 process 14, any predictor: CT and MR from many PACS and CDs),
+//   RLE Lossless (ultrasound, cardiology, some vendors),
+//   JPEG-LS (T.87, lossless and near-lossless),
+//   JPEG baseline 8-bit (ultrasound, screenshots, lossy exports) through the browser's own decoder, and 12-bit JPEG extended (older CT).
+// Each returns { width, height, signed, data }: samples interleaved for colour, as uncompressed images are stored.
+function codecsModule() {
+  /* ---------- JPEG Lossless ---------- */
+  function huffTable(counts, symbols) {
+    // canonical codes: maxcode per length, the first symbol index per length, and an 8-bit lookahead table
+    const maxcode = new Int32Array(18).fill(-1), valptr = new Int32Array(17), mincode = new Int32Array(17), lut = new Int32Array(256).fill(-1);
+    let code = 0, k = 0;
+    for (let l = 1; l <= 16; l++) {
+      valptr[l] = k; mincode[l] = code;
+      for (let i = 0; i < counts[l - 1]; i++) {
+        if (l <= 8) { const sh = 8 - l; for (let x = 0; x < 1 << sh; x++) lut[(code << sh) | x] = (l << 8) | symbols[k]; }
+        code++; k++;
+      }
+      maxcode[l] = counts[l - 1] ? code - 1 : -1;
+      code <<= 1;
+    }
+    maxcode[17] = 0x7fffffff;
+    return { maxcode, valptr, mincode, symbols, lut };
+  }
+  function jpegLossless(u8) {
+    if (u8[0] !== 0xFF || u8[1] !== 0xD8) throw new Error('Not a JPEG stream');
+    let p = 2, frame = null, restart = 0, scan = null;
+    const huff = [];
+    const r16 = q => (u8[q] << 8) | u8[q + 1];
+    while (p + 4 <= u8.length) {
+      if (u8[p] !== 0xFF) { p++; continue; }
+      const mk = u8[p + 1];
+      if (mk === 0xFF) { p++; continue; }
+      if (mk === 0xD8 || mk === 0x01 || (mk >= 0xD0 && mk <= 0xD7)) { p += 2; continue; }
+      if (mk === 0xD9) break;
+      const len = r16(p + 2), seg = p + 4, end = p + 2 + len;
+      if (mk === 0xC3 || mk === 0xC7) { // lossless, Huffman (process 14; SOF7 is its differential form, read the same way here)
+        frame = { P: u8[seg], Y: r16(seg + 1), X: r16(seg + 3), comps: [] };
+        const nf = u8[seg + 5];
+        for (let i = 0; i < nf; i++) frame.comps.push({ id: u8[seg + 6 + i * 3] });
+      } else if (mk >= 0xC0 && mk <= 0xCF && mk !== 0xC4 && mk !== 0xC8 && mk !== 0xCC) {
+        throw new Error(mk === 0xCB || mk === 0xCF ? 'Arithmetic-coded JPEG is not supported' : 'This JPEG is not lossless');
+      } else if (mk === 0xC4) {
+        let q = seg;
+        while (q < end) {
+          const tc = u8[q] >> 4, th = u8[q] & 15, counts = u8.subarray(q + 1, q + 17); let n = 0;
+          for (let i = 0; i < 16; i++) n += counts[i];
+          if (tc === 0) huff[th] = huffTable(counts, u8.subarray(q + 17, q + 17 + n));
+          q += 17 + n;
+        }
+      } else if (mk === 0xDD) restart = r16(seg);
+      else if (mk === 0xDA) {
+        const ns = u8[seg]; scan = { comps: [] };
+        for (let i = 0; i < ns; i++) scan.comps.push({ id: u8[seg + 1 + i * 2], td: u8[seg + 2 + i * 2] >> 4 });
+        const q = seg + 1 + ns * 2; scan.pred = u8[q]; scan.pt = u8[q + 2] & 15;
+        p = end; break;
+      }
+      p = end;
+    }
+    if (!frame || !scan) throw new Error('Damaged JPEG Lossless data');
+    const { P, X, Y } = frame, nc = scan.comps.length;
+    if (nc !== frame.comps.length) throw new Error('JPEG Lossless with separate colour scans is not supported');
+    const tabs = scan.comps.map(c => huff[c.td]);
+    if (tabs.some(t => !t)) throw new Error('Damaged JPEG Lossless data (Huffman table)');
+    const out = P <= 8 ? new Uint8Array(X * Y * nc) : new Uint16Array(X * Y * nc);
+    const pt = scan.pt, pred = scan.pred || 1, mask = (1 << 16) - 1, first = 1 << (P - pt - 1);
+    // bit reader: 0xFF00 is a stuffed 0xFF; a marker ends the data (restart markers are handled between intervals)
+    let pos = p, buf = 0, bits = 0, marker = false;
+    const fill = () => {
+      while (bits <= 24) {
+        let b = 0;
+        if (!marker && pos < u8.length) {
+          b = u8[pos];
+          if (b === 0xFF) { const n = u8[pos + 1]; if (n === 0) pos += 2; else { marker = true; b = 0; } } else pos++;
+        }
+        buf = (buf << 8 | b) >>> 0; bits += 8;
+      }
+    };
+    const getBits = n => { if (bits < n) fill(); bits -= n; return (buf >>> bits) & ((1 << n) - 1); };
+    const decodeSym = t => {
+      if (bits < 16) fill();
+      const e = t.lut[(buf >>> (bits - 8)) & 255];
+      if (e >= 0) { bits -= e >> 8; return e & 255; }
+      let code = (buf >>> (bits - 8)) & 255, l = 8; bits -= 8;
+      while (l < 16) { code = (code << 1) | getBits(1); l++; if (code <= t.maxcode[l] && t.maxcode[l] >= 0) return t.symbols[t.valptr[l] + code - t.mincode[l]]; }
+      throw new Error('Damaged JPEG Lossless data');
+    };
+    const diff = t => {
+      const s = decodeSym(t);
+      if (s === 0) return 0;
+      if (s === 16) return 32768;
+      const v = getBits(s);
+      return v < (1 << (s - 1)) ? v - (1 << s) + 1 : v;
+    };
+    const restartAt = () => { // align to the next byte, step over the RSTn marker
+      bits = 0; buf = 0; marker = false;
+      while (pos + 1 < u8.length && !(u8[pos] === 0xFF && u8[pos + 1] >= 0xD0 && u8[pos + 1] <= 0xD7)) pos++;
+      pos += 2;
+    };
+    // the first sample of the image and of each restart interval is predicted from 2^(P-Pt-1); the rest of that
+    // first line from the left; the first sample of other lines from above; everything else by the scan's predictor
+    let mcu = 0, row0 = 0, reset = true;
+    for (let y = 0; y < Y; y++) {
+      for (let x = 0; x < X; x++) {
+        if (restart && mcu && mcu % restart === 0) { restartAt(); reset = true; row0 = y; }
+        for (let c = 0; c < nc; c++) {
+          const i = (y * X + x) * nc + c;
+          let pv;
+          if (reset) pv = first;
+          else if (y === row0) pv = out[i - nc] >> pt;
+          else if (x === 0) pv = out[i - X * nc] >> pt;
+          else {
+            const ra = out[i - nc] >> pt, rb = out[i - X * nc] >> pt, rc = out[i - X * nc - nc] >> pt;
+            switch (pred) {
+              case 1: pv = ra; break;
+              case 2: pv = rb; break;
+              case 3: pv = rc; break;
+              case 4: pv = ra + rb - rc; break;
+              case 5: pv = ra + ((rb - rc) >> 1); break;
+              case 6: pv = rb + ((ra - rc) >> 1); break;
+              default: pv = (ra + rb) >> 1;
+            }
+          }
+          out[i] = ((pv + diff(tabs[c])) & mask) << pt;
+        }
+        reset = false; mcu++;
+      }
+    }
+    return { width: X, height: Y, signed: false, data: out, comps: nc };
+  }
+
+  /* ---------- JPEG-LS (ITU T.87: LOCO-I), lossless and near-lossless ---------- */
+  function jpegLS(u8) {
+    if (u8[0] !== 0xFF || u8[1] !== 0xD8) throw new Error('Not a JPEG-LS stream');
+    const r16 = q => (u8[q] << 8) | u8[q + 1];
+    let p = 2, P = 0, X = 0, Y = 0, nf = 0, maxval = 0, T1 = 0, T2 = 0, T3 = 0, reset = 64, out = null;
+    const J = [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+    while (p + 4 <= u8.length) {
+      if (u8[p] !== 0xFF) { p++; continue; }
+      const mk = u8[p + 1];
+      if (mk === 0xFF) { p++; continue; }
+      if (mk === 0xD8 || (mk >= 0xD0 && mk <= 0xD7)) { p += 2; continue; }
+      if (mk === 0xD9) break;
+      const len = r16(p + 2), seg = p + 4, end = p + 2 + len;
+      if (mk === 0xF7) { P = u8[seg]; Y = r16(seg + 1); X = r16(seg + 3); nf = u8[seg + 5]; }
+      else if (mk === 0xF8) { // preset parameters
+        if (u8[seg] === 1) { maxval = r16(seg + 1); T1 = r16(seg + 3); T2 = r16(seg + 5); T3 = r16(seg + 7); reset = r16(seg + 9) || 64; }
+        else throw new Error('JPEG-LS mapping tables are not supported');
+      } else if (mk === 0xDA) {
+        if (!X || !Y) throw new Error('Damaged JPEG-LS data');
+        if (!out) out = P <= 8 ? new Uint8Array(X * Y * nf) : new Uint16Array(X * Y * nf);
+        const ns = u8[seg], comps = []; for (let i = 0; i < ns; i++) comps.push(u8[seg + 1 + i * 2]);
+        const q = seg + 1 + ns * 2, near = u8[q], ilv = u8[q + 1], pt = u8[q + 2] & 15;
+        p = scan(end, ns, near, ilv, pt, nf === 1 ? 0 : comps[0] - 1, ns === 1 ? 0 : -1);
+        continue;
+      }
+      p = end;
+    }
+    if (!out) throw new Error('Damaged JPEG-LS data');
+    return { width: X, height: Y, signed: false, data: out, comps: nf };
+
+    function scan(pos, ns, NEAR, ilv, pt, comp0) {
+      const MAXVAL = maxval || (1 << P) - 1, clamp = (x, lo, hi) => x > hi || x < lo ? lo : x;
+      let t1 = T1, t2 = T2, t3 = T3;
+      if (!t1 || !t2 || !t3) { // the default thresholds (T.87 C.2.4.1.1.1)
+        if (MAXVAL >= 128) {
+          const F = Math.floor((Math.min(MAXVAL, 4095) + 128) / 256);
+          t1 = t1 || clamp(F * (3 - 2) + 2 + 3 * NEAR, NEAR + 1, MAXVAL); t2 = t2 || clamp(F * (7 - 3) + 3 + 5 * NEAR, t1, MAXVAL); t3 = t3 || clamp(F * (21 - 4) + 4 + 7 * NEAR, t2, MAXVAL);
+        } else {
+          const F = Math.floor(256 / (MAXVAL + 1));
+          t1 = t1 || clamp(Math.max(2, Math.floor(3 / F) + 3 * NEAR), NEAR + 1, MAXVAL); t2 = t2 || clamp(Math.max(3, Math.floor(7 / F) + 5 * NEAR), t1, MAXVAL); t3 = t3 || clamp(Math.max(4, Math.floor(21 / F) + 7 * NEAR), t2, MAXVAL);
+        }
+      }
+      const RANGE = Math.floor((MAXVAL + 2 * NEAR) / (2 * NEAR + 1)) + 1, Q1 = 2 * NEAR + 1;
+      const qbpp = Math.ceil(Math.log2(RANGE)), bpp = Math.max(2, Math.ceil(Math.log2(MAXVAL + 1))), LIMIT = 2 * (bpp + Math.max(8, bpp));
+      const A0 = Math.max(2, Math.floor((RANGE + 32) / 64));
+      const A = new Int32Array(365).fill(A0), B = new Int32Array(365), C = new Int32Array(365), N = new Int32Array(365).fill(1);
+      const rA = [A0, A0], rN = [1, 1], rNn = [0, 0];
+      // bit reader: after an 0xFF byte the next byte carries 7 bits; 0xFF followed by a byte >= 0x80 is a marker
+      let bp = pos, cur = 0, nb = 0, prevFF = false;
+      const more = () => {
+        let b = 0, n = 8;
+        if (bp < u8.length) {
+          if (prevFF) { b = u8[bp++]; n = 7; prevFF = false; if (b & 0x80) { bp--; b = 0; n = 8; } }
+          else { b = u8[bp]; if (b === 0xFF && u8[bp + 1] >= 0x80) b = 0; else { bp++; if (b === 0xFF) prevFF = true; } }
+        }
+        cur = (cur << n | b) >>> 0; nb += n;
+      };
+      const bit = () => { if (!nb) more(); nb--; return (cur >>> nb) & 1; };
+      const bits = n => { let v = 0; while (n--) v = (v << 1) | bit(); return v; };
+      const value = (k, limit) => { // limited-length Golomb code
+        let hb = 0; while (!bit()) { if (++hb > 65536) throw new Error('Damaged JPEG-LS data'); }
+        if (hb >= limit - (qbpp + 1)) return bits(qbpp) + 1;
+        return k ? (hb << k) + bits(k) : hb;
+      };
+      const fix = v => { if (v < -NEAR) v += RANGE * Q1; else if (v > MAXVAL + NEAR) v -= RANGE * Q1; return v < 0 ? 0 : v > MAXVAL ? MAXVAL : v; };
+      const quant = d => d <= -t3 ? -4 : d <= -t2 ? -3 : d <= -t1 ? -2 : d < -NEAR ? -1 : d <= NEAR ? 0 : d < t1 ? 1 : d < t2 ? 2 : d < t3 ? 3 : 4;
+      const lines = ilv === 0 ? 1 : ns, w = X;
+      // per component: the previous and current line, with one sample of border on either side
+      const prev = [], curl = [], runIdx = [];
+      for (let c = 0; c < lines; c++) { prev.push(new Int32Array(w + 2)); curl.push(new Int32Array(w + 2)); runIdx.push(0); }
+      if (ilv === 2) throw new Error('JPEG-LS sample-interleaved colour is not supported');
+      const comps = ilv === 0 ? 1 : ns;
+      for (let y = 0; y < Y; y++) {
+        for (let c = 0; c < comps; c++) {
+          const pl = prev[c], cl = curl[c];
+          pl[w + 1] = pl[w]; cl[0] = pl[1];
+          let RI = runIdx[c];
+          for (let x = 1; x <= w;) {
+            const Ra = cl[x - 1], Rb = pl[x], Rc = pl[x - 1], Rd = pl[x + 1];
+            const d1 = Rd - Rb, d2 = Rb - Rc, d3 = Rc - Ra;
+            if (Math.abs(d1) <= NEAR && Math.abs(d2) <= NEAR && Math.abs(d3) <= NEAR) {
+              // run mode: a run of samples equal (within NEAR) to Ra, then perhaps an interrupting sample
+              const count = w - x + 1; let i = 0;
+              while (bit()) {
+                const k = Math.min(1 << J[RI], count - i); i += k;
+                if (k === 1 << J[RI]) RI = Math.min(31, RI + 1);
+                if (i === count) break;
+              }
+              if (i !== count) i += J[RI] ? bits(J[RI]) : 0;
+              if (i > count) throw new Error('Damaged JPEG-LS data');
+              for (let k = 0; k < i; k++) cl[x + k] = Ra;
+              x += i;
+              if (x > w) break;
+              const rb = pl[x], ri = Math.abs(Ra - rb) <= NEAR ? 1 : 0;
+              const tmp = rA[ri] + (rN[ri] >> 1) * ri; let k = 0; for (let nt = rN[ri]; nt < tmp; k++) nt <<= 1;
+              const em = value(k, LIMIT - J[RI] - 1), t = em + ri, map = t & 1, abs = (t + map) >> 1;
+              const err = ((k !== 0 || 2 * rNn[ri] >= rN[ri]) ? 1 : 0) === map ? -abs : abs;
+              if (err < 0) rNn[ri]++;
+              rA[ri] += (em + 1 - ri) >> 1;
+              if (rN[ri] === reset) { rA[ri] >>= 1; rN[ri] >>= 1; rNn[ri] >>= 1; }
+              rN[ri]++;
+              cl[x] = ri ? fix(Ra + err * Q1) : fix(rb + err * Q1 * (rb - Ra > 0 ? 1 : -1));
+              RI = Math.max(0, RI - 1);
+              x++;
+              continue;
+            }
+            // regular mode: median prediction, context correction, Golomb-coded error
+            let qs = 81 * quant(d1) + 9 * quant(d2) + quant(d3), sign = 1;
+            if (qs < 0) { sign = -1; qs = -qs; }
+            let px = Rc >= Math.max(Ra, Rb) ? Math.min(Ra, Rb) : Rc <= Math.min(Ra, Rb) ? Math.max(Ra, Rb) : Ra + Rb - Rc;
+            px += sign * C[qs]; px = px < 0 ? 0 : px > MAXVAL ? MAXVAL : px;
+            let k = 0; for (const a = A[qs]; (N[qs] << k) < a; k++);
+            const code = value(k, LIMIT);
+            let err = (code & 1) ? -((code + 1) >> 1) : code >> 1;
+            if (!k && !NEAR && 2 * B[qs] + N[qs] - 1 < 0) err = ~err; // error correction (k == 0, lossless only)
+            // context update
+            let a2 = A[qs] + Math.abs(err), b2 = B[qs] + err * Q1, n2 = N[qs];
+            if (n2 === reset) { a2 >>= 1; b2 >>= 1; n2 >>= 1; }
+            n2++; A[qs] = a2; N[qs] = n2;
+            if (b2 + n2 <= 0) { b2 += n2; if (b2 <= -n2) b2 = -n2 + 1; if (C[qs] > -128) C[qs]--; }
+            else if (b2 > 0) { b2 -= n2; if (b2 > 0) b2 = 0; if (C[qs] < 127) C[qs]++; }
+            B[qs] = b2;
+            cl[x] = fix(px + sign * err * Q1);
+            x++;
+          }
+          runIdx[c] = RI;
+          // into the image, and this line becomes the previous one
+          const cc = ilv === 0 ? comp0 : c;
+          for (let x = 0; x < w; x++) out[(y * w + x) * nf + cc] = cl[x + 1] << pt;
+          prev[c] = cl; curl[c] = pl;
+        }
+      }
+      // the end of this scan: the next marker
+      while (bp + 1 < u8.length && !(u8[bp] === 0xFF && u8[bp + 1] >= 0x80 && u8[bp + 1] !== 0xFF)) bp++;
+      return bp;
+    }
+  }
+
+  /* ---------- RLE Lossless (DICOM PS3.5 annex G) ---------- */
+  function rle(u8, rows, cols, bytes, spp) {
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), nseg = dv.getUint32(0, true), n = rows * cols;
+    if (nseg !== bytes * spp) throw new Error('RLE data does not match the image header');
+    const segs = [];
+    for (let s = 0; s < nseg; s++) {
+      const a = dv.getUint32(4 + s * 4, true), b = s + 1 < nseg ? dv.getUint32(8 + s * 4, true) : u8.length;
+      const plane = new Uint8Array(n); let o = 0, q = a;
+      while (q < b && o < n) {
+        const h = u8[q++];
+        if (h < 128) { const k = Math.min(h + 1, n - o); plane.set(u8.subarray(q, q + k), o); o += k; q += h + 1; }
+        else if (h > 128) { const k = Math.min(257 - h, n - o); plane.fill(u8[q++], o, o + k); o += k; }
+      }
+      segs.push(plane);
+    }
+    const C = bytes === 1 ? Uint8Array : bytes === 2 ? Uint16Array : Uint32Array, out = new C(n * spp);
+    for (let c = 0; c < spp; c++) {
+      const S = segs.slice(c * bytes, c * bytes + bytes); // most significant byte first
+      for (let i = 0; i < n; i++) {
+        let v = 0; for (let b = 0; b < bytes; b++) v = v * 256 + S[b][i];
+        out[i * spp + c] = v;
+      }
+    }
+    return { width: cols, height: rows, signed: false, data: out };
+  }
+
+
+  /* ---------- JPEG sequential DCT, 8 and 12 bit (T.81 baseline and extended: 1.2.840.10008.1.2.4.50 / .51) ----------
+     Browsers decode only 8-bit JPEG; 12-bit CT and older exports need this one. Huffman coding, any sampling, restarts,
+     one or several scans. Progressive and arithmetic coding are not used by DICOM and are not handled. */
+  const ZZ = new Int32Array([0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5, 12, 19, 26, 33, 40, 48, 41, 34, 27, 20, 13, 6, 7, 14, 21, 28,
+    35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44, 51, 58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63]);
+  const COS = (() => { const t = new Float64Array(64); for (let x = 0; x < 8; x++) for (let u = 0; u < 8; u++) t[x * 8 + u] = (u ? 1 : Math.SQRT1_2) * Math.cos((2 * x + 1) * u * Math.PI / 16) / 2; return t; })();
+  function jpegDCT(u8) {
+    if (u8[0] !== 0xFF || u8[1] !== 0xD8) throw new Error('Not a JPEG stream');
+    const r16 = q => (u8[q] << 8) | u8[q + 1];
+    const qt = [], dc = [], ac = []; let fr = null, restart = 0, adobe = -1, jfif = false, p = 2;
+    while (p + 4 <= u8.length) {
+      if (u8[p] !== 0xFF) { p++; continue; }
+      const mk = u8[p + 1]; if (mk === 0xFF) { p++; continue; }
+      if (mk === 0xD9) break;
+      if (mk === 0xD8 || (mk >= 0xD0 && mk <= 0xD7) || mk === 0x01) { p += 2; continue; }
+      const len = r16(p + 2), seg = p + 4, end = p + 2 + len;
+      if (mk === 0xDB) {
+        for (let q = seg; q < end;) { const pq = u8[q] >> 4, tq = u8[q] & 15, t = new Int32Array(64); q++; for (let i = 0; i < 64; i++) { t[ZZ[i]] = pq ? r16(q) : u8[q]; q += pq ? 2 : 1; } qt[tq] = t; }
+      } else if (mk === 0xC4) {
+        for (let q = seg; q < end;) { const tc = u8[q] >> 4, th = u8[q] & 15, counts = u8.subarray(q + 1, q + 17); let n = 0; for (let i = 0; i < 16; i++) n += counts[i]; (tc ? ac : dc)[th] = huffTable(counts, u8.slice(q + 17, q + 17 + n)); q += 17 + n; }
+      } else if (mk === 0xDD) restart = r16(seg);
+      else if (mk === 0xE0) jfif = true;
+      else if (mk === 0xEE && u8[seg] === 0x41 && u8[seg + 1] === 0x64) adobe = u8[seg + 11];
+      else if (mk === 0xC0 || mk === 0xC1) {
+        const P = u8[seg], Y = r16(seg + 1), X = r16(seg + 3), nf = u8[seg + 5], comps = [];
+        for (let i = 0; i < nf; i++) comps.push({ id: u8[seg + 6 + i * 3], h: u8[seg + 7 + i * 3] >> 4, v: u8[seg + 7 + i * 3] & 15, tq: u8[seg + 8 + i * 3] });
+        const hm = Math.max(...comps.map(c => c.h)), vm = Math.max(...comps.map(c => c.v)), mx = Math.ceil(X / (8 * hm)), my = Math.ceil(Y / (8 * vm));
+        for (const c of comps) { c.bw = mx * c.h; c.bh = my * c.v; c.w = Math.ceil(X * c.h / hm); c.ht = Math.ceil(Y * c.v / vm); c.co = new Int32Array(c.bw * c.bh * 64); }
+        fr = { P, X, Y, comps, hm, vm, mx, my };
+      } else if (mk >= 0xC2 && mk <= 0xCF && mk !== 0xC4 && mk !== 0xC8 && mk !== 0xCC) throw new Error('This JPEG coding (progressive or arithmetic) is not supported');
+      else if (mk === 0xDA) {
+        if (!fr) throw new Error('Damaged JPEG data');
+        const ns = u8[seg], sc = [];
+        for (let i = 0; i < ns; i++) { const c = fr.comps.find(c => c.id === u8[seg + 1 + i * 2]); if (!c) throw new Error('Damaged JPEG data'); c.td = u8[seg + 2 + i * 2] >> 4; c.ta = u8[seg + 2 + i * 2] & 15; sc.push(c); }
+        p = scanDCT(end, sc); continue;
+      }
+      p = end;
+    }
+    if (!fr) throw new Error('Damaged JPEG data');
+    return finish();
+
+    function scanDCT(pos, sc) {
+      let bp = pos, buf = 0, cnt = 0, eoi = false;
+      const fill = () => {
+        let b = 0;
+        if (!eoi && bp < u8.length) {
+          b = u8[bp];
+          if (b === 0xFF) { const n = u8[bp + 1]; if (n === 0) bp += 2; else { eoi = true; b = 0; } }
+          else bp++;
+        }
+        buf = ((buf << 8) | b) >>> 0; cnt += 8;
+      };
+      const bit = () => { if (!cnt) fill(); cnt--; return (buf >>> cnt) & 1; };
+      const recv = n => { let v = 0; for (let i = 0; i < n; i++) v = (v << 1) | bit(); return v; };
+      const ext = (v, n) => n && v < 1 << (n - 1) ? v - (1 << n) + 1 : v;
+      const huff = t => {
+        if (!t) throw new Error('Damaged JPEG data');
+        let code = bit(), l = 1;
+        while (code > t.maxcode[l]) { code = (code << 1) | bit(); if (++l > 16) throw new Error('Damaged JPEG data'); }
+        return t.symbols[t.valptr[l] + code - t.mincode[l]];
+      };
+      const pred = new Int32Array(sc.length);
+      const block = (c, ci, off) => {
+        const q = qt[c.tq]; if (!q) throw new Error('Damaged JPEG data');
+        const co = c.co, s = huff(dc[c.td]), d = s ? ext(recv(s), s) : 0;
+        pred[ci] += d; co[off] = pred[ci] * q[0];
+        for (let k = 1; k < 64;) {
+          const rs = huff(ac[c.ta]), r = rs >> 4, z = rs & 15;
+          if (!z) { if (r === 15) { k += 16; continue; } break; }
+          k += r; if (k > 63) break;
+          co[off + ZZ[k]] = ext(recv(z), z) * q[ZZ[k]]; k++;
+        }
+      };
+      const units = sc.length === 1 ? Math.ceil(sc[0].w / 8) * Math.ceil(sc[0].ht / 8) : fr.mx * fr.my;
+      for (let u = 0; u < units; u++) {
+        if (restart && u && u % restart === 0) { // restart: realign, skip the RSTn marker, reset the predictions
+          cnt = 0; buf = 0; eoi = false;
+          while (bp + 1 < u8.length && !(u8[bp] === 0xFF && u8[bp + 1] >= 0xD0 && u8[bp + 1] <= 0xD7)) bp++;
+          bp += 2; pred.fill(0);
+        }
+        if (sc.length === 1) {
+          const c = sc[0], per = Math.ceil(c.w / 8), by = (u / per) | 0, bx = u % per;
+          block(c, 0, (by * c.bw + bx) * 64);
+        } else {
+          const my = (u / fr.mx) | 0, mx = u % fr.mx;
+          for (let ci = 0; ci < sc.length; ci++) { const c = sc[ci];
+            for (let v = 0; v < c.v; v++) for (let h = 0; h < c.h; h++) block(c, ci, ((my * c.v + v) * c.bw + mx * c.h + h) * 64); }
+        }
+      }
+      while (bp + 1 < u8.length && !(u8[bp] === 0xFF && u8[bp + 1] !== 0 && !(u8[bp + 1] >= 0xD0 && u8[bp + 1] <= 0xD7))) bp++;
+      return bp;
+    }
+    function finish() {
+      const { P, X, Y, comps, hm, vm } = fr, nf = comps.length, shift = 1 << (P - 1), max = (1 << P) - 1;
+      const planes = comps.map(c => { // inverse DCT of every block into a plane of that component's size
+        const W = c.bw * 8, pl = new Float32Array(W * c.bh * 8), tmp = new Float64Array(64);
+        for (let by = 0; by < c.bh; by++) for (let bx = 0; bx < c.bw; bx++) {
+          const off = (by * c.bw + bx) * 64, co = c.co;
+          for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { let s = 0; for (let uu = 0; uu < 8; uu++) s += COS[x * 8 + uu] * co[off + y * 8 + uu]; tmp[y * 8 + x] = s; }
+          for (let x = 0; x < 8; x++) for (let y = 0; y < 8; y++) { let s = 0; for (let v = 0; v < 8; v++) s += COS[y * 8 + v] * tmp[v * 8 + x]; pl[(by * 8 + y) * W + bx * 8 + x] = s + shift; }
+        }
+        return { pl, W, fx: hm / c.h, fy: vm / c.v };
+      });
+      const out = P <= 8 ? new Uint8Array(X * Y * nf) : new Uint16Array(X * Y * nf);
+      const ycc = nf === 3 && adobe !== 0 && !(adobe < 0 && !jfif && comps[0].id === 82 && comps[1].id === 71 && comps[2].id === 66); // 'R','G','B' ids: no transform
+      for (let y = 0; y < Y; y++) for (let x = 0; x < X; x++) {
+        const o = (y * X + x) * nf;
+        if (ycc) {
+          const g = i => { const q = planes[i]; return q.pl[((y / q.fy) | 0) * q.W + ((x / q.fx) | 0)]; };
+          const Yv = g(0), cb = g(1) - shift, cr = g(2) - shift, cl = v => { v = Math.round(v); return v < 0 ? 0 : v > max ? max : v; };
+          out[o] = cl(Yv + 1.402 * cr); out[o + 1] = cl(Yv - 0.344136 * cb - 0.714136 * cr); out[o + 2] = cl(Yv + 1.772 * cb);
+        } else for (let i = 0; i < nf; i++) { const q = planes[i], v = Math.round(q.pl[((y / q.fy) | 0) * q.W + ((x / q.fx) | 0)]); out[o + i] = v < 0 ? 0 : v > max ? max : v; }
+      }
+      return { width: X, height: Y, signed: false, data: out, comps: nf, bits: P };
+    }
+  }
+  // the precision in a JPEG stream's frame header (8 or 12 for DCT)
+  function jpegBits(u8) {
+    for (let p = 2; p + 4 < u8.length;) {
+      if (u8[p] !== 0xFF) { p++; continue; }
+      const mk = u8[p + 1]; if (mk === 0xFF || mk === 0xD8 || mk === 0x01 || (mk >= 0xD0 && mk <= 0xD7)) { p += mk === 0xFF ? 1 : 2; continue; }
+      if (mk >= 0xC0 && mk <= 0xCF && mk !== 0xC4 && mk !== 0xC8 && mk !== 0xCC) return u8[p + 4];
+      if (mk === 0xDA || mk === 0xD9) return 8;
+      p += 2 + ((u8[p + 2] << 8) | u8[p + 3]);
+    }
+    return 8;
+  }
+
+  /* ---------- JPEG baseline: the browser's own decoder ---------- */
+  async function jpegBrowser(u8, spp) {
+    const bmp = await createImageBitmap(new Blob([u8], { type: 'image/jpeg' }), { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
+    const w = bmp.width, h = bmp.height;
+    const c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h });
+    const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(bmp, 0, 0); bmp.close && bmp.close();
+    const d = g.getImageData(0, 0, w, h).data, n = w * h, out = new Uint8Array(n * spp);
+    if (spp === 1) for (let i = 0; i < n; i++) out[i] = d[i * 4];
+    else for (let i = 0; i < n; i++) { out[i * 3] = d[i * 4]; out[i * 3 + 1] = d[i * 4 + 1]; out[i * 3 + 2] = d[i * 4 + 2]; }
+    return { width: w, height: h, signed: false, data: out };
+  }
+
+  // colour models: YBR_FULL and palette colour become 8-bit RGB
+  function ybr(a) {
+    for (let i = 0; i < a.length; i += 3) {
+      const y = a[i], cb = a[i + 1] - 128, cr = a[i + 2] - 128;
+      a[i] = Math.max(0, Math.min(255, Math.round(y + 1.402 * cr)));
+      a[i + 1] = Math.max(0, Math.min(255, Math.round(y - 0.344136 * cb - 0.714136 * cr)));
+      a[i + 2] = Math.max(0, Math.min(255, Math.round(y + 1.772 * cb)));
+    }
+    return a;
+  }
+  function palette(idx, pal) {
+    const n = idx.length, out = new Uint8Array(n * 3), last = pal.r.length - 1, sh = pal.bits > 8 ? 8 : 0;
+    for (let i = 0; i < n; i++) { const k = Math.max(0, Math.min(last, idx[i] - pal.first)); out[i * 3] = pal.r[k] >> sh; out[i * 3 + 1] = pal.g[k] >> sh; out[i * 3 + 2] = pal.b[k] >> sh; }
+    return out;
+  }
+  // a smaller copy (every 2^reduce-th sample), for previews and big 3D volumes
+  function reduce(r, k, spp) {
+    if (!k) return r;
+    const f = 1 << k, w2 = Math.ceil(r.width / f), h2 = Math.ceil(r.height / f), o = new r.data.constructor(w2 * h2 * spp);
+    for (let y = 0; y < h2; y++) for (let x = 0; x < w2; x++) for (let c = 0; c < spp; c++) o[(y * w2 + x) * spp + c] = r.data[(y * f * r.width + x * f) * spp + c];
+    return { width: w2, height: h2, signed: r.signed, data: o };
+  }
+  async function decode(m, bytes) {
+    const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    let r;
+    if (m.codec === 'jpegll') r = jpegLossless(u8);
+    else if (m.codec === 'jpegls') r = jpegLS(u8);
+    else if (m.codec === 'rle') {
+      r = rle(u8, m.rows, m.cols, (m.palette ? m.palette.ba : m.ba) >> 3, m.palette ? 1 : m.spp);
+      if (m.palette) r.data = palette(r.data, m.palette); else if (m.ybr) ybr(r.data);
+    }
+    else if (m.codec === 'jpeg') { // 8-bit through the browser (fast); 12-bit, or anything the browser refuses, through jpegDCT
+      if (jpegBits(u8) > 8 || typeof createImageBitmap === 'undefined') r = jpegDCT(u8);
+      else { try { r = await jpegBrowser(u8, m.spp); } catch (e) { r = jpegDCT(u8); } }
+      if (m.spp === 1 && r.comps === 3) { const g = new r.data.constructor(r.width * r.height); for (let i = 0; i < g.length; i++) g[i] = r.data[i * 3]; r.data = g; }
+    }
+    else throw new Error('Unsupported compression');
+    if (r.width !== m.cols || r.height !== m.rows) throw new Error('image size differs from the header');
+    return reduce(r, m.reduce || 0, m.spp);
+  }
+  return { decode, jpegLossless, jpegLS, jpegDCT, rle };
+}
 function dicomModule() {
   'use strict';
   const LONG = new Set(['OB', 'OD', 'OF', 'OL', 'OW', 'SQ', 'UC', 'UR', 'UT', 'UN']);
@@ -1370,6 +1848,11 @@ function dicomModule() {
   const EXPLICIT = '1.2.840.10008.1.2.1';
   const UNDEF = 0xFFFFFFFF;
   const J2K = new Set(['1.2.840.10008.1.2.4.90', '1.2.840.10008.1.2.4.91']);
+  // compressed encodings and the decoder for each (codecs.js; JPEG 2000 in j2k.js)
+  const CODECS = { '1.2.840.10008.1.2.4.90': 'j2k', '1.2.840.10008.1.2.4.91': 'j2k',
+    '1.2.840.10008.1.2.4.57': 'jpegll', '1.2.840.10008.1.2.4.70': 'jpegll',
+    '1.2.840.10008.1.2.5': 'rle', '1.2.840.10008.1.2.4.50': 'jpeg', '1.2.840.10008.1.2.4.51': 'jpeg',
+    '1.2.840.10008.1.2.4.80': 'jpegls', '1.2.840.10008.1.2.4.81': 'jpegls' };
   const TS_NAMES = {
     '1.2.840.10008.1.2.4.80': 'JPEG-LS', '1.2.840.10008.1.2.4.81': 'JPEG-LS',
     '1.2.840.10008.1.2.4.92': 'JPEG 2000 Part 2', '1.2.840.10008.1.2.4.93': 'JPEG 2000 Part 2',
@@ -1385,7 +1868,7 @@ function dicomModule() {
     '1.2.840.10008.1.2.4.91': 'JPEG 2000',
   };
   const TAGS = {
-    '00020010': ['ts', 'UI'], '00080060': ['modality', 'CS'], '00080020': ['studyDate', 'DA'],
+    '00020010': ['ts', 'UI'], '00080005': ['charset', 'CS'], '00080060': ['modality', 'CS'], '00080020': ['studyDate', 'DA'],
     '00081030': ['studyDesc', 'LO'], '0008103E': ['seriesDesc', 'LO'],
     '00100010': ['patientName', 'PN'], '00100020': ['patientId', 'LO'],
     '00100030': ['birthDate', 'DA'], '00100040': ['sex', 'CS'], '00101010': ['age', 'AS'],
@@ -1399,13 +1882,73 @@ function dicomModule() {
     '00280101': ['bitsStored', 'US'], '00280103': ['pixelRep', 'US'],
     '00281050': ['wc', 'DSM'], '00281051': ['ww', 'DSM'],
     '00281052': ['intercept', 'DS'], '00281053': ['slope', 'DS'],
+    // MRI: what sets apart the stacks that can share one series (echo, b-value, time point)
+    '00180081': ['te', 'DS'], '00200100': ['temporal', 'IS'], '00189087': ['bvalue', 'FD'],
+    '00431039': ['geB', 'DSM'], '0019100C': ['siemensB', 'IS'], '20011003': ['philipsB', 'FL'],
   };
   const hex4 = n => n.toString(16).toUpperCase().padStart(4, '0');
+  // Names and descriptions in the study's own character set (Specific Character Set, 0008,0005)
+  const CHARSETS = { 'ISO_IR 100': 'iso-8859-1', 'ISO_IR 101': 'iso-8859-2', 'ISO_IR 109': 'iso-8859-3', 'ISO_IR 110': 'iso-8859-4',
+    'ISO_IR 144': 'iso-8859-5', 'ISO_IR 127': 'iso-8859-6', 'ISO_IR 126': 'iso-8859-7', 'ISO_IR 138': 'iso-8859-8', 'ISO_IR 148': 'iso-8859-9',
+    'ISO_IR 203': 'iso-8859-15', 'ISO_IR 166': 'windows-874', 'ISO_IR 13': 'shift_jis', 'ISO_IR 192': 'utf-8', 'GB18030': 'gb18030', 'GBK': 'gbk',
+    'ISO 2022 IR 87': 'iso-2022-jp', 'ISO 2022 IR 159': 'iso-2022-jp', 'ISO 2022 IR 13': 'shift_jis', 'ISO 2022 IR 149': 'euc-kr', 'ISO 2022 IR 58': 'gb18030',
+    'ISO 2022 IR 100': 'iso-8859-1', 'ISO 2022 IR 144': 'iso-8859-5', 'ISO 2022 IR 127': 'iso-8859-6', 'ISO 2022 IR 126': 'iso-8859-7',
+    'ISO 2022 IR 138': 'iso-8859-8', 'ISO 2022 IR 148': 'iso-8859-9', 'ISO 2022 IR 166': 'windows-874' };
+  const decoders = {};
+  function readText(u8, off, len, charset) {
+    const terms = (charset || '').split('\\').map(s => s.trim()).filter(s => s && s !== 'ISO_IR 6' && s !== 'ISO 2022 IR 6');
+    const label = terms.length ? CHARSETS[terms[terms.length > 1 && /IR 87|IR 159/.test(terms.join()) ? terms.findIndex(s => /IR 87|IR 159/.test(s)) : 0]] : null;
+    if (!label || typeof TextDecoder === 'undefined') return readStr(u8, off, len);
+    let b = u8.subarray(off, off + len);
+    if (label === 'euc-kr' || label === 'gb18030') b = b.filter((x, i) => !(x === 0x1B || (i > 0 && b[i - 1] === 0x1B) || (i > 1 && b[i - 2] === 0x1B) || (i > 2 && b[i - 3] === 0x1B && b[i - 2] === 0x24 && b[i - 1] === 0x29))); // escape sequences out
+    try { return (decoders[label] || (decoders[label] = new TextDecoder(label))).decode(b).replace(/[\0 ]+$/, '').replace(/^ +/, ''); }
+    catch (e) { return readStr(u8, off, len); }
+  }
 
   function readStr(u8, off, len) {
     let s = '';
     for (let i = 0; i < len; i++) s += String.fromCharCode(u8[off + i]);
     return s.replace(/[\0 ]+$/, '').replace(/^ +/, '');
+  }
+
+  /* Enhanced multi-frame objects (Philips and Siemens MRI, newer CT): one file holds the whole series; the position,
+     orientation, spacing, rescale and window of each frame sit in the Shared (5200,9229) and Per-frame (5200,9230)
+     Functional Groups, inside nested sequences. These are read into one flat record per frame. */
+  const FG = { '00200032': ['ipp', 'DSM'], '00200037': ['iop', 'DSM'], '00280030': ['pixelSpacing', 'DSM'], '00180050': ['sliceThickness', 'DS'],
+    '00281052': ['intercept', 'DS'], '00281053': ['slope', 'DS'], '00281050': ['wc', 'DSM'], '00281051': ['ww', 'DSM'],
+    '00209056': ['stackId', 'STR'], '00209057': ['inStack', 'UL'], '00209128': ['temporal', 'UL'], '00189082': ['te', 'FD'], '00189087': ['bvalue', 'FD'] };
+  const FG_SEQS = new Set(['00209113', '00209116', '00289110', '00289145', '00289132', '00209111', '00189114', '00189117', '00209071', '00189226', '00209172', '00189112']);
+  function readSeq(dv, u8, pos, len, explicit) {
+    const end = len === UNDEF ? dv.byteLength : Math.min(dv.byteLength, pos + len), items = [];
+    while (pos + 8 <= end) {
+      const g = dv.getUint16(pos, true), e = dv.getUint16(pos + 2, true), ilen = dv.getUint32(pos + 4, true);
+      if (g === 0xFFFE && e === 0xE0DD) return { items, end: pos + 8 };
+      if (g !== 0xFFFE || e !== 0xE000) break;
+      const item = {}; pos = readItem(dv, u8, pos + 8, ilen, explicit, item); items.push(item);
+    }
+    return { items, end: len === UNDEF ? pos : end };
+  }
+  function readItem(dv, u8, pos, len, explicit, out) {
+    const end = len === UNDEF ? dv.byteLength : Math.min(dv.byteLength, pos + len);
+    while (pos + 8 <= end) {
+      const el = readElement(dv, u8, pos, explicit); if (!el) return end;
+      if (el.g === 0xFFFE && el.e === 0xE00D) return el.off;
+      const key = hex4(el.g) + hex4(el.e);
+      if (el.vr === 'SQ' || el.len === UNDEF || (!explicit && FG_SEQS.has(key))) { // nested: its values belong to this frame too
+        const r = readSeq(dv, u8, el.off, el.len, explicit);
+        for (const it of r.items) for (const k in it) if (!(k in out)) out[k] = it[k];
+        pos = r.end; continue;
+      }
+      const d = FG[key];
+      if (d && !(d[0] in out) && el.off + el.len <= dv.byteLength) {
+        const [name, vr] = d;
+        if (vr === 'UL') { if (el.len >= 4) out[name] = dv.getUint32(el.off, true); }
+        else if (vr === 'FD') { if (el.len >= 8) out[name] = dv.getFloat64(el.off, true); }
+        else { const s = readStr(u8, el.off, el.len); if (vr === 'DS') { const v = parseFloat(s); if (isFinite(v)) out[name] = v; } else if (vr === 'DSM') out[name] = s.split('\\').map(Number).filter(isFinite); else out[name] = s; }
+      }
+      pos = el.off + el.len;
+    }
+    return len === UNDEF ? pos : end;
   }
 
   function readElement(dv, u8, pos, explicit) {
@@ -1470,15 +2013,29 @@ function dicomModule() {
         break;
       }
       if (el.g === 0xFFFE) { pos = el.off; continue; }
+      if (el.g === 0x5200 && (el.e === 0x9229 || el.e === 0x9230)) { // shared / per-frame functional groups
+        const r = readSeq(dv, u8, el.off, el.len, g0 === 2 ? true : dsExplicit);
+        if (el.e === 0x9229) info.fgShared = r.items[0] || {}; else info.fgFrames = r.items;
+        pos = r.end; continue;
+      }
       if (el.len === UNDEF) { pos = skipUndefined(dv, u8, el.off, g0 === 2 ? true : dsExplicit); continue; }
+      if (el.g === 0x0028 && el.e >= 0x1101 && el.e <= 0x1103 && el.len >= 6) { // palette descriptor: entries, first index, bits
+        const c = 'rgb'[el.e - 0x1101]; (info.pal = info.pal || {})[c + 'd'] = [dv.getUint16(el.off, true) || 65536, dv.getUint16(el.off + 2, true), dv.getUint16(el.off + 4, true)];
+      } else if (el.g === 0x0028 && el.e >= 0x1201 && el.e <= 0x1203 && el.off + el.len <= buf.byteLength) { // palette data
+        const c = 'rgb'[el.e - 0x1201], a = new Uint16Array(el.len >> 1); for (let i = 0; i < a.length; i++) a[i] = dv.getUint16(el.off + i * 2, true);
+        (info.pal = info.pal || {})[c] = a;
+      }
       const def = TAGS[hex4(el.g) + hex4(el.e)];
       if (def && el.off + el.len <= buf.byteLength) {
         const [name, vr] = def;
         if (vr === 'US') { if (el.len >= 2) info[name] = dv.getUint16(el.off, true); }
+        else if (vr === 'FD') { if (el.len >= 8) info[name] = dv.getFloat64(el.off, true); }
+        else if (vr === 'FL') { if (el.len >= 4) info[name] = dv.getFloat32(el.off, true); }
         else {
           const s = readStr(u8, el.off, el.len);
           if (vr === 'DS' || vr === 'IS') { const v = parseFloat(s); if (isFinite(v)) info[name] = v; }
           else if (vr === 'DSM') info[name] = s.split('\\').map(Number).filter(isFinite);
+          else if (vr === 'PN' || vr === 'LO') info[name] = readText(u8, el.off, el.len, info.charset);
           else info[name] = s;
         }
         if (name === 'ts') dsExplicit = info.ts !== IMPLICIT;
@@ -1489,28 +2046,54 @@ function dicomModule() {
     if (!sawAny || !info.rows || !info.cols) {
       throw new Error(hasPreamble ? 'No image data in this file' : 'Not a DICOM file');
     }
-    const j2k = J2K.has(info.ts);
-    if (info.ts && info.ts !== IMPLICIT && info.ts !== EXPLICIT && !j2k) {
+    const codec = CODECS[info.ts], j2k = !!codec;
+    if (info.ts && info.ts !== IMPLICIT && info.ts !== EXPLICIT && !codec) {
       throw new Error('Unsupported encoding: ' + (TS_NAMES[info.ts] || info.ts));
     }
     if (info.pixelOffset == null) throw new Error('No pixel data');
     if (j2k !== !!info.encapsulated) throw new Error('Compressed pixel data is not supported');
     if (![8, 16, 32].includes(info.bitsAllocated)) throw new Error('Unsupported bit depth: ' + info.bitsAllocated);
-    if ((j2k ? /^(PALETTE|YBR_(FULL|PARTIAL))/ : /^(YBR|PALETTE)/).test(info.photometric)) throw new Error('Unsupported colour model: ' + info.photometric);
+    // colour: JPEG baseline arrives as RGB from the browser's decoder (its YBR is converted there); YBR_FULL
+    // (uncompressed, RLE) and YBR_FULL_422 (uncompressed) are turned into RGB here, and palette colour through its tables
+    if (codec === 'jpeg' && /^YBR_(FULL|FULL_422|PARTIAL_420|ICT|RCT)$/.test(info.photometric)) info.photometric = 'RGB';
+    if (info.spp === 3 && info.photometric === 'YBR_FULL' && (!codec || codec === 'rle')) { info.ybr = 1; info.photometric = 'RGB'; }
+    if (info.spp === 3 && info.photometric === 'YBR_FULL_422' && !codec && info.bitsAllocated === 8) { info.ybr = 2; info.photometric = 'RGB'; }
+    if (info.photometric === 'PALETTE COLOR' && info.spp === 1 && (!codec || codec === 'rle') && info.pal && info.pal.r && info.pal.g && info.pal.b && info.pal.rd) {
+      info.palette = { ba: info.bitsAllocated, first: info.pal.rd[1], bits: info.pal.rd[2], r: info.pal.r, g: info.pal.g, b: info.pal.b };
+      info.photometric = 'RGB';
+    }
+    delete info.pal;
+    if ((codec === 'j2k' ? /^(PALETTE|YBR_(FULL|PARTIAL))/ : /^(YBR|PALETTE)/).test(info.photometric)) throw new Error('Unsupported colour model: ' + info.photometric);
+    if (codec === 'jpeg' && info.bitsAllocated !== 8 && !(info.bitsAllocated === 16 && info.spp === 1)) throw new Error('Unsupported encoding: JPEG with ' + info.bitsAllocated + ' bits');
     if (j2k) {
-      info.codec = 'j2k'; info.frames = Math.max(1, info.frames || 1);
+      info.codec = codec; info.frames = Math.max(1, info.frames || 1);
       if (!headerOnly) {
         if (info.fragErr) throw new Error(info.fragErr);
         if (!info.frags || !info.frags.length) throw new Error('No compressed image data');
         for (let f = 0; f < info.frames; f++) frameFragments(info, f);
       }
     } else {
-      const frameBytes = info.rows * info.cols * (info.bitsAllocated >> 3) * info.spp;
+      const frameBytes = info.ybr === 2 ? info.rows * info.cols * 2 : info.rows * info.cols * (info.bitsAllocated >> 3) * info.spp;
       const avail = Math.floor(info.pixelLength / frameBytes);
       if (avail < 1) throw new Error('Pixel data is truncated');
       info.frames = Math.max(1, Math.min(info.frames || 1, avail));
     }
+    // the b-value: standard tag, else the vendors' own (GE adds 10^9 on some versions)
+    if (info.bvalue == null) {
+      const b = info.siemensB != null ? info.siemensB : info.philipsB != null ? info.philipsB : info.geB && info.geB.length ? info.geB[0] % 1e9 : null;
+      if (b != null && isFinite(b) && b >= 0 && b < 1e5) info.bvalue = b;
+    }
+    delete info.siemensB; delete info.philipsB; delete info.geB;
+    if (info.fgFrames || info.fgShared) { // enhanced multi-frame: one record per frame, the file's own values as defaults
+      const sh = info.fgShared || {}, n = info.frames || 1;
+      info.frameInfo = [];
+      for (let f = 0; f < n; f++) info.frameInfo.push(Object.assign({}, sh, (info.fgFrames && info.fgFrames[f]) || {}));
+      const f0 = info.frameInfo[0];
+      for (const k of ['ipp', 'iop', 'pixelSpacing', 'sliceThickness', 'intercept', 'slope', 'wc', 'ww']) if (info[k] == null && f0[k] != null) info[k] = f0[k];
+      delete info.fgFrames; delete info.fgShared;
+    }
     if (!info.slope) info.slope = 1;
+    if (info.palette) { info.spp = 3; info.bitsAllocated = info.bitsStored = 8; info.pixelRep = 0; } // shown as 8-bit RGB
     return info;
   }
 
@@ -1545,7 +2128,39 @@ function dicomModule() {
     return out.buffer;
   }
 
+  // YBR (full range) to RGB, 8-bit, in place on an interleaved array
+  function ybrToRgb(a) {
+    for (let i = 0; i < a.length; i += 3) {
+      const y = a[i], cb = a[i + 1] - 128, cr = a[i + 2] - 128;
+      a[i] = Math.max(0, Math.min(255, Math.round(y + 1.402 * cr)));
+      a[i + 1] = Math.max(0, Math.min(255, Math.round(y - 0.344136 * cb - 0.714136 * cr)));
+      a[i + 2] = Math.max(0, Math.min(255, Math.round(y + 1.772 * cb)));
+    }
+    return a;
+  }
+  // palette indexes to 8-bit RGB
+  function paletteToRgb(idx, pal) {
+    const n = idx.length, out = new Uint8Array(n * 3), last = pal.r.length - 1, sh = pal.bits > 8 ? 8 : 0;
+    for (let i = 0; i < n; i++) {
+      const k = Math.max(0, Math.min(last, idx[i] - pal.first));
+      out[i * 3] = pal.r[k] >> sh; out[i * 3 + 1] = pal.g[k] >> sh; out[i * 3 + 2] = pal.b[k] >> sh;
+    }
+    return out;
+  }
   function framePixels(buf, info, f) {
+    const n0 = info.rows * info.cols;
+    if (info.palette) { // indexes, then the colours
+      const pb = info.palette.ba >> 3, start = info.pixelOffset + f * n0 * pb, raw = buf.slice(start, start + n0 * pb);
+      return paletteToRgb(pb === 1 ? new Uint8Array(raw) : new Uint16Array(raw), info.palette);
+    }
+    if (info.ybr === 2) { // YBR_FULL_422: Y1 Y2 Cb Cr for each pair of pixels
+      const start = info.pixelOffset + f * n0 * 2, s = new Uint8Array(buf, start, n0 * 2), out = new Uint8Array(n0 * 3);
+      for (let i = 0, j = 0; i < n0; i += 2, j += 4) {
+        out[i * 3] = s[j]; out[i * 3 + 1] = s[j + 2]; out[i * 3 + 2] = s[j + 3];
+        if (i + 1 < n0) { out[i * 3 + 3] = s[j + 1]; out[i * 3 + 4] = s[j + 2]; out[i * 3 + 5] = s[j + 3]; }
+      }
+      return ybrToRgb(out);
+    }
     const bps = info.bitsAllocated >> 3, spp = info.spp, n = info.rows * info.cols;
     const fl = n * bps * spp, start = info.pixelOffset + f * fl;
     const raw = buf.slice(start, start + fl);
@@ -1557,9 +2172,9 @@ function dicomModule() {
     if (spp === 3 && info.planar === 1) {
       const out = new Ctor(n * 3);
       for (let i = 0; i < n; i++) { out[i * 3] = a[i]; out[i * 3 + 1] = a[n + i]; out[i * 3 + 2] = a[2 * n + i]; }
-      return out;
+      return info.ybr ? ybrToRgb(out) : out;
     }
-    return a;
+    return info.ybr && spp === 3 ? ybrToRgb(a) : a;
   }
 
   function indexOfBytes(u8, pat, from) {
@@ -1593,7 +2208,7 @@ function dicomModule() {
     return parts;
   }
 
-  return { parse, framePixels, encodedFrame, readFragments, splitMultipart };
+  return { parse, framePixels, encodedFrame, readFragments, splitMultipart, ybrToRgb, paletteToRgb };
 }
 const DICOM = dicomModule();
 
@@ -1670,6 +2285,20 @@ function minmax(img) {
   let a = lo * img.slope + img.intercept, b = hi * img.slope + img.intercept;
   if (a > b) [a, b] = [b, a];
   return (img.mm = [a, b]);
+}
+// MRI, PET and nuclear medicine: the window comes from the middle slice's own pixels, its range without the extreme
+// 0.5% at either end (a few very bright pixels would otherwise darken everything); its header, else the full range
+function robustWindow(img) {
+  const p = img.pixels, n = p.length, step = Math.max(1, Math.floor(n / 65536)), vals = [];
+  for (let i = 0; i < n; i += step) vals.push(p[i] * img.slope + img.intercept);
+  vals.sort((a, b) => a - b);
+  const lo = vals[Math.floor(vals.length * 0.005)], hi = vals[Math.min(vals.length - 1, Math.floor(vals.length * 0.995))];
+  return hi > lo ? { wc: (lo + hi) / 2, ww: hi - lo } : null;
+}
+function seriesWindow(se, img) {
+  if (!img || img.spp === 3 || !/^(MR|PT|NM)$/.test(img.modality || '')) return defaultWindow(img);
+  const mid = se.images[Math.floor(se.images.length / 2)] || img;
+  return (mid.pixels && robustWindow(mid)) || (mid.wc != null && mid.ww > 0 ? { wc: mid.wc, ww: mid.ww } : defaultWindow(img));
 }
 function defaultWindow(img) {
   if (img.wc != null && img.ww > 0) return { wc: img.wc, ww: img.ww };
@@ -2205,7 +2834,7 @@ function selectSeries(i) {
   if (S.vol && S.vol.se !== se) mprToggle(false);
   if (S.cmps.some(C => C.se === se)) { S.cmps = S.cmps.filter(C => C.se !== se); setTimeout(cmpLayout, 0); }
   S.si = i; S.idx = 0; S.draft = null; S.painted = false; S.dir = 1; S.ang = 0; S.fh = 1; S.fv = 1; S.invert = false; $('#actInvert').setAttribute('aria-pressed', 'false');
-  const d = defaultWindow(se.images[S.idx]); se.def = d;
+  const d = seriesWindow(se, se.images[S.idx]); se.def = d;
   S.wc = d.wc; S.ww = d.ww; S.preset = 'Default'; S.dirty = true; fit(); buildPresets(); render(); pump();
 }
 function buildPresets() {
@@ -3196,7 +3825,7 @@ function cmpPane(slot) { // the pane element and its renderer, made once per slo
 }
 function cmpMake(se, slot) {
   const a = cur(), b = se.images[0];
-  if (!se.def) se.def = defaultWindow(b);
+  if (!se.def) se.def = seriesWindow(se, b);
   const sameFrame = a && b && a.iop && b.iop && a.iop.every((x, k) => Math.abs(x - b.iop[k]) < 1e-3);
   const C = { se, idx: 0, wc: se.def.wc, ww: se.def.ww, range: (() => { const m = b.pixels ? minmax(b) : null; return m ? m[1] - m[0] : se.def.ww * 2; })(),
     byLoc: !!(sameFrame && zrange(se) && zrange(curSeries())), delta: null, view: cmpPane(slot), slot };
@@ -3481,9 +4110,9 @@ async function loadT1(b64) {
   try { const { instance } = await WebAssembly.instantiate(wasmBytes(b64), {}); return instance.exports; }
   catch (err) { return null; }
 }
-const J2K_SRC = [dicomModule, j2kModule, jobCodestream, wasmBytes, loadT1].map(f => f.toString()).join('\n') +
-  '\nconst D = dicomModule(); let M = null;\nconst ready = loadT1(' + JSON.stringify(T1_WASM) + ').then(x => { M = j2kModule(x); postMessage({ engine: x ? "wasm" : "js" }); });' +
-  '\nonmessage = async e => { const m = e.data; await ready; try { const r = M.decode(await jobCodestream(m, D), m.reduce); postMessage({ id: m.id, w: r.width, h: r.height, signed: r.signed, data: r.data }, [r.data.buffer]); } catch (err) { postMessage({ id: m.id, err: String((err && err.message) || err) }); } };';
+const J2K_SRC = [dicomModule, j2kModule, codecsModule, jobCodestream, wasmBytes, loadT1].map(f => f.toString()).join('\n') +
+  '\nconst D = dicomModule(), C = codecsModule(); let M = null;\nconst ready = loadT1(' + JSON.stringify(T1_WASM) + ').then(x => { M = j2kModule(x); postMessage({ engine: x ? "wasm" : "js" }); });' +
+  '\nonmessage = async e => { const m = e.data; try { const cs = await jobCodestream(m, D); let r; if (m.codec && m.codec !== "j2k") r = await C.decode(m, cs); else { await ready; r = M.decode(cs, m.reduce); } postMessage({ id: m.id, w: r.width, h: r.height, signed: r.signed, data: r.data }, [r.data.buffer]); } catch (err) { postMessage({ id: m.id, err: String((err && err.message) || err) }); } };';
 const DEC = { workers: [], free: [], jobs: new Map(), id: 1, mode: 'init', everOk: false, mainBusy: false, main: null, bytes: 0 };
 function decInit() {
   if (DEC.mode !== 'init') return;
@@ -3508,14 +4137,19 @@ function runMain(job) {
   DEC.mainBusy = true;
   setTimeout(async () => {
     let d;
-    try { if (!DEC.main) { const x = await loadT1(T1_WASM); DEC.main = j2kModule(x); DEC.engine = (x ? 'wasm' : 'js') + ' (main thread)'; } const r = DEC.main.decode(await jobCodestream(job, DICOM), job.reduce); d = { w: r.width, h: r.height, signed: r.signed, data: r.data }; }
+    try {
+      const cs = await jobCodestream(job, DICOM); let r;
+      if (job.codec && job.codec !== 'j2k') r = await (DEC.codecs || (DEC.codecs = codecsModule())).decode(job, cs);
+      else { if (!DEC.main) { const x = await loadT1(T1_WASM); DEC.main = j2kModule(x); DEC.engine = (x ? 'wasm' : 'js') + ' (main thread)'; } r = DEC.main.decode(cs, job.reduce); }
+      d = { w: r.width, h: r.height, signed: r.signed, data: r.data };
+    }
     catch (err) { d = { err: String((err && err.message) || err) }; }
     DEC.mainBusy = false; job.finish(d); pump();
   }, 0);
 }
 function submit(job) {
   job.t0 = performance.now();
-  if (DEC.mode === 'workers') { const w = DEC.free.pop(); job.id = DEC.id++; DEC.jobs.set(job.id, job); w.postMessage({ id: job.id, buf: job.buf, z: job.z, reduce: job.reduce }); }
+  if (DEC.mode === 'workers') { const w = DEC.free.pop(); job.id = DEC.id++; DEC.jobs.set(job.id, job); w.postMessage({ id: job.id, buf: job.buf, z: job.z, reduce: job.reduce, codec: job.codec, rows: job.rows, cols: job.cols, ba: job.ba, spp: job.spp, ybr: job.ybr, palette: job.palette }); }
   else runMain(job);
 }
 function signFix(d, img) {
@@ -3570,7 +4204,7 @@ function pump() {
   const needP = im => red > 0 && coded(im) && !im.pixels && !im.preview && !im.busyP && !im.busy && !im.err && !im.noPreview;
   const go = (im, kind, rd) => {
     if (kind === 'p') im.busyP = true; else if (kind === 'v') im.busyV = true; else im.busy = true;
-    submit({ buf: im.frag, z: im.zsrc ? zjob(im.zsrc) : null, reduce: kind === 'p' ? (rd == null ? red : rd) : kind === 'v' ? (rd == null ? S.vol.k : rd) : 0, finish(r) { const ms = performance.now() - this.t0; if (kind === 'p') DEC.pms = 0.8 * (DEC.pms || 30) + 0.2 * ms; else DEC.fms = 0.8 * (DEC.fms || 150) + 0.2 * ms; decoded(im, r, kind); } });
+    submit({ buf: im.frag, z: im.zsrc ? zjob(im.zsrc) : null, codec: im.codec, rows: im.rows, cols: im.cols, ba: im.ba, spp: im.spp || 1, ybr: im.ybr, palette: im.palette, reduce: kind === 'p' ? (rd == null ? red : rd) : kind === 'v' ? (rd == null ? S.vol.k : rd) : 0, finish(r) { const ms = performance.now() - this.t0; if (kind === 'p') DEC.pms = 0.8 * (DEC.pms || 30) + 0.2 * ms; else DEC.fms = 0.8 * (DEC.fms || 150) + 0.2 * ms; decoded(im, r, kind); } });
     return --cap > 0;
   };
   if (S.rf) { rfPump(go); return; } // coronal/sagittal compare: only the volumes are needed
@@ -3658,34 +4292,65 @@ function pump() {
 
 /* ---------- loading files ---------- */
 const tick = () => new Promise(r => setTimeout(r, 0));
-function addBuffer(buf, name, lazy) {
-  const info = lazy ? lazy.info : DICOM.parse(buf);
-  const uid = info.seriesUid || ('series-' + (info.studyUid || 'x'));
+// The frames of one file can belong to different stacks: an enhanced MRI file often holds several b-values, echoes,
+// time points, stacks or planes (3-plane localiser). Each such group becomes a series of its own, named after what
+// sets it apart ("b=1000", "TE 90", "Phase 3", "Stack 2", "Coronal"), so every stack scrolls and sorts on its own.
+function frameGroups(info) {
+  const fi = info.frameInfo, n = info.frames;
+  if (!fi || n < 2) return null;
+  const val = (x, k) => x[k] == null ? '' : k === 'iop' ? x[k].map(v => Math.round(v * 20)).join(',') : k === 'te' || k === 'bvalue' ? String(Math.round(x[k] * 10) / 10) : String(x[k]);
+  const ks = ['stackId', 'iop', 'te', 'bvalue', 'temporal'].filter(k => new Set(fi.map(x => val(x, k))).size > 1);
+  const plane = iop => { const nx = Math.abs(iop[1] * iop[5] - iop[2] * iop[4]), ny = Math.abs(iop[2] * iop[3] - iop[0] * iop[5]), nz = Math.abs(iop[0] * iop[4] - iop[1] * iop[3]); return nz >= nx && nz >= ny ? 'Axial' : ny >= nx ? 'Coronal' : 'Sagittal'; };
+  const seen = {}, out = [];
+  for (let f = 0; f < n; f++) {
+    const x = fi[f], base = ks.map(k => val(x, k)).join('|');
+    const at = base + '@' + (x.ipp ? x.ipp.map(v => Math.round(v * 100)).join(',') : f);
+    const rep = seen[at] = (seen[at] || 0) + 1; // the same position again within one group: another dimension (e.g. diffusion direction)
+    const key = base + (rep > 1 ? '|r' + rep : '');
+    const label = ks.map(k => k === 'stackId' ? 'Stack ' + x.stackId : k === 'iop' ? (x.iop ? plane(x.iop) : '') : k === 'te' ? 'TE ' + Math.round(x.te) : k === 'bvalue' ? 'b=' + Math.round(x.bvalue) : 'Phase ' + x.temporal).filter(Boolean).join(' · ') + (rep > 1 ? ' #' + rep : '');
+    out.push({ key, label });
+  }
+  return new Set(out.map(o => o.key)).size > 1 ? out : null;
+}
+function seriesFor(info, key, label) {
+  const uid = (info.seriesUid || ('series-' + (info.studyUid || 'x'))) + (key ? '#' + key : '');
   let se = S.series.find(s => s.uid === uid), created = false;
   if (!se) {
-    se = { uid, num: info.seriesNumber, desc: info.seriesDesc, modality: info.modality, patient: info.patientName, patientId: info.patientId, studyUid: info.studyUid, sex: (info.sex || '').trim(), age: (info.age || '').trim() || ageFrom(info.birthDate, info.studyDate),
+    se = { uid, num: info.seriesNumber, desc: (info.seriesDesc || '') + (label ? (info.seriesDesc ? ' · ' : '') + label : ''), modality: info.modality, patient: info.patientName, patientId: info.patientId, studyUid: info.studyUid, sex: (info.sex || '').trim(), age: (info.age || '').trim() || ageFrom(info.birthDate, info.studyDate),
       studyDesc: info.studyDesc, studyDate: (info.studyDate || '').replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3'), images: [], dirty: true,
       win: clamp(Math.floor(BUDGET / (info.rows * info.cols * 2 * info.spp) / 2.4), 8, 250) };
     S.series.push(se); created = true;
   }
   se.dirty = true;
-  const sp = (info.pixelSpacing && info.pixelSpacing.length >= 2) ? info.pixelSpacing : (info.imagerSpacing && info.imagerSpacing.length >= 2 ? info.imagerSpacing : null);
+  return { se, created };
+}
+function addBuffer(buf, name, lazy) {
+  const info = lazy ? lazy.info : DICOM.parse(buf);
+  const groups = frameGroups(info);
+  let first = null;
+  const sp0 = (info.pixelSpacing && info.pixelSpacing.length >= 2) ? info.pixelSpacing : (info.imagerSpacing && info.imagerSpacing.length >= 2 ? info.imagerSpacing : null);
   for (let f = 0; f < info.frames; f++) {
+    const g = groups ? groups[f] : null, res = seriesFor(info, g && g.key, g && g.label), se = res.se;
+    if (!first) first = Object.assign({ all: new Set() }, res);
+    first.all.add(se);
+    const x = info.frameInfo ? info.frameInfo[f] : null, v = (k, d) => x && x[k] != null ? x[k] : d; // this frame's own values, else the file's
+    const sp = v('pixelSpacing', sp0), wc = v('wc', info.wc), ww = v('ww', info.ww), ipp = v('ipp', info.ipp), iop = v('iop', info.iop);
     se.images.push({
       pixels: lazy && lazy.pixels ? lazy.pixels[f] : info.codec || lazy ? null : DICOM.framePixels(buf, info, f),
       frag: info.codec ? (lazy ? (lazy.frames ? lazy.frames[f] : null) : DICOM.encodedFrame(buf, info, f)) : null,
       zsrc: lazy && lazy.z ? Object.assign({ frame: f, frames: info.frames }, lazy.z) : null,
       src: lazy && lazy.src ? lazy.src : null, srcFrame: f, // where its pixels can be read again (zip entry or file)
-      bitsStored: info.bitsStored, pixelRep: info.pixelRep, rows: info.rows, cols: info.cols, spp: info.spp,
-      mono1: info.photometric === 'MONOCHROME1', slope: info.slope, intercept: info.intercept, modality: info.modality,
-      wc: info.wc && info.wc.length ? info.wc[0] : null, ww: info.ww && info.ww.length ? info.ww[0] : null,
-      spacing: sp && sp[0] > 0 && sp[1] > 0 ? sp : null, instance: info.instanceNumber, thickness: info.sliceThickness,
-      ipp: info.ipp && info.ipp.length === 3 ? info.ipp : null, iop: info.iop && info.iop.length === 6 ? info.iop : null,
-      location: info.sliceLocation != null ? info.sliceLocation : (info.ipp && info.ipp.length === 3 ? info.ipp[2] : null),
-      name: name + (info.frames > 1 ? '#' + f : ''),
+      bitsStored: info.bitsStored, pixelRep: info.pixelRep, rows: info.rows, cols: info.cols, spp: info.spp, codec: info.codec, ba: info.bitsAllocated, ybr: info.ybr, palette: info.palette,
+      mono1: info.photometric === 'MONOCHROME1', slope: v('slope', info.slope) || 1, intercept: v('intercept', info.intercept) || 0, modality: info.modality,
+      wc: Array.isArray(wc) ? (wc.length ? wc[0] : null) : wc, ww: Array.isArray(ww) ? (ww.length ? ww[0] : null) : ww,
+      spacing: sp && sp[0] > 0 && sp[1] > 0 ? sp : null, instance: info.frameInfo && ipp ? null : info.instanceNumber, thickness: v('sliceThickness', info.sliceThickness),
+      ipp: ipp && ipp.length === 3 ? ipp : null, iop: iop && iop.length === 6 ? iop : null,
+      te: v('te', info.te), bvalue: v('bvalue', info.bvalue), temporal: v('temporal', info.temporal),
+      location: info.frameInfo && ipp ? null : info.sliceLocation != null ? info.sliceLocation : (ipp && ipp.length === 3 ? ipp[2] : null),
+      name: name + (info.frames > 1 ? '#' + String(f).padStart(5, '0') : ''),
     });
   }
-  return { se, created };
+  return first;
 }
 function sortSeries(se) {
   const im = se.images, all = k => im.every(x => x[k] != null);
@@ -3697,7 +4362,41 @@ function sortSeries(se) {
   else if (all('location')) im.sort((a, b) => b.location - a.location);
   else im.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 }
+// One series holding several stacks (DWI b-values, echoes, Dixon in/out of phase, a few time points, the planes of a
+// localiser) is split into series of their own, named after what sets each apart. Repeated positions without such a
+// tag stay together, in acquisition order.
+function splitMixed(se) {
+  const ims = se.images; if (ims.length < 2 || !ims.every(i => i.ipp)) return;
+  const plane = iop => { const nx = Math.abs(iop[1] * iop[5] - iop[2] * iop[4]), ny = Math.abs(iop[2] * iop[3] - iop[0] * iop[5]), nz = Math.abs(iop[0] * iop[4] - iop[1] * iop[3]); return nz >= nx && nz >= ny ? 'Axial' : ny >= nx ? 'Coronal' : 'Sagittal'; };
+  const KEYS = [
+    ['iop', i => i.iop ? i.iop.map(v => Math.round(v * 20)).join(',') : '', i => i.iop ? plane(i.iop) : ''],
+    ['te', i => i.te != null ? String(Math.round(i.te * 10) / 10) : '', i => 'TE ' + Math.round(i.te * 10) / 10],
+    ['b', i => i.bvalue != null ? String(Math.round(i.bvalue)) : '', i => 'b=' + Math.round(i.bvalue)],
+    ['t', i => i.temporal != null ? String(i.temporal) : '', i => 'Phase ' + i.temporal]];
+  const use = KEYS.filter(([, f]) => new Set(ims.map(f)).size > 1);
+  if (!use.length) return;
+  const pos = i => i.ipp.map(v => Math.round(v * 100)).join(',');
+  const mixedPlanes = use.some(u => u[0] === 'iop'), repeats = new Set(ims.map(pos)).size < ims.length;
+  if (!mixedPlanes && !repeats) return; // e.g. the echo time drifts slice by slice: one stack
+  const t = use.find(u => u[0] === 't'); if (t && new Set(ims.map(t[1])).size > 12) use.splice(use.indexOf(t), 1); // a long dynamic run stays one series
+  if (!use.length) return;
+  const groups = new Map();
+  for (const im of ims) { const k = use.map(([, f]) => f(im)).join('|'); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(im); }
+  if (groups.size < 2) return;
+  const keys = [...groups.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const base = se.baseDesc != null ? se.baseDesc : (se.baseDesc = se.desc || '');
+  keys.forEach((k, n) => {
+    const g = groups.get(k), label = use.map(([, , l]) => l(g[0])).filter(Boolean).join(' · ');
+    if (n === 0) { se.images = g; se.desc = base + (base ? ' · ' : '') + label; return; }
+    const uid = se.uid + '#' + k; let s2 = S.series.find(s => s.uid === uid);
+    if (!s2) { s2 = Object.assign({}, se, { uid, images: [], def: null, desc: base + (base ? ' · ' : '') + label, all: null, inbox: null }); S.series.splice(S.series.indexOf(se) + n, 0, s2); }
+    s2.images = s2.images.concat(g); s2.dirty = true;
+  });
+}
 function finishLoad(label) {
+  const open = curSeries();
+  S.series.filter(s => s.dirty && !String(s.uid).includes('#')).forEach(splitMixed);
+  if (open) S.si = Math.max(0, S.series.indexOf(open)); // new series may have been inserted before the open one
   const touched = S.series.filter(s => s.dirty);
   touched.forEach(s => { sortSeries(s); s.dirty = false; });
   return touched;
@@ -3729,9 +4428,9 @@ function addLazy(r, en, nm, st) {
     let info;
     try { info = DICOM.parse(h, { headerOnly: true }); }
     catch (err) { if (h.byteLength < lim) return false; continue; }
-    if (info.codec !== 'j2k') return false; // uncompressed images are read in full the usual way
+    if (!info.codec) return false; // uncompressed images are read in full the usual way
     const res = addBuffer(null, nm, { info, z: { zbuf: r.buf, start: loc.start, csize: loc.csize, method: loc.method, pixelOffset: info.pixelOffset } });
-    st.n++; st.ok++; st.seen.add(res.se);
+    st.n++; st.ok++; res.all.forEach(s => st.seen.add(s));
     return true;
   }
   return false;
@@ -3755,7 +4454,7 @@ async function ingest(r, name, st, depth) {
   st.n++;
   try {
     const res = addBuffer(r.buf || await r.read(0, r.size), name); st.ok++;
-    st.seen.add(res.se);
+    res.all.forEach(s => st.seen.add(s));
   } catch (err) { st.bad.push(name + ': ' + err.message); }
   await progress(st);
 }
@@ -3783,8 +4482,7 @@ async function rdEntry(D, m) {
   if (u[0] === 0x50 && u[1] === 0x4B && u[2] === 3 && u[3] === 4) return m.lho == null ? { kind: 'zip' } : { kind: 'buf', buf: data };
   let info;
   try { info = D.parse(data); } catch (err) { return { kind: 'buf', buf: data }; } // the page reads it again and reports the error as usual
-  if (info.codec === 'j2k') { const frames = []; for (let f = 0; f < info.frames; f++) frames.push(D.encodedFrame(data, info, f)); delete info.frags; return { kind: 'enc', info, frames, bytes: m.read }; }
-  if (info.codec) return { kind: 'buf', buf: data };
+  if (info.codec) { const frames = []; for (let f = 0; f < info.frames; f++) frames.push(D.encodedFrame(data, info, f)); delete info.frags; return { kind: 'enc', info, frames, bytes: m.read }; }
   const pixels = [], bps = info.bitsAllocated >> 3;
   if (info.frames === 1 && info.spp === 1 && info.pixelOffset % bps === 0 && info.pixelOffset + info.rows * info.cols * bps <= data.byteLength) {
     const C = bps === 1 ? (info.pixelRep === 1 ? Int8Array : Uint8Array) : bps === 2 ? (info.pixelRep === 1 ? Int16Array : Uint16Array) : (info.pixelRep === 1 ? Int32Array : Uint32Array);
@@ -3852,7 +4550,7 @@ async function rdAll(list, st, chunked, tight) {
           for (const im of e.imgs) { im.pixels = r.pixels[im.srcFrame]; im.dropped = false; }
           st.n += e.imgs.length; continue;
         }
-        if (r.kind === 'px' || r.kind === 'enc') { const res = addBuffer(null, e.name, r.kind === 'px' ? { info: r.info, pixels: r.pixels, src: { blob: e.blob, start: e.start, csize: e.csize, method: e.method, lho: e.lho } } : { info: r.info, frames: r.frames }); st.n++; st.ok++; st.seen.add(res.se); }
+        if (r.kind === 'px' || r.kind === 'enc') { const res = addBuffer(null, e.name, r.kind === 'px' ? { info: r.info, pixels: r.pixels, src: { blob: e.blob, start: e.start, csize: e.csize, method: e.method, lho: e.lho } } : { info: r.info, frames: r.frames }); st.n++; st.ok++; res.all.forEach(s => st.seen.add(s)); }
         else if (r.kind === 'zip') await rdZip(Zip.fromBlob(e.blob), e.name, st, e.depth);
         else if (r.kind === 'buf') await ingest(Zip.fromBuffer(r.buf), e.name, st, e.depth + 1);
         else if (e.en) await ingest(Zip.fromBuffer(await Zip.read(e.r, e.en)), e.name, st, e.depth + 1); // read on the page instead
@@ -4040,12 +4738,24 @@ $('#btnSample').addEventListener('click', loadSample);
 const tagv = (o, t) => { const v = o[t] && o[t].Value && o[t].Value[0]; return v && typeof v === 'object' ? (v.Alphabetic || '') : v; };
 async function dw(url, accept) {
   const h = { Accept: accept }, tok = $('#srvToken').value.trim(); if (tok) h.Authorization = 'Bearer ' + tok;
-  const r = await fetch(url, { headers: h }); if (!r.ok) throw new Error('Server answered ' + r.status); return r;
+  const o = { headers: h }, sp = addrSpace(url); if (sp) o.targetAddressSpace = sp; // a hospital server: Chrome asks once to allow the local network
+  const r = await fetch(url, o);
+  if (!r.ok) throw new Error('Server answered ' + r.status + (r.status === 404 ? ' (not found): the address may need the DICOMweb path, for example /dicom-web or /dcm4chee-arc/aets/DCM4CHEE/rs' : r.status === 401 || r.status === 403 ? ': the server wants a sign-in or a token' : ''));
+  return r;
+}
+// 'local' for a server on the hospital network (192.168.x, 10.x, 172.16-31.x, *.local), 'loopback' for this computer
+function addrSpace(url) {
+  let h; try { h = new URL(url).hostname.replace(/^\[|\]$/g, ''); } catch (e) { return null; }
+  if (h === 'localhost' || /^127\./.test(h) || h === '::1') return 'loopback';
+  if (/^10\./.test(h) || /^192\.168\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h) || /^169\.254\./.test(h) || /\.local$/i.test(h) || /^f[cd]/i.test(h)) return 'local';
+  return null;
 }
 function srvError(err) {
   const el = $('#srvErr'); el.hidden = false;
-  el.textContent = /Failed to fetch|NetworkError|Load failed/i.test(err.message)
-    ? 'Could not reach the server. Check the URL, that the server allows CORS, and that this page is not running inside a preview that blocks network access.'
+  const url = $('#srvUrl') ? $('#srvUrl').value.trim() : '', local = addrSpace(url);
+  el.textContent = /Failed to fetch|NetworkError|Load failed|denied|permission/i.test(err.message)
+    ? 'Could not reach the server. ' + (local ? 'If the browser asked to allow access to devices on your local network, choose Allow (or allow it in the site settings, by the address bar). ' : '') +
+      'Check that the address is the server\'s DICOMweb address (not its DICOM port or its own web viewer), and that the server allows cross-origin requests (CORS) from ' + location.origin + '.'
     : err.message;
 }
 function srvItem(title, sub, onClick) {
