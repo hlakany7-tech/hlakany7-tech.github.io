@@ -1,0 +1,15 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "io.github.hlakany7_tech.twa",
+        "sha256_cert_fingerprints": ["AB:B4:1A:FA:6A:EA:FD:4F:61:FF:54:BD:4D:A4:2C:3D:AD:85:5D:CE:60:A3:69:DD:B3:9D:BF:29:2A:95:E8:89"]
+      }
+    }]
+
+
+
+
+
+
+
