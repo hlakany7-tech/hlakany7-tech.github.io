@@ -598,7 +598,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.23-1932</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.23-2027</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -686,8 +686,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 <script>
 // Raw DEFLATE decoder (RFC 1951) that can stop early: inflateRaw(src, limit) returns at most `limit` bytes.
 // Used to read just the DICOM header at the start of each zip entry without unpacking the image data.
-// A named function, so the slice decoders in the background can carry their own copy.
-function inflateModule() {
+const Inflate = (() => {
   'use strict';
   const LBASE = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258];
   const LEXT = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
@@ -784,8 +783,7 @@ function inflateModule() {
     return out.subarray(0, Math.min(o, limit));
   }
   return { inflateRaw };
-}
-const Inflate = inflateModule();
+})();
 const Zip = (() => {
   'use strict';
   // A reader is { size, read(start, end) -> Promise<ArrayBuffer> }, so a big zip
@@ -833,13 +831,9 @@ const Zip = (() => {
     const data = r.view ? r.view(start, start + e.csize) : await r.read(start, start + e.csize);
     if (e.method === 0) return data instanceof ArrayBuffer ? data : data.slice().buffer;
     if (e.method !== 8) throw new Error('Unsupported zip compression (method ' + e.method + ')');
-    // older browsers (some Huawei and Samsung ones) cannot unzip by themselves: the JavaScript decoder does it there
-    if (typeof DecompressionStream !== 'undefined') {
-      try { return await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer(); }
-      catch (err) { }
-    }
-    const u = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    return Inflate.inflateRaw(u, e.usize || 0).slice().buffer;
+    if (typeof DecompressionStream === 'undefined') throw new Error('This browser cannot unzip files; update it');
+    const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Response(stream).arrayBuffer();
   }
 
   // In-memory zip only: where an entry's data starts, without copying anything.
@@ -5016,9 +5010,6 @@ $('#cmpClose').addEventListener('click', cmpStop);
 $('#btnMore').addEventListener('click', () => { $('#morePrivacyTxt').textContent = S.anon ? 'Show patient details' : 'Hide patient details'; openSheet('#sheetMore'); });
 document.querySelectorAll('#sheetMore [data-do]').forEach(b => b.addEventListener('click', () => { $('#sheetMore').hidden = true; $('#' + b.dataset.do).click(); }));
 $('#inFolder2').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; $('#sheetMore').hidden = true; if (f.length) addFiles(f); });
-// Samsung Internet, Huawei Browser, HarmonyOS and in-app web views have no folder picker, and a folder request there comes back empty.
-// There the folder buttons open the ordinary picker instead: Select all inside the folder, or pick a .zip of it.
-if (/SamsungBrowser|HuaweiBrowser|HarmonyOS|OpenHarmony|; wv\)/.test(navigator.userAgent)) ['#inFolder', '#inFolder2'].forEach(s => { const i = $(s); if (i) i.removeAttribute('webkitdirectory'); });
 
 /* ---------- MPR view switch: all three views, or one of them filling the screen ---------- */
 // Ax / Cor / Sag choose the big view; All shows the other two beside it, or hides them.
@@ -5216,11 +5207,7 @@ const BUDGET = 300e6, PREVIEW_BUDGET = 280e6, SETTLE = 140; // ms without a slic
 async function jobCodestream(m, D) {
   if (!m.z) return new Uint8Array(m.buf);
   const z = m.z;
-  let b = z.data;
-  if (z.method !== 0) { // older browsers (some Huawei and Samsung ones) cannot unzip by themselves: the JavaScript decoder does it there
-    try { b = await new Response(new Blob([z.data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer(); }
-    catch (err) { b = Inflate.inflateRaw(new Uint8Array(z.data), 0).slice().buffer; }
-  }
+  const b = z.method === 0 ? z.data : await new Response(new Blob([z.data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
   const info = Object.assign({ frames: z.frames }, D.readFragments(new DataView(b), z.pixelOffset));
   return new Uint8Array(D.encodedFrame(b, info, z.frame));
 }
@@ -5235,8 +5222,8 @@ async function loadT1(b64) {
 // Worker code is built from these functions' own text. Each is also given its plain name, so the worker can call it
 // by that name even when the app's code is minified (and its functions renamed).
 function workerSrc(fns) { return Object.entries(fns).map(([k, f]) => f.toString() + (f.name && f.name !== k ? '\nconst ' + k + ' = ' + f.name + ';' : '')).join('\n'); }
-const J2K_SRC = workerSrc({ inflateModule, dicomModule, j2kModule, codecsModule, jobCodestream, wasmBytes, loadT1 }) +
-  '\nconst Inflate = inflateModule(), D = dicomModule(), C = codecsModule(); let M = null;\nconst ready = loadT1(' + JSON.stringify(T1_WASM) + ').then(x => { M = j2kModule(x); postMessage({ engine: x ? "wasm" : "js" }); });' +
+const J2K_SRC = workerSrc({ dicomModule, j2kModule, codecsModule, jobCodestream, wasmBytes, loadT1 }) +
+  '\nconst D = dicomModule(), C = codecsModule(); let M = null;\nconst ready = loadT1(' + JSON.stringify(T1_WASM) + ').then(x => { M = j2kModule(x); postMessage({ engine: x ? "wasm" : "js" }); });' +
   '\nonmessage = async e => { const m = e.data; try { const cs = await jobCodestream(m, D); let r; if (m.codec && m.codec !== "j2k") r = await C.decode(m, cs); else { await ready; r = M.decode(cs, m.reduce); } postMessage({ id: m.id, w: r.width, h: r.height, signed: r.signed, data: r.data }, [r.data.buffer]); } catch (err) { postMessage({ id: m.id, err: String((err && err.message) || err) }); } };';
 const DEC = { workers: [], free: [], jobs: new Map(), id: 1, mode: 'init', everOk: false, mainBusy: false, main: null, bytes: 0 };
 function decInit() {
@@ -5637,10 +5624,7 @@ async function rdEntry(D, m) {
     data = ab0 && ab0.byteLength >= skip + m.csize ? ab0.slice(skip, skip + m.csize) : await rd(start, start + m.csize);
   } else data = await rd(start, start + m.csize);
   m.read = data.byteLength;
-  if (m.method === 8) { // older browsers (some Huawei and Samsung ones) cannot unzip by themselves: the JavaScript decoder does it there
-    try { data = await new Response(new Response(data).body.pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer(); }
-    catch (err) { data = Inflate.inflateRaw(new Uint8Array(data), 0).slice().buffer; }
-  }
+  if (m.method === 8) data = await new Response(new Response(data).body.pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
   const u = new Uint8Array(data, 0, Math.min(4, data.byteLength));
   if (u[0] === 0x50 && u[1] === 0x4B && u[2] === 3 && u[3] === 4) return m.lho == null ? { kind: 'zip' } : { kind: 'buf', buf: data };
   let info;
@@ -5653,25 +5637,22 @@ async function rdEntry(D, m) {
   } else for (let f = 0; f < info.frames; f++) pixels.push(D.framePixels(data, info, f));
   return { kind: 'px', info, pixels, bytes: m.read };
 }
-const RD_SRC = workerSrc({ inflateModule, dicomModule, rdEntry }) +
-  '\nconst Inflate = inflateModule(), D = dicomModule();\nonmessage = async e => { try {' +
-  ' if (e.data.probe) { const ab = await e.data.blob.slice(0, 132).arrayBuffer(); postMessage({ id: e.data.id, out: ab.byteLength }); return; }' +
-  ' const c = e.data.chunk;' +
+const RD_SRC = workerSrc({ dicomModule, rdEntry }) +
+  '\nconst D = dicomModule();\nonmessage = async e => { const c = e.data.chunk;' +
   ' if (c) { const ab = await c.blob.slice(c.start, c.end).arrayBuffer(); for (const m of e.data.items) { m.ab = ab; m.lho -= c.start; } }' +
   ' const tr = [], out = await Promise.all(e.data.items.map(m => rdEntry(D, m).catch(() => ({ kind: "slow" }))));' +
-  ' for (const r of out) { if (r.buf) tr.push(r.buf); if (r.frames) tr.push(...r.frames); if (r.pixels) for (const p of r.pixels) if (!tr.includes(p.buffer)) tr.push(p.buffer); } postMessage({ id: e.data.id, out }, tr);' +
-  ' } catch (err) { postMessage({ id: e.data.id, out: e.data.items.map(() => ({ kind: "slow" })) }); } };';
+  ' for (const r of out) { if (r.buf) tr.push(r.buf); if (r.frames) tr.push(...r.frames); if (r.pixels) for (const p of r.pixels) if (!tr.includes(p.buffer)) tr.push(p.buffer); } postMessage({ id: e.data.id, out }, tr); };';
 const RD = { ws: null, free: [], wait: [], jobs: new Map(), id: 1 };
 function rdInit() {
   if (RD.ws) return RD.ws.length > 0;
   RD.ws = [];
-  if (typeof Worker === 'undefined' || !rawUnzipOk() || window.__noRd) return false;
+  if (typeof Worker === 'undefined' || typeof DecompressionStream === 'undefined' || window.__noRd) return false;
   try {
     const url = URL.createObjectURL(new Blob([RD_SRC], { type: 'text/javascript' }));
     for (let i = 0; i < clamp((navigator.hardwareConcurrency || 4) - 2, 2, 6); i++) { // unpacking a zip is processor work: all but two cores
       const w = new Worker(url);
-      w.onmessage = e => { const job = RD.jobs.get(e.data.id); RD.jobs.delete(e.data.id); if (job) job.res(e.data.out); };
-      w.onerror = e => { if (e.preventDefault) e.preventDefault(); rdGiveUp(); };
+      w.onmessage = e => { const job = RD.jobs.get(e.data.id); RD.jobs.delete(e.data.id); job(e.data.out); };
+      w.onerror = e => { if (e.preventDefault) e.preventDefault(); };
       RD.ws.push(w); RD.free.push(w);
     }
   } catch (err) { RD.ws = []; }
@@ -5679,40 +5660,10 @@ function rdInit() {
 }
 setTimeout(rdInit, 600); // start the readers early, while the user is still choosing files
 // A worker takes several messages at a time (they wait on storage, not on its processor): the next free one in turn.
-// A reader that fails, or does not answer within a minute, never leaves the study stuck on "Opening":
-// its files, and every file after them, are read on the page instead.
 async function rdRun(items, chunk) {
-  const slow = () => items.map(() => ({ kind: 'slow' }));
-  if (RD.dead) return slow();
   const w = RD.ws[RD.next = ((RD.next || 0) + 1) % RD.ws.length], id = RD.id++;
-  return new Promise(res => {
-    const t = setTimeout(rdGiveUp, 60000);
-    RD.jobs.set(id, { res: out => { clearTimeout(t); res(out); }, n: items.length });
-    try { w.postMessage({ id, items, chunk }); } catch (err) { rdGiveUp(); }
-  });
+  return new Promise(res => { RD.jobs.set(id, res); w.postMessage({ id, items, chunk }); });
 }
-// Some tablets (a Huawei one, for one) hand the page files that a background reader can never read: the read just
-// hangs. Before a study is read, one reader reads the first bytes of its first file; no answer in 4 s, and the
-// study is read on the page instead, as on browsers without readers.
-// Can this browser unzip by itself? Older ones (the Huawei tablet's, some Samsung ones) cannot, and their background
-// readers proved unreliable there too: those browsers read every study on the page, as version 1902 did.
-function rawUnzipOk() { try { new DecompressionStream('deflate-raw'); return true; } catch (err) { return false; } }
-async function rdProbe(f) {
-  if (RD.dead || !f) return false;
-  const w = RD.ws[0], id = RD.id++;
-  const ok = await new Promise(res => {
-    const t = setTimeout(() => { RD.jobs.delete(id); res(false); }, 4000);
-    RD.jobs.set(id, { res: n => { clearTimeout(t); res(typeof n === 'number' && n >= 0); }, n: 0 });
-    try { w.postMessage({ id, probe: true, blob: f }); } catch (err) { clearTimeout(t); RD.jobs.delete(id); res(false); }
-  });
-  if (!ok) RD.dead = true;
-  return ok;
-}
-function rdGiveUp() {
-  RD.dead = true;
-  for (const [id, job] of RD.jobs) { RD.jobs.delete(id); job.res(Array.from({ length: job.n }, () => ({ kind: 'slow' }))); }
-}
-
 // entries: { blob, start, csize, method, lho (zip entries), name, depth, en and r (zip entry and its zip, for the slow path) }
 // On Android, Chrome hands the files of a folder to the page at about 10 a second, however they are asked for:
 // a zip is one file, so its entries come in chunks of about 12 MB, one read each, one per reader at a time and two waiting, and it opens far faster.
@@ -5751,8 +5702,12 @@ async function rdAll(list, st, chunked, tight) {
         else if (r.kind === 'buf') await ingest(Zip.fromBuffer(r.buf), e.name, st, e.depth + 1);
         else if (e.en) await ingest(Zip.fromBuffer(await Zip.read(e.r, e.en)), e.name, st, e.depth + 1); // read on the page instead
         else await ingest(Zip.fromBlob(e.blob), e.name, st, e.depth);
-      } catch (err) { st.bad.push(e.name + ': ' + err.message); st.n++; }
+      } catch (err) {
+        if (outOfMemory(err.message) && !e.memRetry) { memTight(); e.memRetry = true; k--; continue; } // room made: this file once more
+        st.bad.push(e.name + ': ' + err.message); st.n++;
+      }
     }
+    if (memUsed() > memLimit()) makeRoom(0, memKeep(st)); // a big study: series already in are put aside as it comes in
     const now = Date.now(); if (!st.opened && now - st.last > 80) { st.last = now; showLoading(st); }
   });
 }
@@ -5785,7 +5740,17 @@ async function rdZip(r, name, st, depth) {
    everything is lost. Nothing is ever closed for room: when memory runs short, series not on screen let go of their
    images (least recently used first) and keep everything else. Shown again (tapped, or picked in Compare), a series
    reads its images back from its zip or files, in a second or three. */
-const memLimit = () => performance.memory && performance.memory.jsHeapSizeLimit ? performance.memory.jsHeapSizeLimit * 0.7 : (navigator.deviceMemory || 4) * 0.3e9;
+// How much image memory a study may use. In the Android app, Android says what this device can spare (a browser
+// cannot tell): a tablet with less memory keeps fewer series in memory, the others are put aside and read again when
+// opened. If memory still runs out, the limit drops to what was in use then (memTight).
+let MEM_CAP = Infinity;
+const nativeMem = () => { try { const n = window.SliceviewNative && SliceviewNative.memoryBudget ? +SliceviewNative.memoryBudget() : 0; return n > 0 ? n : Infinity; } catch (e) { return Infinity; } };
+const memLimit = () => Math.min(MEM_CAP, nativeMem(), performance.memory && performance.memory.jsHeapSizeLimit ? performance.memory.jsHeapSizeLimit * 0.7 : (navigator.deviceMemory || 4) * 0.3e9);
+const memUsed = () => S.series.reduce((a, s) => a + seBytes(s), 0);
+// never put aside: the series on screen, and while a study is coming in, its biggest series so far (the one it opens on)
+const memKeep = st => { const k = new Set([curSeries()].filter(Boolean)); if (st && st.seen && st.seen.size) k.add([...st.seen].sort((a, b) => b.images.length - a.images.length)[0]); return k; };
+function memTight() { MEM_CAP = Math.min(MEM_CAP, memUsed() * 0.75); makeRoom(0, memKeep(LIVE_ST)); }
+const outOfMemory = m => /allocation failed|out of memory/i.test(String(m || ''));
 const seBytes = se => se.images.reduce((a, im) => a + (im.pixels && !coded(im) ? im.pixels.byteLength : 0), 0);
 const needsReload = se => !!(se && se.images.some(im => im.dropped));
 function makeRoom(bytes, keep) {
@@ -5818,7 +5783,7 @@ async function reloadSeries(se, keep) {
 let LOADSTAT = '', LIVE_ST = null; // LIVE_ST: the study being read now (its progress)
 async function addFiles(files, opts) {
   const list = [...files]; if (!list.length) return;
-  const st = { ok: 0, n: 0, total: list.length, bad: [], last: 0, seen: new Set(), t0: performance.now() }; LIVE_ST = st;
+  const st = { ok: 0, n: 0, total: list.length, bad: [], last: 0, seen: new Set(), t0: performance.now(), memN: 0 }; LIVE_ST = st;
   const openMain = () => { // the largest series read so far, at its first slice
     const main = [...st.seen].sort((a, b) => b.images.length - a.images.length)[0];
     // a newly opened case starts on its own: one plain view (Compare and MPR close; the earlier case stays in Series)
@@ -5831,7 +5796,7 @@ async function addFiles(files, opts) {
     finishLoad(); showLoading(null); openMain(); st.opened = true; st.tFirst = performance.now() - st.t0;
   };
   $('#status').classList.add('off'); showLoading(st); await tick();
-  if (rdInit() && await rdProbe(list[0])) { // a .zip goes straight to its table of contents, without a first read to check what it is
+  if (rdInit()) { // a .zip goes straight to its table of contents, without a first read to check what it is
     const zips = list.filter(f => /\.zip$/i.test(f.name) && f.size > 22), rest = list.filter(f => !zips.includes(f));
     for (const f of zips) { try { await rdZip(Zip.fromBlob(f), f.name, st, 0); } catch (err) { st.bad.push(f.name + ': ' + err.message); } }
     if (rest.length) {
@@ -5848,7 +5813,13 @@ async function addFiles(files, opts) {
     }
   }
   else await pool(list, CONC, async f => {
-    try { await ingest(Zip.fromBlob(f), f.name, st, 0); } catch (err) { st.bad.push(f.name + ': ' + err.message); }
+    try { await ingest(Zip.fromBlob(f), f.name, st, 0); }
+    catch (err) {
+      if (!outOfMemory(err.message)) { st.bad.push(f.name + ': ' + err.message); return; }
+      memTight(); // room made: this file once more
+      try { await ingest(Zip.fromBlob(f), f.name, st, 0); } catch (e2) { st.bad.push(f.name + ': ' + e2.message); }
+    }
+    if (++st.memN % 16 === 0 && memUsed() > memLimit()) makeRoom(0, memKeep(st));
   });
   if (st.opened) { // the other series came in behind: the slice on screen stays where it is
     const keep = cur(), touched = finishLoad(), se = curSeries();
@@ -5872,8 +5843,9 @@ async function addFiles(files, opts) {
 }
 $('#inFiles').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; if (f.length) addFiles(f); });
 $('#inFolder').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; if (f.length) addFiles(f); });
-window.addEventListener('error', ev => say('Error: ' + ev.message, 9000));
-window.addEventListener('unhandledrejection', ev => say('Error: ' + ((ev.reason && ev.reason.message) || ev.reason), 9000));
+// Memory running out is not shown as an error: the series not on screen are put aside, and work goes on.
+window.addEventListener('error', ev => { if (outOfMemory(ev.message)) { memTight(); return; } say('Error: ' + ev.message, 9000); });
+window.addEventListener('unhandledrejection', ev => { const m = (ev.reason && ev.reason.message) || ev.reason; if (outOfMemory(m)) { memTight(); return; } say('Error: ' + m, 9000); });
 // Drag and drop anywhere on the window: files, zips, or whole folders (a CD or a PACS export), read to the bottom.
 async function droppedFiles(dt) {
   const ents = [...(dt.items || [])].map(i => i.kind === 'file' && i.webkitGetAsEntry ? i.webkitGetAsEntry() : null).filter(Boolean);
@@ -7046,7 +7018,7 @@ async function volCacheLoad(V) {
 }
 
 keepRestore(false); // the app starts empty: the last study comes back only when asked for (the Reopen card)
-window.__sliceview = { composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice }, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen } };
+window.__sliceview = { selectSeries, memUsed, memLimit, composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice }, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen } };
 })();
 </script>
 
