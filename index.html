@@ -15,6 +15,8 @@
 </head>
 <body>
 <title>Sliceview</title>
+<!-- Sliceview DICOM viewer. Copyright (c) 2026 Dr. Hashem El-Lakany. All rights reserved.
+     Not for copying, modifying, republishing or redistribution, in whole or in part, without written permission. -->
 <meta charset="utf-8">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap">
@@ -62,6 +64,17 @@ button:focus-visible, .rail:focus-visible { outline: 2px solid var(--accent); ou
 .btn:active { background: var(--line); }
 .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
 .btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+/* 3D: over the views; its own bars replace the usual ones */
+.vr3d { position: absolute; inset: 0; z-index: 6; background: #000; border-radius: 12px; overflow: hidden; }
+.vr3d canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.vr3d .vov { touch-action: none; }
+.vrbar { display: none !important; }
+body.vr .vrbar { display: flex !important; }
+body.vr #vswitch, body.vr #cmpbar, body.vr #planesReset, body.vr #presets, body.vr #tools, body.vr .dock .acts { display: none !important; }
+.vrbar button:disabled { opacity: .4; }
+#vrTools, #vrPresets { max-width: 100%; overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap; }
+@media (max-width: 600px) { .vrbar button { padding: 0 8px; font-size: 12.5px; white-space: nowrap; } }
+.views { position: relative; }
 .views { flex: 1; min-height: 0; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 8px; }
 .views.mpr { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "m a" "m b"; }
 .views.mpr .stage { grid-area: m; } .views.mpr #mvCor { grid-area: a; } .views.mpr #mvSag { grid-area: b; }
@@ -167,6 +180,7 @@ button:focus-visible, .rail:focus-visible { outline: 2px solid var(--accent); ou
   font-size: 13px; pointer-events: none; transition: opacity .2s; text-align: center;
 }
 .status.off { opacity: 0; }
+.owner { position: absolute; left: 0; right: 0; bottom: 34px; white-space: nowrap; margin: 0; text-align: center; font-size: 11.5px; color: var(--muted, #7d8b92); opacity: .75; pointer-events: none; padding-inline: 16px; }
 .loading {
   position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
   background: rgba(10, 14, 16, .82); font: 500 15px/1.4 var(--font-ui); color: var(--fg); z-index: 2;
@@ -373,6 +387,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
     <button class="btn rare" id="btnServer">Server</button>
     <button class="btn rare" id="btnSample">Sample</button>
     <button class="btn" id="btnMPR" aria-pressed="false" title="Coronal and sagittal views">MPR</button>
+    <button class="btn" id="btn3D" aria-pressed="false" title="3D: bone, vessels, soft tissue, MIP">3D</button>
     <button class="btn" id="btnCmp" aria-pressed="false" aria-label="Layout" title="Layout: 1, 2, 3 or 4 views"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/><path d="M12 3.5v17M3.5 12h17"/></svg></button>
     <button class="btn" id="btnReport" hidden aria-pressed="false" aria-label="Report" title="Write the report"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M9.5 12h6M9.5 15.5h6M9.5 8.5h2.5"/></svg><span class="long">Report</span></button>
     <button class="btn" id="btnFocus" aria-pressed="false" aria-label="Focus" title="Hide the controls (F)"><span class="long">Focus</span><span class="short"><svg viewBox="0 0 24 24"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/></svg></span></button>
@@ -382,6 +397,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </header>
 
 <div class="views" id="views">
+<section class="vr3d" id="vr3d" hidden aria-label="3D view"><canvas class="vgl"></canvas><canvas class="vov"></canvas></section>
 <main class="stage" id="stage">
   <canvas id="gl" aria-hidden="true"></canvas>
   <canvas id="cv"></canvas>
@@ -408,6 +424,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
   </div>
   <button class="focus-exit" id="focusExit" aria-label="Show the controls"><svg viewBox="0 0 24 24"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/></svg></button>
   <section class="mview" id="mvAx" hidden aria-label="Oblique axial view"><canvas class="mgl"></canvas><canvas class="mcv"></canvas></section>
+  <p class="owner" id="owner">Sliceview © 2026 Dr. Hashem El-Lakany</p>
   <div class="loading" id="loading" role="status" hidden><b id="loadTxt">Opening study…</b><div class="bar"><i id="loadBar"></i></div><p class="hint" id="loadHint" hidden>Faster next time: in My Files, compress the folder and open the zip.</p></div>
 </main>
 <section class="mview" id="mvCor" aria-label="Coronal view"><canvas class="mgl"></canvas><canvas class="mcv"></canvas></section>
@@ -467,9 +484,11 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
   </div>
   <button class="chip" type="button" id="planesReset" hidden title="Straighten the coronal and sagittal planes again">Square planes</button>
   <div class="row presets" id="presets"></div>
+  <div class="seg vrbar" id="vrPresets" role="group" aria-label="3D presets"><button type="button" data-p="bone">Bone</button><button type="button" data-p="vessels">Vessels</button><button type="button" data-p="soft"><span class="long">Soft tissue</span><span class="short">Soft</span></button><button type="button" data-p="skin">Skin</button><button type="button" data-p="mip">MIP</button></div>
 </div>
 
 <div class="dock">
+  <div class="seg vrbar" id="vrTools" role="group" aria-label="3D tools"><button type="button" data-t="turn">Turn</button><button type="button" data-t="wl">Window</button><button type="button" data-t="cut" title="Draw a loop around what to remove">Cut</button><span class="seg-sep" aria-hidden="true"></span><button type="button" id="vrUndo">Undo</button><button type="button" id="vrReset">Reset</button><button type="button" id="vrShare">Share</button><button type="button" id="vrClose" aria-label="Close 3D" title="Close 3D"><svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;vertical-align:-3px"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
   <nav class="tools" id="tools" aria-label="Tools"></nav>
   <div class="acts">
     <button class="act" id="actCine" aria-pressed="false" title="Play through the slices (Space)"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z"/></svg>Cine</button>
@@ -579,7 +598,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.22-2032</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.23-0823</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -653,6 +672,17 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
   </div>
 </div>
 
+<script>
+// Sliceview runs only from its own home (and the owner's apps and previews); a copy put up anywhere else stops here.
+(function sliceviewHome() {
+  const h = location.hostname, claude = /(^|\.)(claude\.ai|claudeusercontent\.com|claude\.site|anthropic\.com)$/;
+  const ok = h === 'hlakany7-tech.github.io' || h === 'localhost' || h === '127.0.0.1' || h === '' || claude.test(h) ||
+    [...(location.ancestorOrigins || [])].some(o => { try { return claude.test(new URL(o).hostname); } catch (e) { return false; } });
+  if (ok) return;
+  document.documentElement.innerHTML = '<head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sliceview</title></head><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0f12;color:#d9e2e6;font:15px/1.5 system-ui,sans-serif;text-align:center;padding:24px"><div><b style="font-size:18px">This copy of Sliceview is not authorised.</b><p>Sliceview is © 2026 Dr. Hashem El-Lakany. All rights reserved.<br>The official app is at <b>hlakany7-tech.github.io</b></p></div></body>';
+  throw new Error('Sliceview: not authorised on ' + h);
+})();
+</script>
 <script>
 // Raw DEFLATE decoder (RFC 1951) that can stop early: inflateRaw(src, limit) returns at most `limit` bytes.
 // Used to read just the DICOM header at the start of each zip entry without unpacking the image data.
@@ -2402,6 +2432,7 @@ function robustWindow(img) {
   return hi > lo ? { wc: (lo + hi) / 2, ww: hi - lo } : null;
 }
 function seriesWindow(se, img) {
+  if (se && se.isFuse) return Object.assign({}, se.fuseCT.def || seriesWindow(se.fuseCT, se.fuseCT.images[0])); // fused: the CT's own window
   if (img && img.suv) return { wc: 3, ww: 6 }; // PET in SUV: 0 to 6
   if (!img || img.spp === 3 || !/^(MR|PT|NM)$/.test(img.modality || '')) return defaultWindow(img);
   const mid = se.images[Math.floor(se.images.length / 2)] || img;
@@ -2455,6 +2486,19 @@ function fitScale() {
   const w = img.cols, h = img.rows * aspect(img), c = Math.abs(Math.cos(S.ang)), s = Math.abs(Math.sin(S.ang));
   return Math.min(S.W / (w * c + h * s), S.H / (w * s + h * c)) * 0.98;
 }
+// Zoom to the patient's body rather than the whole field of view (PET-CT is often taken with a very wide one):
+// the box around everything denser than -500 HU on the CT of the slice on screen.
+function fitBody() {
+  const img = cur(); if (!img || !S.W) return fit();
+  const c = img.fuse ? img.fuse.ct : img, C = c && (c.pixels ? { data: c.pixels, w: c.cols, h: c.rows } : c.preview); if (!C) return fit();
+  const cs = c.slope || 1, ci = c.intercept || 0, thr = (-500 - ci) / cs; let x0 = C.w, x1 = -1, y0 = C.h, y1 = -1;
+  for (let y = 0; y < C.h; y++) for (let x = 0, o = y * C.w; x < C.w; x++, o++) if (C.data[o] > thr) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < 0 || (x1 - x0) < C.w * 0.15) return fit();
+  const kx = img.cols / C.w, ky = img.rows / C.h, bx0 = x0 * kx, bx1 = (x1 + 1) * kx, by0 = y0 * ky, by1 = (y1 + 1) * ky, a = aspect(img);
+  S.ang = 0; S.fh = 1; S.fv = 1;
+  const sc = Math.min(fitScale() * 4, Math.min(S.W / (bx1 - bx0), S.H / ((by1 - by0) * a)) * 0.9);
+  S.s = sc; S.ox = S.W / 2 - ((bx0 + bx1) / 2 - img.cols / 2) * sc; S.oy = S.H / 2 - ((by0 + by1) / 2 - img.rows / 2) * a * sc; S.fit = false;
+}
 function fit() {
   if (!cur() || !S.W) return;
   S.s = fitScale(); S.ox = S.W / 2; S.oy = S.H / 2; S.fit = true;
@@ -2488,19 +2532,30 @@ function angleOf(img, a, v, b) {
 function roiStats(img, a, b) {
   if (img.fuse) return fuseRoi(img, a, b); // fused: SUV of the PET inside the circle
   const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2, rx = Math.abs(b.x - a.x) / 2, ry = Math.abs(b.y - a.y) / 2;
-  let n = 0, sum = 0, sum2 = 0, max = -Infinity;
+  let n = 0, sum = 0, sum2 = 0, max = -Infinity, min = Infinity;
   const x0 = Math.max(0, Math.floor(cx - rx)), x1 = Math.min(img.cols - 1, Math.ceil(cx + rx));
   const y0 = Math.max(0, Math.floor(cy - ry)), y1 = Math.min(img.rows - 1, Math.ceil(cy + ry));
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
     const dx = (x + 0.5 - cx) / rx, dy = (y + 0.5 - cy) / ry;
     if (dx * dx + dy * dy > 1) continue;
     const v = img.pixels[y * img.cols + x] * img.slope + img.intercept;
-    n++; sum += v; sum2 += v * v; if (v > max) max = v;
+    n++; sum += v; sum2 += v * v; if (v > max) max = v; if (v < min) min = v;
   }
   if (!n) return null;
   const mean = sum / n, sd = Math.sqrt(Math.max(0, sum2 / n - mean * mean));
   const f = phys(img), area = Math.PI * rx * ry * f.x * f.y;
-  return { n, mean, sd, area, unit: f.unit, max };
+  return { n, mean, sd, area, unit: f.unit, max, min };
+}
+// The ROI's reading, the same in every view: mean, min, max (HU on CT), SD, area; on PET SUVmax and mean;
+// on the fused view both (SUV of the PET and HU of the CT under the circle)
+function roiLabel(st, u, suv) {
+  const ar = st.area >= 100 && st.unit === 'mm' ? (st.area / 100).toFixed(2) + ' cm²' : st.area.toFixed(1) + ' ' + st.unit + '²';
+  const f = v => u === ' HU' || Math.abs(v) >= 100 ? String(Math.round(v)) : v.toFixed(1);
+  // short rows, one under the other (name, then the number)
+  const rows = r => { const n = Math.max(...r.filter(x => x[1] != null).map(x => x[0].length)); return r.filter(x => x[1] != null).map(x => x[0] ? x[0].padEnd(n + 1) + x[1] : x[1]).join('\n'); };
+  if (st.suvMax != null) return rows([['SUVmax', st.suvMax.toFixed(1)], ['SUVmean', st.suvMean.toFixed(1)], ['HU mean', f(st.mean)], ['HU min', f(st.min)], ['HU max', f(st.max)], ['', ar]]);
+  if (suv && st.max != null) return rows([['SUVmax', st.max.toFixed(1)], ['SUVmean', st.mean.toFixed(1)], ['SUVmin', st.min != null ? st.min.toFixed(1) : null], ['', ar]]);
+  return rows([['mean', f(st.mean) + u], ['min', st.min != null ? f(st.min) : null], ['max', st.max != null && st.min != null ? f(st.max) : null], ['SD', st.sd.toFixed(1)], ['', ar]]);
 }
 // Editing: each measurement has grab points (its ends, or the ROI's four sides) and a body.
 // Dragging a grab point reshapes it; dragging the body moves it whole.
@@ -2633,8 +2688,8 @@ function placeLabels(c2, items, W, H, dots) {
   const placed = [], hit = (r, q, m) => r.x < q.x + q.w + m && q.x < r.x + r.w + m && r.y < q.y + q.h + m && q.y < r.y + r.h + m;
   const obst = dots.map(d => ({ x: d.x - 7, y: d.y - 7, w: 14, h: 14 }));
   for (const it of items) {
-    const w = c2.measureText(it.text).width + 12, h = 22, ax = it.x - 8, ay = it.y - 8; // ax, ay: the point the label belongs to
-    const tries = [[0, 0], [0, 28], [0, -34], [-(w + 16), 0], [-(w + 16), -34], [0, 56], [0, -62], [-(w + 16), 28], [0, 84], [0, -90], [-(w + 16), 56], [0, 112], [0, -118]];
+    const lines = String(it.text).split('\n'), w = Math.max(...lines.map(l => c2.measureText(l).width)) + 12, h = 6 + 16 * lines.length, ax = it.x - 8, ay = it.y - 8; // ax, ay: the point the label belongs to
+    const s1 = h + 6, s2 = h + 12, tries = [[0, 0], [0, s1], [0, -s2], [-(w + 16), 0], [-(w + 16), -s2], [0, 2 * s1], [0, -2 * s2], [-(w + 16), s1], [0, 3 * s1], [0, -3 * s2], [-(w + 16), 2 * s1], [0, 4 * s1], [0, -4 * s2]];
     let best = null;
     for (const [dx, dy] of tries) {
       const r = { x: clamp(it.x + dx, 4, W - w - 4), y: clamp(it.y + dy, 4, H - h - 4), w, h };
@@ -2648,7 +2703,7 @@ function placeLabels(c2, items, W, H, dots) {
       c2.beginPath(); c2.moveTo(ax, ay); c2.lineTo(near.x, near.y); c2.stroke();
     }
     c2.fillStyle = 'rgba(8,12,14,.85)'; c2.beginPath(); c2.roundRect(best.x, best.y, w, h, 6); c2.fill();
-    c2.fillStyle = '#ffc857'; c2.textBaseline = 'middle'; c2.fillText(it.text, best.x + 6, best.y + 11.5);
+    c2.fillStyle = '#ffc857'; c2.textBaseline = 'middle'; lines.forEach((l, i) => c2.fillText(l, best.x + 6, best.y + 11.5 + i * 16));
   }
 }
 function drawArrow(c2, a, b, live, sel, text) { // a shaft from a, the head at b (the finding); text: its label, at the tail
@@ -2705,9 +2760,8 @@ function drawMeas(img, m, live) {
     if (!live) for (const q of measGrips(m)) { const s = toScreen(q.x, q.y); ctx.beginPath(); ctx.arc(s.x, s.y, 3, 0, 7); ctx.fillStyle = '#ffc857'; ctx.fill(); }
     const st = m.stats || roiStats(img, m.a, m.b);
     if (st) {
-      const u = st.unit === 'px' ? '' : img.suv ? ' SUV' : (img.modality === 'CT' ? ' HU' : '');
-      const ar = st.area >= 100 && st.unit === 'mm' ? (st.area / 100).toFixed(2) + ' cm²' : st.area.toFixed(1) + ' ' + st.unit + '²';
-      drawLabel(img.suv && st.max != null ? `SUVmax ${st.max.toFixed(1)}  mean ${st.mean.toFixed(1)}  ${ar}` : `mean ${st.mean.toFixed(1)}${u}  SD ${st.sd.toFixed(1)}  ${ar}`, Math.min(a.x, b.x), Math.max(a.y, b.y) + 8);
+      const u = st.unit === 'px' ? '' : img.suv ? ' SUV' : (img.modality === 'CT' || img.fuse ? ' HU' : '');
+      drawLabel(roiLabel(st, u, img.suv), Math.min(a.x, b.x), Math.max(a.y, b.y) + 8);
     }
   }
   ctx.setLineDash([]);
@@ -2719,6 +2773,11 @@ function drawMeas(img, m, live) {
    interpolated with a bicubic (Catmull-Rom) filter from the original values, and the window is applied
    after interpolation, so edges stay sharp and gradients stay smooth at any zoom. */
 // One renderer per canvas: the main view and each MPR view have their own.
+// A fresh GPU context for a view whose old one was given back or lost: a new canvas in the old one's place.
+function glFresh(v) {
+  const n = v.glc.cloneNode(false); n.hidden = false; n.width = v.glc.width; n.height = v.glc.height; v.glc.replaceWith(n); v.glc = n;
+  v.gl = makeGL(n); v.key = null; if (!v.gl) n.hidden = true;
+}
 function makeGL(c) {
   let gl = null;
   try { gl = c.getContext('webgl2', { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: true }); } catch (e) { gl = null; }
@@ -2820,6 +2879,7 @@ void main() {
   return {
     drawView,
     get ok() { return !lost; },
+    release() { const x = gl.getExtension('WEBGL_lose_context'); lost = true; if (x) x.loseContext(); }, // give the GPU context back (phones allow only a few)
     resize(w, h) { c.width = w; c.height = h; },
     clear() { if (lost) return; gl.viewport(0, 0, c.width, c.height); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); lastData = lastData; },
     // Draws `show` (a slice with full pixels or a preview) with the current view; with show = null redraws the last one.
@@ -2875,6 +2935,8 @@ function drawLoupeRing(g = loupeGeom(), c = ctx) {
 /* ---------- drawing ---------- */
 function render() { if (!S.raf) S.raf = requestAnimationFrame(() => { draw(); updatePill(); }); }
 function draw() {
+  fuseSync();
+  { const o = $('#owner'), se = curSeries(), h = !!se && se.uid !== 'sample-phantom'; if (o.hidden !== h) o.hidden = h; } // the ownership line: on the start screen (empty or the sample) only
   S.raf = 0;
   if (!S.W || !S.H) { if (S.vol) drawMPR(); if (S.cmps.length || S.rf) drawCmp(); return; }
   ctx.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
@@ -2954,7 +3016,7 @@ function updateOverlay() {
     const inCmp = S.cmps.length > 0 && !S.rf; // in Compare: the series name under the patient, as in the other views (corners stay off the image)
     $('#ovTL').textContent = inCmp ? [pn(se.patient), se.desc || se.modality].filter(Boolean).join('\n') : pn(se.patient);
     $('#ovTR').textContent = inCmp ? '' : se.desc || se.modality || '';
-    $('#ovBL').textContent = img.spp === 3 ? '' : 'WL ' + Math.round(S.wc) + ' / ' + Math.round(S.ww) + tg;
+    $('#ovBL').textContent = img.spp === 3 && !img.fuse ? '' : 'WL ' + Math.round(S.wc) + ' / ' + Math.round(S.ww) + tg;
     $('#ovBR').textContent = (S.idx + 1) + ' / ' + se.images.length + '';
     const n = se.images.length, t = $('#thumb'), r = $('#rail'), h = r.clientHeight;
     t.style.top = (n > 1 ? S.idx / (n - 1) * h : h / 2) + 'px'; r.setAttribute('aria-valuenow', S.idx + 1); r.setAttribute('aria-valuemax', n);
@@ -2967,7 +3029,7 @@ function updateOverlay() {
     $('#ovTR').textContent = [se.desc, [se.modality, img.cols + '×' + img.rows].filter(Boolean).join('  ')].filter(Boolean).join('\n');
   }
   const tag = S.preset === 'Full dynamic' ? ' [F]' : (S.preset && S.preset.startsWith('CT ') ? ' [' + S.preset + ']' : '');
-  const wl = img.spp === 3 ? '' : 'WL: ' + Math.round(S.wc) + ' WW: ' + Math.round(S.ww) + tag;
+  const wl = img.spp === 3 && !img.fuse ? '' : 'WL: ' + Math.round(S.wc) + ' WW: ' + Math.round(S.ww) + tag;
   const tl = [img.thickness ? 'T: ' + img.thickness.toFixed(1) + 'mm' : '', img.location != null ? 'L: ' + img.location.toFixed(1) + 'mm' : ''].filter(Boolean).join(' ');
   $('#ovBL').textContent = [wl, tl].filter(Boolean).join('\n');
   const ori = [angDeg() ? 'Rot ' + angDeg() + '°' : '', S.fh < 0 ? 'Flip H' : '', S.fv < 0 ? 'Flip V' : ''].filter(Boolean).join('  ');
@@ -2997,6 +3059,7 @@ function selectSeries(i) {
   se.used = performance.now();
   if (typeof RPT !== 'undefined' && RPT && RPT.open) setTimeout(() => { if (RPT.key !== rptKey()) { rptSave(); rptLoad(); } }, 0);
   if (S.vol && S.vol.se !== se) mprToggle(false);
+  if (S.vr && S.vr.V.se !== se) vrClose();
   if (S.keepVol && S.keepVol.se !== se && !(se.isSlab && S.keepVol.se === se.slabOf)) S.keepVol = null; // memory: only the volume of the series on screen is kept
   if (S.cmps.some(C => C.se === se)) { S.cmps = S.cmps.filter(C => C.se !== se); setTimeout(cmpLayout, 0); }
   if (S.c3 && se.studyUid !== S.c3.study) S.c3 = null;
@@ -3008,7 +3071,6 @@ function selectSeries(i) {
 function buildPresets() {
   const se = curSeries(), box = $('#presets'); box.textContent = ''; S.keys = {};
   if (!se) return;
-  if (se.isFuse) { fusePresets(box); return; }
   const add = (key, label, wc, ww, fn) => {
     const b = document.createElement('button'); b.className = 'chip'; b.type = 'button'; b.dataset.key = label;
     b.append(label);
@@ -3016,6 +3078,12 @@ function buildPresets() {
     b.addEventListener('click', fn); box.append(b);
     if (key != null) { S.keys[key] = fn; b.title = 'Key ' + key; }
   };
+  if (se.isFuse) { // fused: the CT presets as on the CT (they set the CT under the colour), then the PET strength and mix
+    const d = se.fuseCT.def || se.def; add(0, 'Default', d.wc, d.ww, () => setWindow(d.wc, d.ww, 'Default'));
+    CT_PRESETS.forEach(([n, c, w], i) => add(i + 2, n, c, w, () => setWindow(c, w, n)));
+    add(null, 'Custom…', null, null, () => { $('#wlC').value = Math.round(S.wc); $('#wlW').value = Math.round(S.ww); openSheet('#sheetWL'); });
+    fusePresets(box); return;
+  }
   add(0, 'Default', se.def.wc, se.def.ww, () => setWindow(se.def.wc, se.def.ww, 'Default'));
   add(1, 'Full dynamic', null, null, () => { const [lo, hi] = minmax(cur()); setWindow((lo + hi) / 2, Math.max(1, hi - lo), 'Full dynamic'); });
   if (se.modality === 'CT') CT_PRESETS.forEach(([n, c, w], i) => add(i + 2, n, c, w, () => setWindow(c, w, n)));
@@ -3024,7 +3092,7 @@ function buildPresets() {
   markPresets();
 }
 function markPresets() {
-  if (curSeries() && curSeries().isFuse) { document.querySelectorAll('#presets .chip').forEach(b => b.setAttribute('aria-pressed', b.dataset.key === 'max' + S.fuse.max || b.dataset.key === 'mix' + S.fuse.mix)); return; }
+  if (curSeries() && curSeries().isFuse) { document.querySelectorAll('#presets .chip').forEach(b => b.setAttribute('aria-pressed', b.dataset.key === 'max' + S.fuse.max || b.dataset.key === 'mix' + S.fuse.mix || b.dataset.key === S.preset)); return; }
   document.querySelectorAll('#presets .chip').forEach(b => {
     b.setAttribute('aria-pressed', b.dataset.key === 'Negative' ? S.invert : b.dataset.key === S.preset);
   });
@@ -3365,6 +3433,7 @@ function volPlan(se, minK = 0) {
 // Puts the values of slice z (any size that is the volume size times a power of 2) into the volume.
 function volPut(img, data, w, h) {
   if (S.vol) volPutV(S.vol, img, data, w, h);
+  if (S.vr && S.vr.V !== S.vol) volPutV(S.vr.V, img, data, w, h);
   if (S.rfVols) for (const V of S.rfVols.values()) volPutV(V, img, data, w, h);
 }
 function volPutV(V, img, data, w, h) {
@@ -3403,13 +3472,13 @@ function volPutV(V, img, data, w, h) {
 }
 // Slices already in memory go into the volume in short bursts between frames, never in one long freeze: every
 // 16th slice first, then every 8th, and so on, so the coronal and sagittal show the whole body at once and sharpen.
-function volFillFromMemory() {
-  const V = S.vol; if (!V) return;
+function volFillFromMemory(V = S.vol) {
+  if (!V) return;
   const ims = V.se.images, n = ims.length, order = [], seen = new Uint8Array(n);
   for (let s = 16; s >= 1; s >>= 1) for (let i = 0; i < n; i += s) if (!seen[i]) { seen[i] = 1; order.push(i); }
   let j = 0;
   const step = () => {
-    if (S.vol !== V) return;
+    if (S.vol !== V && !(S.vr && S.vr.V === V)) return;
     const t0 = performance.now();
     while (j < order.length && performance.now() - t0 < 24) {
       const img = ims[order[j++]];
@@ -3662,10 +3731,10 @@ function drawMPR1(V) {
     const p = { cssW: v.W, cssH: v.H, map: (sx, sy) => mvToImage(v, sx, sy), iw: g.iw, ih: g.ih, loupe: v.loupe ? loupeGeom(v.loupe, v.W, v.H) : null,
       lo: S.wc - S.ww / 2, ww: S.ww, inv: S.invert !== V.se.images[0].mono1, slope: V.sl, ic: V.ic };
     if (v.key !== key) { Object.assign(p, { data: ps ? resampleSlab(v, ps) : resample(v), w: g.iw, h: g.ih, key }); v.key = key; }
-    if (v.gl) v.gl.drawView(p);
+    if (v.gl && v.gl.ok) v.gl.drawView(p);
     // overlay: crosshair lines with their turning handles, measurements, labels, progress
     const c2 = v.ctx; c2.setTransform(S.dpr, 0, 0, S.dpr, 0, 0); c2.clearRect(0, 0, v.W, v.H);
-    if (!v.gl) { c2.fillStyle = '#000'; c2.fillRect(0, 0, v.W, v.H); }
+    if (!(v.gl && v.gl.ok)) { c2.fillStyle = '#000'; c2.fillRect(0, 0, v.W, v.H); }
     const c = crossScreen(v), far = v.W + v.H;
     if (S.xhair) {
       for (const L of viewLines(kind)) gapLine(c2, c, screenDir(v, L.d), L.col, far);
@@ -3710,14 +3779,14 @@ function planeRoiStats(v, m) {
   const V = S.vol, g = v.g, buf = v.buf; if (!buf || buf.length !== g.iw * g.ih) return null;
   const cx = (m.a.x + m.b.x) / 2, cy = (m.a.y + m.b.y) / 2, rx = Math.abs(m.b.x - m.a.x) / 2, ry = Math.abs(m.b.y - m.a.y) / 2;
   if (!rx || !ry) return null;
-  let n = 0, sum = 0, sum2 = 0;
+  let n = 0, sum = 0, sum2 = 0, min = Infinity, max = -Infinity;
   const x0 = Math.max(0, Math.floor(cx - rx)), x1 = Math.min(g.iw - 1, Math.ceil(cx + rx)), y0 = Math.max(0, Math.floor(cy - ry)), y1 = Math.min(g.ih - 1, Math.ceil(cy + ry));
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
     const dx = (x + 0.5 - cx) / rx, dy = (y + 0.5 - cy) / ry; if (dx * dx + dy * dy > 1) continue;
-    const val = buf[y * g.iw + x] * V.sl + V.ic; n++; sum += val; sum2 += val * val;
+    const val = buf[y * g.iw + x] * V.sl + V.ic; n++; sum += val; sum2 += val * val; if (val < min) min = val; if (val > max) max = val;
   }
   if (!n) return null;
-  const mean = sum / n; return { n, mean, sd: Math.sqrt(Math.max(0, sum2 / n - mean * mean)), area: Math.PI * rx * ry * g.hu * g.hv, unit: 'mm' };
+  const mean = sum / n; return { n, mean, sd: Math.sqrt(Math.max(0, sum2 / n - mean * mean)), area: Math.PI * rx * ry * g.hu * g.hv, unit: 'mm', min, max };
 }
 function planeAngle(v, p) {
   const g = v.g, u1 = [(p[0].x - p[1].x) * g.hu, (p[0].y - p[1].y) * g.hv], u2 = [(p[2].x - p[1].x) * g.hu, (p[2].y - p[1].y) * g.hv];
@@ -3749,8 +3818,8 @@ function drawPlaneMeas(v) {
       if (!live) measGrips(m).forEach(q => dotAt(sc(q), 3));
       const st = m.stats || planeRoiStats(v, m);
       if (st) {
-        const ar = st.area >= 100 ? (st.area / 100).toFixed(2) + ' cm²' : st.area.toFixed(1) + ' mm²', u = S.vol.se.images[0].modality === 'CT' ? ' HU' : '';
-        label(`mean ${st.mean.toFixed(1)}${u}  SD ${st.sd.toFixed(1)}  ${ar}`, Math.min(a.x, b.x), Math.max(a.y, b.y) + 8);
+        const u = S.vol.se.images[0].modality === 'CT' ? ' HU' : '';
+        label(roiLabel(st, u, S.vol.se.images[0].suv), Math.min(a.x, b.x), Math.max(a.y, b.y) + 8);
       }
     } else {
       const a = sc(m.a), b = sc(m.b);
@@ -3924,10 +3993,11 @@ function mvZoomAt(v, x, y, s) {
   s = clamp(s, 0.05, 60); v.ox = x - (x - v.ox) * (s / v.s); v.oy = y - (y - v.oy) * (s / v.s); v.s = s; v.fit = false; linkZoom(v.kind); render();
 }
 // Leaving MPR (or a single coronal/sagittal) keeps its volume in memory (S.keepVol): going back opens it as it was.
+// Its three GPU contexts are given back (phones allow only a few) and made again when it reopens.
 function mprToggle(on) {
   const want = on == null ? !S.vol : on;
   if (want && S.rf) { S.rf = null; cmpLayout(); } // MPR replaces the coronal/sagittal view
-  if (!want) { if (S.vol) S.keepVol = S.vol; S.vol = null; planeModeOff(); $('#mvAx').hidden = true; $('#planesReset').hidden = true; $('#views').classList.remove('mpr'); $('#vswitch').hidden = true; delete $('#views').dataset.main; delete $('#views').dataset.layout; $('#btnMPR').setAttribute('aria-pressed', 'false'); render(); return; }
+  if (!want) { if (S.vol) S.keepVol = S.vol; S.vol = null; planeModeOff(); for (const k of MVK) { const v = MV[k]; if (v && v.gl) { v.gl.release(); v.gl = null; } } $('#mvAx').hidden = true; $('#planesReset').hidden = true; $('#views').classList.remove('mpr'); $('#vswitch').hidden = true; delete $('#views').dataset.main; delete $('#views').dataset.layout; $('#btnMPR').setAttribute('aria-pressed', 'false'); render(); return; }
   const se = curSeries(); if (!se) return;
   const K = S.keepVol, again = !!(K && K.se === se), plan = again ? Object.assign(K, { nCor: [0, 1, 0], nSag: [1, 0, 0], nAx: [0, 0, 1], order: null }) : volPlan(se);
   if (typeof plan === 'string') { say(plan, 5000); return; }
@@ -3937,6 +4007,7 @@ function mprToggle(on) {
   $('#planesReset').hidden = true;
   $('#views').classList.add('mpr'); $('#btnMPR').setAttribute('aria-pressed', 'true'); $('#vswitch').hidden = false; viewSet('ax', true);
   for (const kind of MVK) {
+    if (MV[kind] && !(MV[kind].gl && MV[kind].gl.ok)) glFresh(MV[kind]); // reopened: a new context
     if (!MV[kind]) {
       const box = $(kind === 'cor' ? '#mvCor' : kind === 'sag' ? '#mvSag' : '#mvAx');
       const v = MV[kind] = { kind, box, cv: box.querySelector('.mcv'), glc: box.querySelector('.mgl'), fit: true, W: 0, H: 0 };
@@ -4115,15 +4186,15 @@ function drawPaneMeas(C) { // the measurements of the slice in a pane, drawn as 
       c2.beginPath(); c2.ellipse((a.x + b.x) / 2, (a.y + b.y) / 2, Math.abs(b.x - a.x) / 2 || 1, Math.abs(b.y - a.y) / 2 || 1, 0, 0, 7); c2.stroke(); c2.setLineDash([]);
       if (!live) measGrips(m).forEach(g => dotAt(at(g), 3));
       const st = m.stats || (img.pixels ? roiStats(img, m.a, m.b) : null);
-      if (st) { const u = st.unit === 'px' ? '' : img.suv ? ' SUV' : (img.modality === 'CT' ? ' HU' : ''), ar = st.area >= 100 && st.unit === 'mm' ? (st.area / 100).toFixed(2) + ' cm²' : st.area.toFixed(1) + ' ' + st.unit + '²';
-        labels.push({ text: img.suv && st.max != null ? `SUVmax ${st.max.toFixed(1)}  mean ${st.mean.toFixed(1)}  ${ar}` : `mean ${st.mean.toFixed(1)}${u}  SD ${st.sd.toFixed(1)}  ${ar}`, x: Math.min(a.x, b.x), y: Math.max(a.y, b.y) + 8 }); }
+      if (st) { const u = st.unit === 'px' ? '' : img.suv ? ' SUV' : (img.modality === 'CT' || img.fuse ? ' HU' : '');
+        labels.push({ text: roiLabel(st, u, img.suv), x: Math.min(a.x, b.x), y: Math.max(a.y, b.y) + 8 }); }
     }
     c2.setLineDash([]);
     if (sel && m.type !== 'text') for (const g of measGrips(m)) { const q = at(g); c2.beginPath(); c2.arc(q.x, q.y, 7, 0, 7); c2.lineWidth = 2; c2.strokeStyle = '#fff'; c2.stroke(); }
   }
   if (labels.length) placeLabels(c2, labels, v.W, v.H, dots);
 }
-const cmpShared = C => (cur().modality || '') === 'CT' && C.se.modality === 'CT';
+const cmpShared = C => ((cur().modality || '') === 'CT' || !!cur().fuse) && C.se.modality === 'CT'; // a fused view shares its window with the CT beside it
 function drawCmp() {
   if (S.rf) { drawRf(); return; }
   for (const C of S.cmps) try { drawPane(C); } catch (err) { paneMsg(C, 'Cannot show this series here: ' + err.message); }
@@ -4161,7 +4232,7 @@ function drawPane(C) {
   const src = show.pixels ? { data: show.pixels, w: show.cols, h: show.rows } : show.preview;
   const sh = cmpShared(C), wc = sh ? S.wc : C.wc, ww = sh ? S.ww : C.ww;
   const g = v.ctx; g.setTransform(S.dpr, 0, 0, S.dpr, 0, 0); g.clearRect(0, 0, v.W, v.H);
-  if (src && v.gl && show.spp !== 3) v.gl.drawView({ data: src.data, key: src.data, w: src.w, h: src.h, slope: show.slope, ic: show.intercept, cssW: v.W, cssH: v.H,
+  if (src && v.gl && v.gl.ok && show.spp !== 3) v.gl.drawView({ data: src.data, key: src.data, w: src.w, h: src.h, slope: show.slope, ic: show.intercept, cssW: v.W, cssH: v.H,
     map: cmpMap(C), iw: im.cols, ih: im.rows, lo: wc - ww / 2, ww, inv: S.invert !== im.mono1 });
   else if (src) paneCPU(v, C, show, im, src, wc, ww); // views 5-8, and colour (fused PET-CT)
   else if (!src) { g.fillStyle = '#8d9ca4'; g.font = '500 14px Inter, system-ui, sans-serif'; g.textAlign = 'center'; g.fillText('Opening…', v.W / 2, v.H / 2); g.textAlign = 'left'; }
@@ -4297,6 +4368,12 @@ function cmpMake(se, slot) {
 function cmpLayout() {
   const vw = $('#views'); // coronal/sagittal also with a single view (no compared series)
   const n = S.cmps.length, on = n > 0 || !!S.rf;
+  if (n > 0 && !S.cmpWas) { S.fit = true; S.ang = 0; requestAnimationFrame(() => { fit(); S.dirty = true; render(); }); } // compare starts fitted, whatever zoom there was before
+  S.cmpWas = n > 0;
+  // GPU contexts: panes in use get one (a new one if theirs was given back or lost); panes not in use give theirs back
+  { const used = new Set(S.cmps.map(C => String(C.slot))); if (S.rf) used.add('M');
+    for (const slot of ['M', 0, 1, 2]) { const box = $('#mvCmp' + slot); const v = box && box.__v; if (!v) continue;
+      if (used.has(String(slot))) { if (!(v.gl && v.gl.ok)) glFresh(v); } else if (v.gl) { v.gl.release(); v.gl = null; } } }
   vw.classList.toggle('cmp', on); vw.dataset.n = on ? String(n + 1) : '';
   vw.classList.toggle('rf', !!S.rf); $('#mvCmpM').classList.toggle('on', !!S.rf);
   const pl = S.rf ? S.rf.plane : 'ax'; document.querySelectorAll('#cmpbar [data-plane]').forEach(b => b.setAttribute('aria-pressed', b.dataset.plane === pl));
@@ -4533,28 +4610,35 @@ function fuseVal(t, q) {
   return { hu, suv: t.fuse.pt && q ? petAt(t, q.x, q.y, true) : null };
 }
 function fuseText(t, q) { const v = fuseVal(t, q); return [v.hu != null ? Math.round(v.hu) + ' HU' : '', v.suv != null ? 'SUV ' + v.suv.toFixed(1) : ''].filter(Boolean).join(' · ') || '…'; }
-function fuseRoi(t, a, b) { // SUV inside the circle (the PET under it), and its area
-  if (!t.fuse.pt) return null;
+function fuseRoi(t, a, b) { // inside the circle: SUVmax and mean of the PET, and mean, min, max HU of the CT
+  const c = t.fuse.ct, C = fsrc(c); if (!C) return null;
   const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2, rx = Math.abs(b.x - a.x) / 2, ry = Math.abs(b.y - a.y) / 2; if (!rx || !ry) return null;
-  let n = 0, sum = 0, sum2 = 0, max = -Infinity;
+  let n = 0, sum = 0, sum2 = 0, max = -Infinity, min = Infinity, pn = 0, psum = 0, pmax = -Infinity;
+  const cs = c.slope || 1, ci = c.intercept || 0;
   for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
-    const dx = (x + 0.5 - cx) / rx, dy = (y + 0.5 - cy) / ry; if (dx * dx + dy * dy > 1) continue;
-    const v = petAt(t, x, y, true); if (v == null) continue; n++; sum += v; sum2 += v * v; if (v > max) max = v;
+    const dx = (x + 0.5 - cx) / rx, dy = (y + 0.5 - cy) / ry; if (dx * dx + dy * dy > 1 || x < 0 || y < 0 || x >= c.cols || y >= c.rows) continue;
+    const h = C.data[Math.floor(y * C.h / c.rows) * C.w + Math.floor(x * C.w / c.cols)] * cs + ci; n++; sum += h; sum2 += h * h; if (h > max) max = h; if (h < min) min = h;
+    if (t.fuse.pt) { const v = petAt(t, x, y, true); if (v != null) { pn++; psum += v; if (v > pmax) pmax = v; } }
   }
   if (!n) return null; const mean = sum / n, f = phys(t);
-  return { n, mean, sd: Math.sqrt(Math.max(0, sum2 / n - mean * mean)), area: Math.PI * rx * ry * f.x * f.y, unit: f.unit, max };
+  return { n, mean, sd: Math.sqrt(Math.max(0, sum2 / n - mean * mean)), area: Math.PI * rx * ry * f.x * f.y, unit: f.unit, max, min,
+    suvMax: pn ? pmax : null, suvMean: pn ? psum / pn : null };
 }
 // The fused picture: RGB, full size or half size (quick, while scrolling fast)
 function fuseRGB(t, half) {
   const c = t.fuse.ct, p = t.fuse.pt, C = fsrc(c), P = p ? fsrc(p) : null; if (!C || (p && !P)) return null;
   const F = S.fuse, step = half ? 2 : 1, W = Math.ceil(c.cols / step), H = Math.ceil(c.rows / step), out = new Uint8Array(W * H * 3);
   const lo = F.ctc - F.ctw / 2, k = 255 / F.ctw, cs = c.slope || 1, ci = c.intercept || 0, ps = p ? p.slope || 1 : 1, pi = p ? p.intercept || 0 : 0;
+  // the CT grey through a lookup table (one per window), and the CT column of each output pixel worked out once
+  const key = lo + '/' + k + '/' + cs + '/' + ci + '/' + (C.data instanceof Int16Array);
+  if (!FUSELUT.lut || FUSELUT.key !== key) { const off = C.data instanceof Int16Array ? 32768 : 0, L = new Uint8Array(65536); for (let r = 0; r < 65536; r++) { const v = ((r - off) * cs + ci - lo) * k; L[r] = v < 0 ? 0 : v > 255 ? 255 : v; } FUSELUT.lut = L; FUSELUT.key = key; FUSELUT.off = off; }
+  const LUT = FUSELUT.lut, OFF = FUSELUT.off, colx = new Int32Array(W); for (let x = 0; x < W; x++) colx[x] = Math.min(C.w - 1, Math.floor(x * step * C.w / c.cols));
   for (let y = 0; y < H; y++) {
     const fy = y * step, r0 = p && worldToImg(p, imgToWorld(c, 0, fy)), r1 = p && worldToImg(p, imgToWorld(c, 1, fy));
-    const cy = Math.min(C.h - 1, Math.floor(fy * C.h / c.rows));
+    const cy = Math.min(C.h - 1, Math.floor(fy * C.h / c.rows)), crow = cy * C.w;
     for (let x = 0; x < W; x++) {
       const fx = x * step, o = (y * W + x) * 3;
-      let g = (C.data[cy * C.w + Math.min(C.w - 1, Math.floor(fx * C.w / c.cols))] * cs + ci - lo) * k; g = g < 0 ? 0 : g > 255 ? 255 : g;
+      const g = LUT[(C.data[crow + colx[x]] + OFF) & 65535];
       let R = g, G = g, B = g;
       if (p) {
         const qx = r0.x + (r1.x - r0.x) * fx, qy = r0.y + (r1.y - r0.y) * fx, bx = (qx + 0.5) * P.w / p.cols - 0.5, by = (qy + 0.5) * P.h / p.rows - 0.5, x0 = Math.floor(bx), y0 = Math.floor(by);
@@ -4573,7 +4657,7 @@ function fuseRGB(t, half) {
   }
   return half ? { w: W, h: H, data: out } : out;
 }
-const FUSEKEEP = [];
+const FUSEKEEP = [], FUSELUT = {};
 function makeFuseSeries(CT, PT) {
   const uid = 'fuse:' + CT.uid + '|' + PT.uid, had = S.series.find(s => s.uid === uid); if (had) return had;
   const pth = PT.images[0].thickness || 4, rc = previewLevel(CT), rp = previewLevel(PT);
@@ -4585,7 +4669,6 @@ function makeFuseSeries(CT, PT) {
     Object.defineProperty(t, 'pixels', { enumerable: true, configurable: true,
       get() {
         if (this._px && this._pxv === S.fuse.ver) return this._px;
-        if (performance.now() - (S.moved || 0) < SETTLE && (S.vel || 0) > 25) { clearTimeout(SUBT); SUBT = setTimeout(() => { S.dirty = true; render(); }, SETTLE + 30); return null; } // fast scrolling: the quick one
         const px = fuseRGB(this, false); if (!px) return null;
         FUSEKEEP.push(this); if (FUSEKEEP.length > 60) { const o = FUSEKEEP.shift(); if (o !== this) o._px = null; }
         this._pxv = S.fuse.ver; return (this._px = px);
@@ -4594,11 +4677,11 @@ function makeFuseSeries(CT, PT) {
       get() { if (this._pv && this._pvv === S.fuse.ver) return this._pv; const pv = fuseRGB(this, true); if (pv) { this._pvv = S.fuse.ver; this._pv = pv; } return pv; }, set(v) { } });
     return t;
   });
-  const se = Object.assign({}, CT, { uid, desc: 'FUSED ' + (CT.desc || 'CT') + ' + ' + (PT.desc || 'PET'), images: ims, isFuse: true, derived: true, fuseCT: CT, fusePT: PT, def: { wc: 128, ww: 256 }, __zr: null, used: performance.now() });
+  const se = Object.assign({}, CT, { uid, desc: 'FUSED ' + (CT.desc || 'CT') + ' + ' + (PT.desc || 'PET'), images: ims, isFuse: true, derived: true, fuseCT: CT, fusePT: PT, def: Object.assign({}, CT.def || seriesWindow(CT, CT.images[0])), __zr: null, used: performance.now() });
   S.series.splice(S.series.indexOf(CT) + 1, 0, se);
   return se;
 }
-// The PET and the CT to fuse for the study on screen (attenuation-corrected PET; a CT that covers it, not the thinnest)
+// The PET and the CT to fuse for the study on screen (attenuation-corrected PET; the CT that covers it with the most slices)
 function fusePair(main) {
   if (!main) return null;
   const st = main.isFuse ? main.fuseCT.studyUid : main.studyUid, same = S.series.filter(s => !s.derived && s.studyUid === st && s.images.length && s.images[0].ipp && s.images[0].iop);
@@ -4606,12 +4689,21 @@ function fusePair(main) {
   if (!pets.length) return null;
   const nac = s => /\bnac\b|non.?ac|no.?ac|uncorr|not.?corr/i.test(s.desc || '');
   const PT = pets.filter(s => !nac(s)).sort((a, b) => b.images.length - a.images.length)[0] || pets[0], zp = zrange(PT);
-  const axial = s => { const r = s.images[0].iop, q = PT.images[0].iop; return r.every((x, k) => Math.abs(x - q[k]) < 0.05); };
+  const axial = s => { const r = s.images[0].iop, q = PT.images[0].iop; return r.every((x, k) => Math.abs(x - q[k]) < 0.1); };
   const cts = same.filter(s => (s.images[0].modality || s.modality) === 'CT' && s.images.length > 4 && axial(s));
   const cover = s => { const z = zrange(s); return z && zp ? Math.max(0, Math.min(z[1], zp[1]) - Math.max(z[0], zp[0])) : 0; };
-  const CT = cts.sort((a, b) => (cover(b) - cover(a)) || ((b.images[0].thickness >= 2) - (a.images[0].thickness >= 2)) || (a.images.length - b.images.length))[0];
+  const CT = cts.filter(s => cover(s) > 0).sort((a, b) => (b.images.length - a.images.length) || (cover(b) - cover(a)))[0]; // of the CTs over the PET: the one with the most slices
   return CT && cover(CT) > 0 ? { CT, PT } : null;
 }
+function fuseSync() { // called as the screen is drawn
+  const se = curSeries(); if (!se || !se.isFuse) return;
+  const F = S.fuse; let ch = false;
+  if (F.ctc !== S.wc || F.ctw !== S.ww) { F.ctc = S.wc; F.ctw = S.ww; ch = true; } // Window on the fused view (or its CT): the CT under the colour
+  const P = S.cmps.find(C => C.se === se.fusePT); // the PET beside it: brighter there (lower top of its window) = stronger colour, as in RadiAnt
+  if (P) { const m = Math.max(0.5, P.wc + P.ww / 2); if (P.__fm !== m) { const first = P.__fm == null; P.__fm = m; if (!first && Math.abs(F.max - m) > 1e-6) { F.max = Math.round(m * 10) / 10; ch = true; } } }
+  if (ch) F.ver++;
+}
+function fusePetWindow(max) { const se = curSeries(), P = se && se.isFuse && S.cmps.find(C => C.se === se.fusePT); if (P) { P.wc = max / 2; P.ww = max; P.__fm = max; } }
 function fuseUI() { // the button shows itself when the study has a PET and a CT; lit while the fused view is on screen
   const b = $('#actFuse'); if (!b) return; const se = curSeries(), on = !!(se && se.isFuse), can = on || !!fusePair(se);
   const key = can + ':' + on; if (b.__k === key) return; b.__k = key;
@@ -4622,20 +4714,24 @@ function fuseOpen() {
   if (main.isFuse) { subSwitch(main.fuseCT); return; } // back to the CT, same level
   const pair = fusePair(main); if (!pair) { say('Fusion needs a PET and a CT of the same study', 3500); return; }
   const F = makeFuseSeries(pair.CT, pair.PT);
+  const keepW = (main.images[0].modality || main.modality) === 'CT' ? { wc: S.wc, ww: S.ww, p: S.preset } : Object.assign({ p: 'Default' }, pair.CT.def || seriesWindow(pair.CT, pair.CT.images[0])); // a bone window stays a bone window
   const im0 = cur(), w0 = im0 && imgToWorld(im0, im0.cols / 2, im0.rows / 2);
+  const keepZ = main === pair.CT ? { s: S.s, ox: S.ox, oy: S.oy, fit: S.fit, ang: S.ang, fh: S.fh, fv: S.fv } : null; // the same CT under the colour: same zoom
   if (S.vol) mprToggle(false);
   S.cmps = []; S.rf = null; S.cmpSync = true; cmpSyncUI && cmpSyncUI();
   selectSeries(S.series.indexOf(F));
   const j = w0 ? nearestSlice(F, w0) : -1; if (j >= 0) setIdx(j);
-  cmpAdd(pair.CT); cmpAdd(pair.PT); // the reading layout: fused, CT, PET
+  cmpAdd(pair.PT); // the reading layout: fused | PET (its window sets how strong the colour is); the CT can be added with + Series
+  if (keepZ && !keepZ.fit) Object.assign(S, keepZ); else fitBody(); // otherwise: the body (not the whole field of view) fills the view
+  setWindow(keepW.wc, keepW.ww, keepW.p); fusePetWindow(S.fuse.max);
   if (typeof listSeries === 'function') listSeries();
   render(); pump();
 }
 $('#actFuse').addEventListener('click', fuseOpen);
 function fusePresets(box) { // on the fused view: the PET range (SUV) and how strongly it shows
   const add = (key, label, fn) => { const b = document.createElement('button'); b.className = 'chip'; b.type = 'button'; b.dataset.key = key; b.append(label); b.addEventListener('click', () => { fn(); S.fuse.ver++; S.dirty = true; markPresets(); render(); }); box.append(b); };
-  for (const m of [5, 7, 10, 15]) add('max' + m, 'SUV 0–' + m, () => { S.fuse.max = m; });
-  for (const x of [0.3, 0.5, 0.7]) add('mix' + x, 'Mix ' + Math.round(x * 100) + '%', () => { S.fuse.mix = x; });
+  for (const m of [2.5, 3, 5, 7, 10]) add('max' + m, 'SUV 0–' + m, () => { S.fuse.max = m; fusePetWindow(m); });
+  for (const x of [0.3, 0.5, 0.7, 0.9]) add('mix' + x, 'Mix ' + Math.round(x * 100) + '%', () => { S.fuse.mix = x; });
   markPresets();
 }
 /* ---------- Text notes: a small box to type in (the browser's own prompt is not available everywhere) ---------- */
@@ -4655,7 +4751,7 @@ function composeView(phi) {
   const g = out.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, out.width, out.height);
   const pii = new Set(); for (const se of S.series) { if (se.patient) { pii.add(pn(se.patient)); pii.add(se.patient); } if (se.patientId) pii.add(se.patientId); }
   const clean = t => { if (phi) return t; let r = t; for (const x of pii) if (x && x.length > 1) r = r.split(x).join(''); return r.split('\n').map(l => l.replace(/^[\s,:·⚠-]+$/, '').replace(/Different patient:\s*$/, 'Different patient')).filter(l => l.trim()).join('\n'); };
-  const boxes = [...vw.children].filter(el => (el.classList.contains('stage') || el.classList.contains('mview')) && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().width > 0);
+  const boxes = S.vr ? [$('#vr3d')] : [...vw.children].filter(el => (el.classList.contains('stage') || el.classList.contains('mview')) && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().width > 0); // 3D: only the 3D picture (the axial is behind it)
   for (const el of boxes) {
     const r = el.getBoundingClientRect(), X = (r.left - R.left) * k, Y = (r.top - R.top) * k;
     g.save(); g.beginPath(); g.rect(X, Y, r.width * k, r.height * k); g.clip();
@@ -5108,7 +5204,7 @@ function decoded(img, d, kind) {
     img.busy = false;
     if (d.err) img.err = d.err;
     else if (d.w !== img.cols || d.h !== img.rows) img.err = 'image size differs from the header';
-    else { img.pixels = signFix(d, img); img.mm = null; DEC.bytes += img.pixels.byteLength; if (S.vol) volPut(img, img.pixels, img.cols, img.rows); evict(); }
+    else { img.pixels = signFix(d, img); img.mm = null; DEC.bytes += img.pixels.byteLength; if (S.vol || S.vr) volPut(img, img.pixels, img.cols, img.rows); evict(); }
   }
   if (img === cur()) { S.dirty = true; render(); } else if (S.cmps.length || (curSeries() && curSeries().derived)) { S.dirty = true; render(); pump(); }
 }
@@ -5153,7 +5249,8 @@ function pump() {
     const srcs = t => t && t.sub ? [[t.sub.a, t.sub.ra], [t.sub.b, t.sub.rb]] : t && t.fuse ? [[t.fuse.ct, t.fuse.rc], [t.fuse.pt, t.fuse.rp]] : t && t.slab ? t.slab.list.map(im => [im, t.slab.r]) : [];
     const moving = performance.now() - (S.moved || 0) < SETTLE;
     for (const [list, at] of subs) {
-      if (!moving) for (const d of [0, 1, -1, 2, -2]) for (const [im] of srcs(list[at + d * dir])) if (im && needF(im) && !go(im, 'f')) return; // stopped: sharp here first
+      const fz = list[at] && list[at].fuse; // fused: sharp while scrolling too (the slice ahead first)
+      if (!moving || fz) for (const d of fz && moving ? [0, 1, 2, 3, -1] : [0, 1, -1, 2, -2]) for (const [im] of srcs(list[at + d * dir])) if (im && needF(im) && !go(im, 'f')) return; // stopped: sharp here first
       for (let d = 0; d <= 40; d++) for (const s of d ? [d, -d] : [0]) for (const [im, r] of srcs(list[at + s * dir])) if (im && pv(im, r) && !go(im, 'p', r)) return; // quick ones along the scroll
       if (!moving) for (const d of [3, -3, 4, -4, 5, 6, 7, 8]) for (const [im] of srcs(list[at + d * dir])) if (im && needF(im) && !go(im, 'f')) return;
     }
@@ -5212,7 +5309,11 @@ function pump() {
   }
   for (const q of CP) for (let d = 3; d <= 12; d++) for (const s of [d, -d]) { const im = q.ims[q.C.idx + s * dir]; if (im && needF(im) && !go(im, 'f')) return; }
   // 4. with MPR open: the 3D volume, nearest slices first: through the previews when they are the volume's size
-  const V = S.vol && S.vol.se === se ? S.vol : null;
+  // 3D on its own, with previews as fine as its texture: only the previews are needed (quick), not the full volume
+  if (!S.vol && S.vr && S.vr.V.se === se && S.vr.T.viaP && !vrDone(S.vr.T)) {
+    for (let d = 0; d < n; d++) for (const i of near(d)) if (needP(ims[i]) && !go(ims[i], 'p')) return;
+  }
+  const V = S.vol && S.vol.se === se ? S.vol : S.vr && S.vr.V.se === se && !S.vr.T.viaP ? S.vr.V : null; // MPR or 3D open
   if (V && V.count < V.n) {
     const viaP = red > 0 && Math.ceil(ims[0].cols / 2 ** red) === V.w;
     // coarse to fine over the whole stack (every 16th slice, then every 8th, ...): with the gaps filled from
@@ -5222,7 +5323,7 @@ function pump() {
     for (const i of V.order) {
       const im = ims[i]; if (!im || V.filled[i]) continue;
       if (viaP) { if (needP(im) && !go(im, 'p')) return; }
-      else if (coded(im) && !im.busyV && !im.err && !go(im, 'v')) return;
+      else if (coded(im) && !im.busyV && !im.err && !go(im, 'v', V.k)) return;
     }
   }
   // Everything below is background work for slices further away: it waits while the user is touching the screen,
@@ -5592,7 +5693,7 @@ async function addFiles(files, opts) {
   const openMain = () => { // the largest series read so far, at its first slice
     const main = [...st.seen].sort((a, b) => b.images.length - a.images.length)[0];
     // a newly opened case starts on its own: one plain view (Compare and MPR close; the earlier case stays in Series)
-    if (!(opts && opts.restore)) { if (S.cmps.length || S.rf) { S.cmps = []; S.rf = null; cmpLayout(); } if (S.vol) mprToggle(false); S.keepVol = null; S.subBack = null; }
+    if (!(opts && opts.restore)) { if (S.cmps.length || S.rf) { S.cmps = []; S.rf = null; cmpLayout(); } if (S.vr) vrClose(); if (S.vol) mprToggle(false); S.keepVol = null; S.subBack = null; }
     selectSeries(S.series.indexOf(main));
     const ph = S.series.find(s => s.uid === 'sample-phantom'); if (ph && S.series.length > 1) closeSeries([ph]);
   };
@@ -5888,7 +5989,7 @@ function rfDrawPane(C) {
     const V = rfVol(C.se);
     if (!V) { const why = volPlan(C.se); paneMsg(C, (R.plane === 'cor' ? 'Coronal' : 'Sagittal') + ' is not possible for this series' + (typeof why === 'string' ? ': ' + why.replace(/^MPR /, 'it ') : '')); v.info.textContent = C.se.desc || ''; return; }
     const cut = rfCut(C, V), sh = C.main || cmpShared(C), wc = sh ? S.wc : C.wc, ww = sh ? S.ww : C.ww;
-    if (v.gl) v.gl.drawView({ data: cut.data, key: cut.data, w: cut.w, h: cut.h, slope: V.sl, ic: V.ic, cssW: v.W, cssH: v.H, map: rfMap(C, V), iw: cut.w, ih: cut.h, lo: wc - ww / 2, ww, inv: S.invert !== C.se.images[0].mono1 });
+    if (v.gl && v.gl.ok) v.gl.drawView({ data: cut.data, key: cut.data, w: cut.w, h: cut.h, slope: V.sl, ic: V.ic, cssW: v.W, cssH: v.H, map: rfMap(C, V), iw: cut.w, ih: cut.h, lo: wc - ww / 2, ww, inv: S.invert !== C.se.images[0].mono1 });
     const lines = [C.se.desc || 'Series'];
     if (!sh) lines.push('W ' + Math.round(wc) + ' / ' + Math.round(ww));
     if (cut.outside) lines.push('This plane is outside this series');
@@ -5958,6 +6059,377 @@ function rfPinch(v, a, b, pz) { // zoom about the fingers, same scale in every p
   R.scale = s; R.fit = false; R.P[i] = h0 - (m.x - v.W / 2) / s; R.P[2] = z0 - (v.H / 2 - m.y) / s;
   render();
 }
+
+/* ---------- 3D: volume rendering of the series (as in RadiAnt's 3D) ----------
+   The same volume as MPR (S.vol / S.keepVol), copied into a small 3D texture (at most 512 or 256 voxels across,
+   one byte a voxel, HU / 12), drawn on the GPU by ray casting: a coloured, lit picture with presets (Bone,
+   Vessels, Soft tissue, Skin) or a grey MIP. One finger turns it, two fingers zoom and move it, Window shifts
+   the colours, Cut removes what is inside a loop you draw (all the way through), Undo brings the last cut back. */
+const VR_PRESETS = {
+  bone: { name: 'Bone', pts: [[-1024, 0, 0, 0, 0], [150, .62, .46, .36, 0], [260, .86, .73, .59, .32], [520, .96, .9, .8, .75], [1500, 1, 1, .97, .95], [3000, 1, 1, 1, 1]] },
+  vessels: { name: 'Vessels', pts: [[-1024, 0, 0, 0, 0], [115, .55, .08, .06, 0], [185, .82, .18, .12, .25], [300, .96, .45, .3, .55], [520, 1, .88, .78, .8], [1500, 1, 1, .95, .95], [3000, 1, 1, 1, 1]] },
+  soft: { name: 'Soft tissue', pts: [[-1024, 0, 0, 0, 0], [-650, .8, .5, .4, 0], [-350, .9, .66, .56, .025], [-60, .86, .48, .38, .04], [30, .8, .32, .26, .1], [150, .92, .6, .5, .22], [320, 1, .95, .86, .7], [1500, 1, 1, 1, .92], [3000, 1, 1, 1, 1]] },
+  skin: { name: 'Skin', pts: [[-1024, 0, 0, 0, 0], [-520, .92, .72, .62, 0], [-330, .95, .77, .66, .85], [3000, .96, .82, .72, .95]] },
+  mip: { name: 'MIP', mip: true },
+};
+const VR_ORDER = ['bone', 'vessels', 'soft', 'skin', 'mip'];
+const VR_ENC = hu => (hu + 1024) / 12; // HU -> texture value 0..255
+let VRG = null; // the GL side, made once
+
+function vrGL() {
+  if (VRG && VRG.gl && !VRG.gl.isContextLost()) return VRG;
+  const box = $('#vr3d'), ov = box.querySelector('.vov');
+  let c = box.querySelector('.vgl'); if (VRG) { const n = c.cloneNode(false); c.replaceWith(n); c = n; } // reopened after its context was given back: a new canvas
+  const gl = c.getContext('webgl2', { antialias: false, preserveDrawingBuffer: true, alpha: false });
+  if (!gl) return null;
+  const VS = `#version 300 es
+in vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }`;
+  const FS = `#version 300 es
+precision highp float; precision highp sampler3D;
+uniform sampler3D vol; uniform sampler2D tf;
+uniform vec3 cR, cU, cF;   // camera right, up, forward in volume space
+uniform vec3 box;          // half size of the volume (largest side = 1)
+uniform vec3 tx;           // one texel
+uniform vec2 res, pan;     // canvas size (device px), pan (device px)
+uniform float scale, stepT, refStep;
+uniform int mode;          // 0 volume rendering, 1 MIP
+uniform vec2 mipW;         // MIP window: low, width (texture units 0..1)
+out vec4 o;
+float V(vec3 q) { return texture(vol, q).r; }
+void main() {
+  vec2 q = (gl_FragCoord.xy - 0.5 * res - pan) / scale;
+  vec3 ro = cR * q.x + cU * q.y - cF * 4.0, rd = cF;
+  vec3 inv = 1.0 / rd, t0s = (-box - ro) * inv, t1s = (box - ro) * inv;
+  vec3 tmin = min(t0s, t1s), tmax = max(t0s, t1s);
+  float t0 = max(max(tmin.x, tmin.y), tmin.z), t1 = min(min(tmax.x, tmax.y), tmax.z);
+  if (t1 <= max(t0, 0.0)) { o = vec4(0.0, 0.0, 0.0, 1.0); return; }
+  float j = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+  float t = t0 + stepT * j;
+  vec3 hb = 0.5 / box;
+  if (mode == 1) {
+    float m = 0.0;
+    for (int i = 0; i < 8192; i++) { if (t > t1) break; m = max(m, V((ro + rd * t) * hb + 0.5)); t += stepT; }
+    float g = clamp((m - mipW.x) / mipW.y, 0.0, 1.0); o = vec4(g, g, g, 1.0); return;
+  }
+  vec4 acc = vec4(0.0); float k = stepT / refStep;
+  for (int i = 0; i < 8192; i++) {
+    if (t > t1 || acc.a > 0.97) break;
+    vec3 tc = (ro + rd * t) * hb + 0.5;
+    float v = V(tc);
+    vec4 s = texture(tf, vec2(v, 0.5));
+    if (s.a > 0.002) {
+      vec3 g = vec3(V(tc + vec3(tx.x, 0, 0)) - V(tc - vec3(tx.x, 0, 0)), V(tc + vec3(0, tx.y, 0)) - V(tc - vec3(0, tx.y, 0)), V(tc + vec3(0, 0, tx.z)) - V(tc - vec3(0, 0, tx.z))) / (tx * box);
+      float gl = length(g), lam = gl > 1e-4 ? abs(dot(g / gl, rd)) : 0.6;
+      float sh = 0.28 + 0.72 * lam + 0.25 * pow(lam, 24.0);
+      float a = 1.0 - pow(1.0 - s.a, k);
+      acc.rgb += (1.0 - acc.a) * a * s.rgb * sh; acc.a += (1.0 - acc.a) * a;
+    }
+    t += stepT;
+  }
+  o = vec4(acc.rgb, 1.0);
+}`;
+  const sh = (t, s) => { const x = gl.createShader(t); gl.shaderSource(x, s); gl.compileShader(x); if (!gl.getShaderParameter(x, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(x)); return x; };
+  const prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+  gl.useProgram(prog);
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  const U = {}; ['vol', 'tf', 'cR', 'cU', 'cF', 'box', 'tx', 'res', 'pan', 'scale', 'stepT', 'refStep', 'mode', 'mipW'].forEach(n => U[n] = gl.getUniformLocation(prog, n));
+  gl.uniform1i(U.vol, 0); gl.uniform1i(U.tf, 1);
+  const tfTex = gl.createTexture(); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tfTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  const first = !VRG, r0 = box.getBoundingClientRect();
+  VRG = { gl, c, ov, ctx: ov.getContext('2d'), U, tfTex, volTex: null, max3d: gl.getParameter(gl.MAX_3D_TEXTURE_SIZE) || 256, W: VRG ? VRG.W : r0.width, H: VRG ? VRG.H : r0.height };
+  if (first) { // once: size and touch handling
+    new ResizeObserver(() => { const r = box.getBoundingClientRect(); VRG.W = r.width; VRG.H = r.height; ov.width = Math.round(r.width * S.dpr); ov.height = Math.round(r.height * S.dpr); vrDraw(); }).observe(box);
+    vrInput(ov);
+  }
+  return VRG;
+}
+
+// ---- the texture: one byte a voxel, superior slices at the top (w = 1) ----
+function vrTexPlan(V) {
+  const phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 900;
+  const cap = Math.min(VRG.max3d, phone ? 256 : 512); // phones: the size of the axial previews, so 3D can open at once from them
+  const fxy = Math.max(1, Math.ceil(Math.max(V.w, V.h) / cap)), fz = Math.max(1, Math.ceil(V.n / Math.min(cap, VRG.max3d)));
+  const tw = Math.ceil(V.w / fxy), th = Math.ceil(V.h / fxy), td = Math.ceil(V.n / fz);
+  const ct = (V.se.images[0].modality || '') === 'CT';
+  const def = V.se.def || seriesWindow(V.se, V.se.images[0]);
+  const lo = ct ? -1024 : def.wc - def.ww, hi = ct ? 2036 : def.wc + def.ww * 1.5; // texture 0..255 covers lo..hi (HU for CT)
+  // the axial previews (made while the study opens, at most 256 across) are often already as fine as the texture:
+  // then 3D is built from them at once, with no decoding at all
+  const red = previewLevel(V.se), pr = fxy * 2 ** V.k / 2 ** red; // texture texel / preview pixel
+  return { fxy, fz, tw, th, td, ct, lo, hi, red, pr, viaP: red > 0 && pr >= 1, real: new Uint8Array(td), dist: new Float32Array(td).fill(1e9), mask: null, cuts: [], slice: new Uint8Array(tw * th) };
+}
+// where slice z of the volume can be read: the volume itself (2), a preview as fine as the texture (2), a coarser preview (1)
+function vrSrc(T, V, z) {
+  const W = V.w, H = V.h;
+  if (V.filled[z]) return { lv: 2, D: V.data, base: z * W * H, W, H, f: T.fxy, sl: V.sl, ic: V.ic };
+  const im = V.se.images[z], pv = im && im.preview;
+  if (pv && pv.data && T.red > 0) return { lv: T.pr >= 1 ? 2 : 1, D: pv.data, base: 0, W: pv.w, H: pv.h, f: T.pr, sl: im.slope || 1, ic: im.intercept || 0 };
+  return null;
+}
+const vrZs = (T, V, t) => { const k0 = t * T.fz, k1 = Math.min(V.n, k0 + T.fz), zs = []; for (let k = k0; k < k1; k++) zs.push(V.flip ? k : V.n - 1 - k); return zs; }; // texture w goes up: superior at the top
+function vrLevel(T, V, t) { let lv = 2; for (const z of vrZs(T, V, t)) { const s = vrSrc(T, V, z); lv = Math.min(lv, s ? s.lv : 0); } return lv; }
+function vrSlice(T, V, t, out) { // texture slice t (box average of its source pixels), with the cuts removed
+  const { tw, th } = T, k255 = 255 / (T.hi - T.lo), mk = T.mask, mo = t * tw * th;
+  const srcs = vrZs(T, V, t).map(z => vrSrc(T, V, z)).filter(Boolean);
+  if (!srcs.length) return out.fill(0);
+  const acc = T.acc && T.acc.length === tw * th ? T.acc.fill(0) : (T.acc = new Float32Array(tw * th));
+  for (const S0 of srcs) {
+    const { D, base, W, H, f, sl, ic } = S0, ws = 1 / srcs.length;
+    const span = (n, N) => { const a = new Int32Array(n), b = new Int32Array(n); for (let i = 0; i < n; i++) { a[i] = Math.min(N - 1, Math.floor(i * f)); b[i] = Math.min(N, Math.max(a[i] + 1, Math.floor((i + 1) * f))); } return [a, b]; };
+    const [X0, X1] = span(tw, W), [Y0, Y1] = span(th, H);
+    if (f === 1 && W === tw) { // the usual case: one source pixel a texel (previews on phones)
+      for (let y = 0, o = 0; y < th; y++) for (let x = 0, b = base + Y0[y] * W; x < tw; x++, o++) acc[o] += (D[b + x] * sl + ic) * ws;
+    } else if (f === 2) { // 2 x 2 blocks
+      for (let y = 0, o = 0; y < th; y++) {
+        const b0 = base + Y0[y] * W, b1 = Y1[y] - Y0[y] > 1 ? b0 + W : b0;
+        for (let x = 0; x < tw; x++, o++) { const a = X0[x], e = X1[x] - a > 1 ? a + 1 : a; acc[o] += ((D[b0 + a] + D[b0 + e] + D[b1 + a] + D[b1 + e]) * 0.25 * sl + ic) * ws; }
+      }
+    } else for (let y = 0, o = 0; y < th; y++) {
+      const y0 = Y0[y], y1 = Y1[y];
+      for (let x = 0; x < tw; x++, o++) {
+        const x0 = X0[x], x1 = X1[x]; let s = 0, c = 0;
+        for (let yy = y0; yy < y1; yy++) for (let xx = x0, b = base + yy * W; xx < x1; xx++) { s += D[b + xx]; c++; }
+        acc[o] += ((s / c) * sl + ic) * ws;
+      }
+    }
+  }
+  for (let o = 0, n = tw * th; o < n; o++) { if (mk && mk[mo + o]) { out[o] = 0; continue; } const v = (acc[o] - T.lo) * k255; out[o] = v < 0 ? 0 : v > 255 ? 255 : v; }
+  return out;
+}
+function vrPut(t, data) { const gl = VRG.gl, T = S.vr.T; gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_3D, VRG.volTex); gl.texSubImage3D(gl.TEXTURE_3D, 0, 0, 0, t, T.tw, T.th, 1, gl.RED, gl.UNSIGNED_BYTE, data); }
+// slices that have arrived go in; the ones still missing borrow the nearest one, so there are no gaps while it builds
+function vrUpload(budget) {
+  const R = S.vr; if (!R) return false; const T = R.T, V = R.V, t0 = performance.now(); let any = false;
+  for (let t = 0; t < T.td; t++) {
+    if (T.real[t] === 2) continue; const lv = vrLevel(T, V, t); if (lv <= T.real[t]) continue;
+    vrSlice(T, V, t, T.slice); vrPut(t, T.slice); T.real[t] = lv; T.dist[t] = 0; any = true;
+    for (const dir of [-1, 1]) for (let u = t + dir, d = 1; d <= 6 && u >= 0 && u < T.td && !T.real[u] && T.dist[u] > d; u += dir, d++) { vrPut(u, T.slice); T.dist[u] = d; } // small gaps borrow a neighbour
+    if (performance.now() - t0 > budget) break;
+  }
+  return any;
+}
+function vrUploadAll() { const R = S.vr, T = R.T; for (let t = 0; t < T.td; t++) if (T.real[t]) { vrSlice(T, R.V, t, T.slice); vrPut(t, T.slice); } }
+const vrDone = T => { for (let t = 0; t < T.td; t++) if (T.real[t] !== 2) return false; return true; };
+function vrTF() { // the colour table for the preset, moved by Window
+  const R = S.vr, gl = VRG.gl, P = VR_PRESETS[R.preset], out = new Uint8Array(256 * 4), T = R.T;
+  if (!P.pts) return;
+  const pts = P.pts, c0 = (pts[1][0] + pts[pts.length - 2][0]) / 2;
+  for (let i = 0; i < 256; i++) {
+    let hu = T.lo + i * (T.hi - T.lo) / 255;
+    if (!T.ct) hu = -1024 + i * 12; // other modalities: the presets run over the window range
+    hu = (hu - R.shift - c0) / R.wscale + c0;
+    let j = 0; while (j < pts.length - 2 && hu > pts[j + 1][0]) j++;
+    const a = pts[j], b = pts[j + 1], f = clamp((hu - a[0]) / (b[0] - a[0] || 1), 0, 1);
+    for (let ch = 0; ch < 4; ch++) out[i * 4 + ch] = Math.round(255 * (a[ch + 1] + (b[ch + 1] - a[ch + 1]) * f));
+  }
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, VRG.tfTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, out);
+}
+
+// ---- camera: right, up, forward in volume space (X to the patient's left, Y to the back, Z up) ----
+function vrResetView() { const R = S.vr; R.cam = [[1, 0, 0], [0, 0, 1], [0, 1, 0]]; R.zoom = 1; R.pan = [0, 0]; } // from the front, head up
+function vrTurn(ax, ay) { // drag: the volume turns with the finger
+  const R = S.vr, [r, u, f] = R.cam, rot = (a, b, th) => [a.map((x, i) => x * Math.cos(th) + b[i] * Math.sin(th)), b.map((x, i) => x * Math.cos(th) - a[i] * Math.sin(th))];
+  let [r2, f2] = rot(r, f, -ax); let [u2, f3] = rot(u, f2, ay);
+  const n = v => { const l = Math.hypot(...v) || 1; return v.map(x => x / l); };
+  f3 = n(f3); r2 = n(r2.map((x, i) => x - f3[i] * (r2[0] * f3[0] + r2[1] * f3[1] + r2[2] * f3[2])));
+  u2 = [r2[1] * f3[2] - r2[2] * f3[1], r2[2] * f3[0] - r2[0] * f3[2], r2[0] * f3[1] - r2[1] * f3[0]]; // up = right x forward: kept square
+  R.cam = [r2, u2, f3];
+}
+function vrBox(V) { const X = V.w * V.sx, Y = V.h * V.sy, Z = V.n * Math.abs(V.dz), m = Math.max(X, Y, Z); return [X / m / 2, Y / m / 2, Z / m / 2]; }
+function vrScale() { const R = S.vr; return Math.min(VRG.W, VRG.H) * 0.9 * R.zoom; } // CSS px per volume unit (largest side = 1)
+
+// Slices go into the texture as soon as they are ready, in short bursts between frames (not tied to drawing),
+// so 3D fills at the speed of the previews; the picture is redrawn a couple of times a second meanwhile.
+function vrFeed() {
+  const R = S.vr; if (!R || R.feed) return;
+  R.feed = setTimeout(function go() {
+    R.feed = 0; if (S.vr !== R) return;
+    const t0 = performance.now(); while (vrUpload(20) && performance.now() - t0 < 20);
+    if (!vrDone(R.T)) R.feed = setTimeout(go, 60); else { R.doneT = performance.now() - R.t0; R.moved = 0; vrDraw(); }
+  }, 0);
+}
+function vrDraw() {
+  const R = S.vr; if (!R || !VRG || !VRG.W) return;
+  if (R.raf) return;
+  R.raf = requestAnimationFrame(() => { R.raf = 0; vrRender(); });
+}
+function vrRender() {
+  const R = S.vr; if (!R) return;
+  const gl = VRG.gl, T = R.T;
+  vrFeed();
+  const building = !vrDone(T);
+  if (S.vrNoDraw && building) { if (!R.wait) R.wait = setTimeout(() => { R.wait = 0; vrDraw(); }, 300); return; } // tests on a machine without a GPU
+  const k = Math.min(S.dpr, 1.25), cw = Math.max(1, Math.round(VRG.W * k)), ch = Math.max(1, Math.round(VRG.H * k)); // the same sharp picture while it turns as when it is still
+  if (VRG.c.width !== cw || VRG.c.height !== ch) { VRG.c.width = cw; VRG.c.height = ch; }
+  gl.viewport(0, 0, cw, ch);
+  const P = VR_PRESETS[R.preset], [r, u, f] = R.cam, bx = vrBox(R.V), U = VRG.U, sc = vrScale() * k;
+  gl.uniform3fv(U.cR, r); gl.uniform3fv(U.cU, u); gl.uniform3fv(U.cF, f); gl.uniform3fv(U.box, bx);
+  gl.uniform3f(U.tx, 1 / T.tw, 1 / T.th, 1 / T.td); gl.uniform2f(U.res, cw, ch); gl.uniform2f(U.pan, R.pan[0] * k, -R.pan[1] * k);
+  gl.uniform1f(U.scale, sc);
+  const vox = 1 / Math.max(T.tw, T.th, T.td); // one voxel, in volume units
+  gl.uniform1f(U.stepT, vox * 0.6); gl.uniform1f(U.refStep, 1 / 256);
+  gl.uniform1i(U.mode, P.mip ? 1 : 0);
+  if (P.mip) { const lo = (R.mwc - R.mww / 2 - T.lo) / (T.hi - T.lo), ww = R.mww / (T.hi - T.lo); gl.uniform2f(U.mipW, lo, Math.max(1e-4, ww)); }
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_3D, VRG.volTex);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, VRG.tfTex);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  vrOverlay();
+  if (building) { if (!R.wait) R.wait = setTimeout(() => { R.wait = 0; vrDraw(); }, 700); } // slices still arriving: a couple of quick redraws a second, decoding goes first
+  else if (performance.now() - R.moved < 160) vrDraw(); // keep going while it turns; the frame after it stops is the sharp one
+}
+function vrOverlay() { // corner text, the patient directions on the four sides, the cut loop being drawn
+  const R = S.vr, g = VRG.ctx, W = VRG.W, H = VRG.H; g.setTransform(S.dpr, 0, 0, S.dpr, 0, 0); g.clearRect(0, 0, W, H);
+  g.font = '500 12px "IBM Plex Mono", ui-monospace, monospace'; g.fillStyle = '#d9e2e6'; g.shadowColor = '#000'; g.shadowBlur = 3; g.textBaseline = 'top';
+  g.fillText('3D · ' + VR_PRESETS[R.preset].name, 10, 9); if (R.V.se.desc) g.fillText(R.V.se.desc, 10, 26);
+  const T = R.T; let done = 0; for (let t = 0; t < T.td; t++) done += T.real[t] === 2;
+  g.textBaseline = 'bottom';
+  if (done < T.td) g.fillText('Building ' + Math.round(done / T.td * 100) + '%', 10, H - 8);
+  else if (VR_PRESETS[R.preset].mip) g.fillText('WL: ' + Math.round(R.mwc) + ' WW: ' + Math.round(R.mww), 10, H - 8);
+  if (R.T.cuts.length) { g.textAlign = 'right'; g.fillText(R.T.cuts.length + (R.T.cuts.length > 1 ? ' cuts' : ' cut'), W - 10, H - 8); g.textAlign = 'left'; }
+  const lab = v => { const a = v.map(Math.abs), i = a.indexOf(Math.max(...a)); return [['L', 'R'], ['P', 'A'], ['S', 'I']][i][v[i] > 0 ? 0 : 1]; };
+  const [r, u] = R.cam; g.font = '600 13px Inter, system-ui, sans-serif'; g.fillStyle = '#8cc4ff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(lab(u), W / 2, 14); g.fillText(lab(u.map(x => -x)), W / 2, H - 14); g.fillText(lab(r), W - 14, H / 2); g.fillText(lab(r.map(x => -x)), 14, H / 2);
+  g.textAlign = 'left'; g.shadowBlur = 0;
+  if (R.lasso && R.lasso.length > 1) {
+    g.beginPath(); R.lasso.forEach((p, i) => i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)); g.closePath();
+    g.fillStyle = 'rgba(255, 120, 100, .18)'; g.fill(); g.lineWidth = 2; g.strokeStyle = '#ff7a64'; g.setLineDash([6, 4]); g.stroke(); g.setLineDash([]);
+  }
+}
+
+// ---- Cut: everything inside the loop, all the way through, is removed ----
+function vrCutApply(cut) {
+  const R = S.vr, T = R.T, bx = vrBox(R.V), W = cut.W, H = cut.H, q = 2; // the loop, drawn into a quarter-size mask
+  const mw = Math.ceil(W / q), mh = Math.ceil(H / q), cv = document.createElement('canvas'); cv.width = mw; cv.height = mh;
+  const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.beginPath(); cut.pts.forEach((p, i) => i ? g.lineTo(p.x / q, p.y / q) : g.moveTo(p.x / q, p.y / q)); g.closePath(); g.fill();
+  const img = g.getImageData(0, 0, mw, mh).data, inside = new Uint8Array(mw * mh); for (let i = 0; i < mw * mh; i++) inside[i] = img[i * 4 + 3] > 127;
+  if (!T.mask) T.mask = new Uint8Array(T.tw * T.th * T.td);
+  // voxel (x, y, t) -> screen: centre + (dot(p, right), -dot(p, up)) * scale + pan, p in volume units
+  const [r, u] = cut.cam, s = cut.scale, cx = W / 2 + cut.pan[0], cy = H / 2 + cut.pan[1];
+  const px = i => (i + 0.5) / T.tw * 2 * bx[0] - bx[0], py = j => (j + 0.5) / T.th * 2 * bx[1] - bx[1], pz = k => (k + 0.5) / T.td * 2 * bx[2] - bx[2];
+  const ax = r[0] * (2 * bx[0] / T.tw) * s / q, ay = -u[0] * (2 * bx[0] / T.tw) * s / q;
+  const bxs = r[1] * (2 * bx[1] / T.th) * s / q, bys = -u[1] * (2 * bx[1] / T.th) * s / q;
+  const M = T.mask;
+  for (let k = 0; k < T.td; k++) {
+    const z = pz(k);
+    for (let j = 0; j < T.th; j++) {
+      const y = py(j), x0 = px(0);
+      let sx = (cx + (r[0] * x0 + r[1] * y + r[2] * z) * s) / q, sy = (cy - (u[0] * x0 + u[1] * y + u[2] * z) * s) / q;
+      for (let i = 0, o = (k * T.th + j) * T.tw; i < T.tw; i++, o++, sx += ax, sy += ay) {
+        const a = sx | 0, b = sy | 0;
+        if (a >= 0 && b >= 0 && a < mw && b < mh && inside[b * mw + a]) M[o] = 1;
+      }
+    }
+  }
+}
+function vrCutsRebuild() { const T = S.vr.T; T.mask = null; for (const c of T.cuts) vrCutApply(c); vrUploadAll(); S.vr.moved = 0; vrDraw(); }
+
+// ---- input ----
+function vrInput(el) {
+  const P = new Map(); let d = null, pz = null, last = null;
+  const at = e => { const r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  el.addEventListener('wheel', e => { const R = S.vr; if (!R) return; e.preventDefault(); R.zoom = clamp(R.zoom * Math.exp(-wheelDy(e) / 400), 0.2, 20); R.moved = performance.now(); vrDraw(); }, { passive: false });
+  el.addEventListener('pointerdown', e => {
+    const R = S.vr; if (!R) return; el.setPointerCapture(e.pointerId); P.set(e.pointerId, at(e));
+    if (P.size === 1) {
+      const p = at(e), tool = e.button === 2 ? 'pan' : e.button === 1 ? 'zoom' : R.tool;
+      d = { x0: p.x, y0: p.y, lx: p.x, ly: p.y, t0: e.timeStamp, moved: false, tool, shift0: R.shift, ws0: R.wscale, mwc0: R.mwc, mww0: R.mww, pan0: R.pan.slice(), zoom0: R.zoom };
+      if (tool === 'cut') { R.lasso = [p]; vrDraw(); }
+    } else if (P.size === 2) {
+      if (S.vr.lasso) S.vr.lasso = null;
+      d = null; const [a, b] = [...P.values()]; pz = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, m0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, zoom0: R.zoom, pan0: R.pan.slice() };
+    }
+  });
+  el.addEventListener('contextmenu', e => e.preventDefault());
+  el.addEventListener('pointermove', e => {
+    const R = S.vr; if (!R || !P.has(e.pointerId)) return; P.set(e.pointerId, at(e));
+    if (P.size >= 2 && pz) { // pinch: zoom about the fingers, and move with them
+      const [a, b] = [...P.values()], m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, z = clamp(pz.zoom0 * (Math.hypot(a.x - b.x, a.y - b.y) || 1) / pz.d0, 0.2, 20);
+      const cx = VRG.W / 2, cy = VRG.H / 2, f = z / pz.zoom0;
+      R.pan = [m.x - cx - (pz.m0.x - cx - pz.pan0[0]) * f, m.y - cy - (pz.m0.y - cy - pz.pan0[1]) * f]; R.zoom = z; R.moved = performance.now(); vrDraw(); return;
+    }
+    if (!d) return;
+    const p = at(e), dx = p.x - d.lx, dy = p.y - d.ly; if (Math.hypot(p.x - d.x0, p.y - d.y0) > 6) d.moved = true;
+    d.lx = p.x; d.ly = p.y;
+    if (d.tool === 'cut') { const L = R.lasso, q = L[L.length - 1]; if (Math.hypot(p.x - q.x, p.y - q.y) > 3) L.push(p); vrDraw(); return; }
+    if (d.tool === 'wl') {
+      if (VR_PRESETS[R.preset].mip) { R.mwc = d.mwc0 + (p.y - d.y0) * 4; R.mww = Math.max(20, d.mww0 + (p.x - d.x0) * 6); vrDraw(); return; }
+      R.shift = d.shift0 + (p.y - d.y0) * 2; R.wscale = clamp(d.ws0 * Math.exp((p.x - d.x0) / 250), 0.2, 5); vrTF(); vrDraw(); return;
+    }
+    if (d.tool === 'pan') { R.pan = [d.pan0[0] + p.x - d.x0, d.pan0[1] + p.y - d.y0]; }
+    else if (d.tool === 'zoom') { R.zoom = clamp(d.zoom0 * Math.exp(-(p.y - d.y0) / 180), 0.2, 20); }
+    else vrTurn(dx / 180, dy / 180); // turn: a finger across the screen turns it about 1.5 times around
+    R.moved = performance.now(); vrDraw();
+  });
+  const up = e => {
+    const R = S.vr; if (!P.has(e.pointerId)) return; P.delete(e.pointerId);
+    if (R && d && d.tool === 'cut' && R.lasso) {
+      const L = R.lasso; R.lasso = null;
+      if (e.type === 'pointerup' && L.length > 4) {
+        const cut = { pts: L, cam: R.cam.map(v => v.slice()), scale: vrScale(), pan: R.pan.slice(), W: VRG.W, H: VRG.H };
+        R.T.cuts.push(cut); vrCutApply(cut); vrUploadAll(); vrBars();
+      }
+      R.moved = 0; vrDraw();
+    } else if (R && d && e.type === 'pointerup' && !d.moved && e.timeStamp - d.t0 < 300) { // double tap: full screen, as on the other views
+      const now = e.timeStamp, p = at(e);
+      if (last && now - last.t < 320 && Math.hypot(p.x - last.x, p.y - last.y) < 40) { last = null; focusToggle(); } else last = { t: now, x: p.x, y: p.y };
+    }
+    if (P.size === 0) { d = null; if (R) { R.moved = performance.now() - 100; vrDraw(); } } if (P.size < 2) pz = null;
+  };
+  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+}
+
+// ---- open, close, the bars ----
+function vrOpen() {
+  const se = curSeries(); if (!se) return;
+  if (!vrGL()) { say('3D needs WebGL 2, which this browser does not have', 4000); return; }
+  const K = S.vol && S.vol.se === se ? S.vol : S.keepVol && S.keepVol.se === se ? S.keepVol : null;
+  const V = K || volPlan(se); if (typeof V === 'string') { say(V.replace(/^MPR/, '3D'), 4000); return; }
+  if (S.vol) mprToggle(false); // MPR or the single coronal/sagittal gives way; its volume is kept (S.keepVol)
+  if (cine) cineToggle();
+  S.keepVol = V;
+  const T = vrTexPlan(V), gl = VRG.gl;
+  if (VRG.volTex) gl.deleteTexture(VRG.volTex);
+  VRG.volTex = gl.createTexture(); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_3D, VRG.volTex);
+  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  for (const w of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T, gl.TEXTURE_WRAP_R]) gl.texParameteri(gl.TEXTURE_3D, w, gl.CLAMP_TO_EDGE);
+  gl.texImage3D(gl.TEXTURE_3D, 0, gl.R8, T.tw, T.th, T.td, 0, gl.RED, gl.UNSIGNED_BYTE, null); // starts empty (air)
+  const ct = T.ct, pr = S.vrPreset && VR_PRESETS[S.vrPreset] ? S.vrPreset : ct ? 'bone' : 'mip';
+  S.vr = { V, T, preset: pr, shift: 0, wscale: 1, mwc: ct ? 300 : (V.se.def || {}).wc || 300, mww: ct ? 1200 : (V.se.def || {}).ww || 600, tool: 'turn', moved: 0, raf: 0, lasso: null, t0: performance.now() };
+  vrResetView();
+  document.body.classList.add('vr'); $('#vr3d').hidden = false; $('#btn3D').setAttribute('aria-pressed', 'true');
+  vrBars(); vrTF();
+  if (V.count < V.n) { volFillFromMemory(V); if (typeof volCacheLoad === 'function') volCacheLoad(V); }
+  pump(); vrDraw();
+}
+function vrClose() {
+  const R = S.vr; if (!R) return;
+  if (R.raf) cancelAnimationFrame(R.raf); clearTimeout(R.wait); clearTimeout(R.feed);
+  S.vrPreset = R.preset; S.vr = null;
+  if (VRG && VRG.volTex) { VRG.gl.deleteTexture(VRG.volTex); VRG.volTex = null; }
+  if (VRG && VRG.gl) { const x = VRG.gl.getExtension('WEBGL_lose_context'); if (x) x.loseContext(); } // the GPU context goes back (phones allow only a few)
+  document.body.classList.remove('vr'); $('#vr3d').hidden = true; $('#btn3D').setAttribute('aria-pressed', 'false');
+  render(); pump();
+}
+function vrBars() {
+  const R = S.vr; if (!R) return;
+  document.querySelectorAll('#vrPresets [data-p]').forEach(b => { b.setAttribute('aria-pressed', b.dataset.p === R.preset); b.hidden = !R.T.ct && b.dataset.p !== 'mip' && b.dataset.p !== 'soft'; });
+  document.querySelectorAll('#vrTools [data-t]').forEach(b => b.setAttribute('aria-pressed', b.dataset.t === R.tool));
+  $('#vrUndo').disabled = !R.T.cuts.length;
+}
+$('#btn3D').addEventListener('click', () => S.vr ? vrClose() : vrOpen());
+$('#vrClose').addEventListener('click', vrClose);
+document.querySelectorAll('#vrPresets [data-p]').forEach(b => b.addEventListener('click', () => { const R = S.vr; if (!R) return; R.preset = b.dataset.p; R.shift = 0; R.wscale = 1; vrTF(); vrBars(); R.moved = 0; vrDraw(); }));
+document.querySelectorAll('#vrTools [data-t]').forEach(b => b.addEventListener('click', () => { if (!S.vr) return; S.vr.tool = b.dataset.t; vrBars(); }));
+$('#vrUndo').addEventListener('click', () => { const R = S.vr; if (!R || !R.T.cuts.length) return; R.T.cuts.pop(); vrCutsRebuild(); vrBars(); });
+$('#vrReset').addEventListener('click', () => { const R = S.vr; if (!R) return; vrResetView(); R.shift = 0; R.wscale = 1; vrTF(); if (R.T.cuts.length) { R.T.cuts = []; vrCutsRebuild(); } vrBars(); R.moved = 0; vrDraw(); });
+$('#vrShare').addEventListener('click', () => { if (S.vr) shareOpen(); });
+// the other screens close 3D first
+for (const id of ['#btnMPR', '#btnCmp', '#btnSeries']) $(id).addEventListener('click', () => { if (S.vr) vrClose(); }, true);
 
 /* ---------- reporting ----------
    A report panel beside the images (full screen on phones): patient details from the DICOM header,
@@ -6435,7 +6907,7 @@ async function volCacheLoad(V) {
   if (V.count >= V.n) return;
   const rec = await kv('readonly', st => st.get('vol'));
   if (!rec || rec.uid !== V.se.uid || rec.n !== V.n || rec.w !== V.w || rec.h !== V.h || rec.k !== V.k || rec.sl !== V.sl || rec.ic !== V.ic) return;
-  if (S.vol !== V || !rec.data || rec.data.length !== V.data.length) return;
+  if ((S.vol !== V && !(S.vr && S.vr.V === V)) || !rec.data || rec.data.length !== V.data.length) return;
   V.data.set(rec.data); V.filled.fill(1); V.count = V.n; V.ver++; V.cached = true;
   // slices without a preview borrow theirs from the volume (same size): the axial scrolls sharp-ish at once too
   const red = previewLevel(V.se), plane = V.w * V.h;
@@ -6445,7 +6917,7 @@ async function volCacheLoad(V) {
 }
 
 keepRestore(false); // the app starts empty: the last study comes back only when asked for (the Reopen card)
-window.__sliceview = { c3: { imgToWorld, worldToImg, place3D, nearestSlice }, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen } };
+window.__sliceview = { composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice }, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen } };
 })();
 </script>
 
