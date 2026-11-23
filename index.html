@@ -598,7 +598,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.23-0823</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.23-1058</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -3058,7 +3058,7 @@ function selectSeries(i) {
   if (needsReload(se)) { reloadSeries(se, S.cmps.map(C => C.se)).then(ok => { const j = S.series.indexOf(se); if (ok && j >= 0) selectSeries(j); }); return; }
   se.used = performance.now();
   if (typeof RPT !== 'undefined' && RPT && RPT.open) setTimeout(() => { if (RPT.key !== rptKey()) { rptSave(); rptLoad(); } }, 0);
-  if (S.vol && S.vol.se !== se) mprToggle(false);
+  if (S.vol && S.vol.se !== volSe(se)) mprToggle(false);
   if (S.vr && S.vr.V.se !== se) vrClose();
   if (S.keepVol && S.keepVol.se !== se && !(se.isSlab && S.keepVol.se === se.slabOf)) S.keepVol = null; // memory: only the volume of the series on screen is kept
   if (S.cmps.some(C => C.se === se)) { S.cmps = S.cmps.filter(C => C.se !== se); setTimeout(cmpLayout, 0); }
@@ -3241,7 +3241,7 @@ function tapped(p) {
   // MPR: a tap does not move the crosshair (only dragging its centre does); a double tap fills the screen
   if (lastTap && now - lastTap.t < 320 && Math.hypot(p.x - lastTap.x, p.y - lastTap.y) < 40) {
     lastTap = null;
-    if (S.vol && S.vol.se === curSeries() && mprMax('ax')) return;
+    if (S.vol && S.vol.se === volSe(curSeries()) && mprMax('ax')) return;
     if (!S.cmps.length && !S.rf) { focusToggle(); return; } // the single view: a double tap goes full screen, and back
     if (S.fit) zoomAbout(p.x, p.y, S.s, S.ox, S.oy, S.s * 2.5); else fit();
     linkZoom('ax');
@@ -3267,7 +3267,7 @@ cv.addEventListener('pointerdown', e => {
     const h = hitHandle('ax', p);
     if (h && !proGate('Oblique MPR (tilting the planes)')) return;
     if (h) { glide = null; drag = { tool: 'turn', turn: startTurn('ax', h, p), x0: p.x, y0: p.y, moved: false, t0: e.timeStamp, last: p, hist: [], lastT: e.timeStamp }; return; }
-    if (NAV.has(S.tool) && S.vol.se === curSeries()) { // grab the crosshair centre and drag it
+    if (NAV.has(S.tool) && S.vol.se === volSe(curSeries())) { // grab the crosshair centre and drag it
       const c = toScreen(S.vol.cx, S.vol.cy);
       if (S.xhair && Math.hypot(p.x - c.x, p.y - c.y) < CENTRE_GRAB) { glide = null; drag = { tool: 'cross', dx: c.x - p.x, dy: c.y - p.y, x0: p.x, y0: p.y, moved: false, t0: e.timeStamp, last: p, hist: [], lastT: e.timeStamp }; return; }
     }
@@ -3406,6 +3406,8 @@ thumbEl.addEventListener('pointerup', railEnd); thumbEl.addEventListener('pointe
    it on demand and drawn by the same GPU pipeline as the axial view. */
 const VOL_BUDGET = 300e6;
 const MV = {}; // the two MPR views: cor, sag
+// The series MPR builds its volume from: a fused PET-CT uses its CT (the PET is laid over each plane in colour)
+const volSe = se => se && se.isFuse ? se.fuseCT : se;
 function volPlan(se, minK = 0) {
   const im = se.images, n = im.length, a = im[0];
   if (n < 16) return 'MPR needs a series of at least 16 slices';
@@ -3433,6 +3435,7 @@ function volPlan(se, minK = 0) {
 // Puts the values of slice z (any size that is the volume size times a power of 2) into the volume.
 function volPut(img, data, w, h) {
   if (S.vol) volPutV(S.vol, img, data, w, h);
+  if (S.vol && S.vol.pet) volPutV(S.vol.pet, img, data, w, h);
   if (S.vr && S.vr.V !== S.vol) volPutV(S.vr.V, img, data, w, h);
   if (S.rfVols) for (const V of S.rfVols.values()) volPutV(V, img, data, w, h);
 }
@@ -3478,7 +3481,7 @@ function volFillFromMemory(V = S.vol) {
   for (let s = 16; s >= 1; s >>= 1) for (let i = 0; i < n; i += s) if (!seen[i]) { seen[i] = 1; order.push(i); }
   let j = 0;
   const step = () => {
-    if (S.vol !== V && !(S.vr && S.vr.V === V)) return;
+    if (S.vol !== V && !(S.vr && S.vr.V === V) && !(S.vol && S.vol.pet === V)) return;
     const t0 = performance.now();
     while (j < order.length && performance.now() - t0 < 24) {
       const img = ims[order[j++]];
@@ -3554,6 +3557,48 @@ function planeGeom(v) {
     else { v.s = oldMm * hu; const p = crossScreen(v); v.ox += oldP.x - p.x; v.oy += oldP.y - p.y; }
   }
   return v.g;
+}
+// ---- fused PET-CT in MPR: the PET, from its own volume, laid over each CT plane in the fusion colours ----
+// volume position (mm, as in V.P) <-> patient position, through the series' first and last slice
+function volToWorld(V, q) {
+  const a = V.se.images[0], b = V.se.images[V.n - 1], u = a.iop.slice(0, 3), w = a.iop.slice(3, 6), sp = a.spacing || [1, 1], K = 2 ** V.k;
+  const cx = (q[0] / V.sx + 0.5) * K - 0.5, cy = (q[1] / V.sy + 0.5) * K - 0.5, z = V.flip ? q[2] / V.dz : V.n - 1 - q[2] / V.dz, t = V.n > 1 ? z / (V.n - 1) : 0;
+  return [0, 1, 2].map(i => a.ipp[i] + (b.ipp[i] - a.ipp[i]) * t + u[i] * cx * sp[1] + w[i] * cy * sp[0]);
+}
+function worldToVolIdx(V, p) { // patient position -> continuous voxel index [x, y, slice] in V
+  const a = V.se.images[0], b = V.se.images[V.n - 1], u = a.iop.slice(0, 3), w = a.iop.slice(3, 6), sp = a.spacing || [1, 1], K = 2 ** V.k, nrm = v3.cross(u, w);
+  const span = v3.dot(v3.add(b.ipp, a.ipp, -1), nrm), z = V.n > 1 && span ? v3.dot(v3.add(p, a.ipp, -1), nrm) / span * (V.n - 1) : 0, t = V.n > 1 ? z / (V.n - 1) : 0;
+  const o = [0, 1, 2].map(i => a.ipp[i] + (b.ipp[i] - a.ipp[i]) * t), d = v3.add(p, o, -1);
+  return [(v3.dot(d, u) / sp[1] + 0.5) / K - 0.5, (v3.dot(d, w) / sp[0] + 0.5) / K - 0.5, z];
+}
+function petOverlay(v, c2) {
+  const V = S.vol, Pv = V.pet, g = v.g, F = S.fuse; if (!Pv || !Pv.count || !g) return;
+  const key = v.key + '|' + Pv.ver + '|' + Pv.count + '|' + F.max + '|' + F.mix;
+  if (v.petKey !== key) {
+    const W = g.iw, H = g.ih; if (!v.petCv) v.petCv = document.createElement('canvas');
+    if (v.petCv.width !== W || v.petCv.height !== H) { v.petCv.width = W; v.petCv.height = H; }
+    const cx = v.petCv.getContext('2d'), img = cx.createImageData(W, H), out = img.data;
+    const c = v3.dot(V.P, g.n), q00 = v3.add(v3.add(v3.scale(g.n, c), g.a, g.s0 * g.hu), g.b, g.t0 * g.hv);
+    const i00 = worldToVolIdx(Pv, volToWorld(V, q00)), ix = worldToVolIdx(Pv, volToWorld(V, v3.add(q00, g.a, g.hu))), iy = worldToVolIdx(Pv, volToWorld(V, v3.add(q00, g.b, g.hv)));
+    const PW = Pv.w, PH = Pv.h, PN = Pv.n, plane = PW * PH, D = Pv.data, fl = Pv.filled, sl = Pv.sl, ic = Pv.ic;
+    for (let y = 0, o = 0; y < H; y++) {
+      let xi = i00[0] + (iy[0] - i00[0]) * y, yi = i00[1] + (iy[1] - i00[1]) * y, ki = i00[2] + (iy[2] - i00[2]) * y;
+      const dx = ix[0] - i00[0], dy = ix[1] - i00[1], dk = ix[2] - i00[2];
+      for (let x = 0; x < W; x++, o += 4, xi += dx, yi += dy, ki += dk) {
+        if (xi < 0 || yi < 0 || ki < 0 || xi > PW - 1 || yi > PH - 1 || ki > PN - 1) continue;
+        const x0 = xi | 0, y0 = yi | 0, k0 = ki | 0, k1 = k0 < PN - 1 ? k0 + 1 : k0; if (!fl[k0] || !fl[k1]) continue;
+        const fx = xi - x0, fy = yi - y0, fk = ki - k0, xa = x0 < PW - 1 ? 1 : 0, ya = y0 < PH - 1 ? PW : 0, i = k0 * plane + y0 * PW + x0, j = k1 * plane + y0 * PW + x0;
+        const a = (D[i] + (D[i + xa] - D[i]) * fx) * (1 - fy) + (D[i + ya] + (D[i + ya + xa] - D[i + ya]) * fx) * fy;
+        const b = (D[j] + (D[j + xa] - D[j]) * fx) * (1 - fy) + (D[j + ya] + (D[j + ya + xa] - D[j + ya]) * fx) * fy;
+        const r = ((a + (b - a) * fk) * sl + ic) / F.max; // as on the fused axial: faint uptake stays see-through, the colour fades in as it rises
+        if (r > 0.08) { const h = Math.min(255, Math.round(r * 255)) * 3; out[o] = HOT[h]; out[o + 1] = HOT[h + 1]; out[o + 2] = HOT[h + 2]; out[o + 3] = Math.round(255 * F.mix * Math.min(1, (r - 0.08) / 0.25)); }
+      }
+    }
+    cx.putImageData(img, 0, 0); v.petKey = key;
+  }
+  const s00 = mvToScreen(v, 0, 0), s10 = mvToScreen(v, 1, 0), s01 = mvToScreen(v, 0, 1), d = S.dpr;
+  c2.save(); c2.setTransform(d * (s10.x - s00.x), d * (s10.y - s00.y), d * (s01.x - s00.x), d * (s01.y - s00.y), d * s00.x, d * s00.y);
+  c2.imageSmoothingEnabled = true; c2.drawImage(v.petCv, 0, 0); c2.restore();
 }
 // Resamples the plane through the crosshair from the volume (raw values, trilinear).
 function resample(v) {
@@ -3687,7 +3732,7 @@ function handlePositions(kind, centre, W, H) {
   return out;
 }
 function hitHandle(kind, p) {
-  const V = S.vol; if (!V || V.se !== curSeries() || !S.xhair) return null;
+  const V = S.vol; if (!V || V.se !== volSe(curSeries()) || !S.xhair) return null;
   const c = kind === 'ax' ? toScreen(V.cx, V.cy) : crossScreen(MV[kind]), W = kind === 'ax' ? S.W : MV[kind].W, H = kind === 'ax' ? S.H : MV[kind].H;
   let best = null, bd = 26;
   for (const h of handlePositions(kind, c, W, H)) { const d = Math.hypot(h.x - p.x, h.y - p.y); if (d < bd) { bd = d; best = h; } }
@@ -3735,6 +3780,7 @@ function drawMPR1(V) {
     // overlay: crosshair lines with their turning handles, measurements, labels, progress
     const c2 = v.ctx; c2.setTransform(S.dpr, 0, 0, S.dpr, 0, 0); c2.clearRect(0, 0, v.W, v.H);
     if (!(v.gl && v.gl.ok)) { c2.fillStyle = '#000'; c2.fillRect(0, 0, v.W, v.H); }
+    if (V.pet && curSeries() && curSeries().isFuse) petOverlay(v, c2);
     const c = crossScreen(v), far = v.W + v.H;
     if (S.xhair) {
       for (const L of viewLines(kind)) gapLine(c2, c, screenDir(v, L.d), L.col, far);
@@ -3765,7 +3811,7 @@ function gapLine(c2, c, u, col, far) {
 }
 const XCOL = { ax: '#7db8ff', cor: '#ff9f5a', sag: '#b59cff' }; // axial blue, coronal orange, sagittal violet
 function drawAxialCrosshair(img) {
-  const V = S.vol; if (!V || V.se !== curSeries() || !S.xhair) return;
+  const V = S.vol; if (!V || V.se !== volSe(curSeries()) || !S.xhair) return;
   const c = toScreen(V.cx, V.cy), far = S.W + S.H;
   for (const L of viewLines('ax')) gapLine(ctx, c, axScreenDir(L.d), L.col, far);
   drawHandles(ctx, handlePositions('ax', c, S.W, S.H));
@@ -3836,7 +3882,7 @@ function drawPlaneMeas(v) {
 // Linked zoom: zooming one MPR view gives the other two the same physical scale (screen pixels per mm),
 // centred on the crosshair. Fitting one view fits all three.
 function linkZoom(from) {
-  const V = S.vol; if (!V || V.se !== curSeries()) return;
+  const V = S.vol; if (!V || V.se !== volSe(curSeries())) return;
   const im = cur(), spA = (im.spacing || [1, 1])[1];
   const fitFrom = from === 'ax' ? S.fit : MV[from] && MV[from].fit;
   if (fitFrom) {
@@ -3858,7 +3904,7 @@ function linkZoom(from) {
 // Every zoomed-in view except the one being used re-centres on the crosshair when it would lose sight of it.
 // Views showing the whole image (fit) are left alone.
 function keepCrossInView(except) {
-  const V = S.vol; if (!V || V.se !== curSeries()) return;
+  const V = S.vol; if (!V || V.se !== volSe(curSeries())) return;
   const inside = (p, W, H) => p.x > W * 0.1 && p.x < W * 0.9 && p.y > H * 0.1 && p.y < H * 0.9;
   if (except !== 'ax' && S.W > 0 && !S.fit) { const p = toScreen(V.cx, V.cy); if (!inside(p, S.W, S.H)) { S.ox += S.W / 2 - p.x; S.oy += S.H / 2 - p.y; } }
   for (const kind of MVK) {
@@ -3998,9 +4044,10 @@ function mprToggle(on) {
   const want = on == null ? !S.vol : on;
   if (want && S.rf) { S.rf = null; cmpLayout(); } // MPR replaces the coronal/sagittal view
   if (!want) { if (S.vol) S.keepVol = S.vol; S.vol = null; planeModeOff(); for (const k of MVK) { const v = MV[k]; if (v && v.gl) { v.gl.release(); v.gl = null; } } $('#mvAx').hidden = true; $('#planesReset').hidden = true; $('#views').classList.remove('mpr'); $('#vswitch').hidden = true; delete $('#views').dataset.main; delete $('#views').dataset.layout; $('#btnMPR').setAttribute('aria-pressed', 'false'); render(); return; }
-  const se = curSeries(); if (!se) return;
+  const se0 = curSeries(); if (!se0) return; const se = volSe(se0);
   const K = S.keepVol, again = !!(K && K.se === se), plan = again ? Object.assign(K, { nCor: [0, 1, 0], nSag: [1, 0, 0], nAx: [0, 0, 1], order: null }) : volPlan(se);
   if (typeof plan === 'string') { say(plan, 5000); return; }
+  if (se0.isFuse && !(plan.pet && plan.pet.se === se0.fusePT)) { const pp = volPlan(se0.fusePT); plan.pet = typeof pp === 'string' ? null : pp; } // fused: the PET's own volume, for the colour on every plane
   if (S.cmps.length) cmpStop();
   S.vol = plan;
   plan.P = [xOf(plan.cx), yOf(plan.cy), zOf(S.idx)];
@@ -4030,7 +4077,7 @@ function mprToggle(on) {
     MV[kind].fit = true; MV[kind].key = null; MV[kind].g = null; if (!again) MV[kind].meas = null; // the same volume again: its drawings stay
   }
   if (!again) S.keepVol = null; // another series: the old volume is let go
-  volFillFromMemory(); if (typeof volCacheLoad === 'function') volCacheLoad(plan); render(); pump();
+  volFillFromMemory(); if (plan.pet) volFillFromMemory(plan.pet); if (typeof volCacheLoad === 'function') volCacheLoad(plan); render(); pump();
 }
 $('#btnMPR').addEventListener('click', () => { if (S.planeMode) { planeModeOff(); $('#btnMPR').setAttribute('aria-pressed', 'true'); $('#vswitch').hidden = false; viewSet(null, true); planeBarUI(); return; } mprToggle(); });
 /* ---------- Axial | Coronal | Sagittal on a single view: the MPR engine showing one big view, so every tool
@@ -4658,14 +4705,40 @@ function fuseRGB(t, half) {
   return half ? { w: W, h: H, data: out } : out;
 }
 const FUSEKEEP = [], FUSELUT = {};
+// The PET slice that goes with a CT slice (or none, if no PET slice is close enough)
+function fusePet(c, PT) {
+  const pth = PT.images[0].thickness || 4, w = imgToWorld(c, c.cols / 2, c.rows / 2), j = w ? nearestSlice(PT, w) : -1, p = j >= 0 ? PT.images[j] : null, q = p && worldToImg(p, w);
+  return p && q && Math.abs(q.off) <= Math.max(pth, 3) ? p : null;
+}
+// The fused series follows its CT and PET while they are still loading (a big study keeps arriving after it opens):
+// new slices are added, and each slice's PET partner is looked up again. The slice on screen stays on screen.
+function fuseRefresh(se) {
+  const CT = se.fuseCT, PT = se.fusePT;
+  if (se._n === CT.images.length && se._np === PT.images.length) return false;
+  const cur0 = se === curSeries() ? se.images[S.idx] : null, rc = previewLevel(CT), rp = previewLevel(PT);
+  const old = new Map(se.images.map(t => [t.fuse.ct, t]));
+  se.images = CT.images.map(c => {
+    const t = old.get(c);
+    if (!t) return fuseImage(c, PT, rc, rp);
+    if (se._np !== PT.images.length) { const p = fusePet(c, PT); if (p !== t.fuse.pt) { t.fuse.pt = p; t._px = null; t._pv = null; } }
+    return t;
+  });
+  se._n = CT.images.length; se._np = PT.images.length;
+  if (cur0) { const i = se.images.indexOf(cur0); if (i >= 0) S.idx = i; }
+  S.dirty = true;
+  return true;
+}
 function makeFuseSeries(CT, PT) {
-  const uid = 'fuse:' + CT.uid + '|' + PT.uid, had = S.series.find(s => s.uid === uid); if (had) return had;
-  const pth = PT.images[0].thickness || 4, rc = previewLevel(CT), rp = previewLevel(PT);
-  const ims = CT.images.map(c => {
-    const w = imgToWorld(c, c.cols / 2, c.rows / 2), j = w ? nearestSlice(PT, w) : -1, p = j >= 0 ? PT.images[j] : null, q = p && worldToImg(p, w);
+  const uid = 'fuse:' + CT.uid + '|' + PT.uid, had = S.series.find(s => s.uid === uid); if (had) { fuseRefresh(had); return had; }
+  const rc = previewLevel(CT), rp = previewLevel(PT);
+  const ims = CT.images.map(c => fuseImage(c, PT, rc, rp));
+  return makeFuseSeries2(CT, PT, uid, ims);
+}
+function fuseImage(c, PT, rc, rp) {
+  {
     const t = { rows: c.rows, cols: c.cols, spp: 3, mono1: false, slope: 1, intercept: 0, modality: 'FUSED', spacing: c.spacing, thickness: c.thickness,
       ipp: c.ipp, iop: c.iop, location: c.location, instance: c.instance, name: 'fuse:' + c.name, wc: 128, ww: 256,
-      fuse: { ct: c, pt: p && q && Math.abs(q.off) <= Math.max(pth, 3) ? p : null, rc, rp } };
+      fuse: { ct: c, pt: fusePet(c, PT), rc, rp } };
     Object.defineProperty(t, 'pixels', { enumerable: true, configurable: true,
       get() {
         if (this._px && this._pxv === S.fuse.ver) return this._px;
@@ -4676,8 +4749,11 @@ function makeFuseSeries(CT, PT) {
     Object.defineProperty(t, 'preview', { enumerable: true, configurable: true,
       get() { if (this._pv && this._pvv === S.fuse.ver) return this._pv; const pv = fuseRGB(this, true); if (pv) { this._pvv = S.fuse.ver; this._pv = pv; } return pv; }, set(v) { } });
     return t;
-  });
+  }
+}
+function makeFuseSeries2(CT, PT, uid, ims) {
   const se = Object.assign({}, CT, { uid, desc: 'FUSED ' + (CT.desc || 'CT') + ' + ' + (PT.desc || 'PET'), images: ims, isFuse: true, derived: true, fuseCT: CT, fusePT: PT, def: Object.assign({}, CT.def || seriesWindow(CT, CT.images[0])), __zr: null, used: performance.now() });
+  se._n = CT.images.length; se._np = PT.images.length;
   S.series.splice(S.series.indexOf(CT) + 1, 0, se);
   return se;
 }
@@ -4697,6 +4773,7 @@ function fusePair(main) {
 }
 function fuseSync() { // called as the screen is drawn
   const se = curSeries(); if (!se || !se.isFuse) return;
+  fuseRefresh(se); // more CT or PET slices have arrived: the fused series grows with them
   const F = S.fuse; let ch = false;
   if (F.ctc !== S.wc || F.ctw !== S.ww) { F.ctc = S.wc; F.ctw = S.ww; ch = true; } // Window on the fused view (or its CT): the CT under the colour
   const P = S.cmps.find(C => C.se === se.fusePT); // the PET beside it: brighter there (lower top of its window) = stronger colour, as in RadiAnt
@@ -5254,6 +5331,9 @@ function pump() {
       for (let d = 0; d <= 40; d++) for (const s of d ? [d, -d] : [0]) for (const [im, r] of srcs(list[at + s * dir])) if (im && pv(im, r) && !go(im, 'p', r)) return; // quick ones along the scroll
       if (!moving) for (const d of [3, -3, 4, -4, 5, 6, 7, 8]) for (const [im] of srcs(list[at + d * dir])) if (im && needF(im) && !go(im, 'f')) return;
     }
+    if (se.derived && S.vol && S.vol.se === volSe(se)) { // fused PET-CT in MPR: the CT volume, then the PET volume
+      for (const V of [S.vol, S.vol.pet]) if (V && V.count < V.n) for (const im of V.se.images) { const z = V.index.get(im); if (!V.filled[z] && coded(im) && !im.busyV && !im.err && !go(im, 'v', V.k)) return; }
+    }
     if (se.derived) return;
   }
   const near = d => d === 0 ? [idx] : [idx + d * dir, idx - d * dir];
@@ -5666,7 +5746,7 @@ function makeRoom(bytes, keep) {
   for (const s of cand) { if (used + bytes <= memLimit()) break; used -= seBytes(s); dropSeries(s); }
 }
 function dropSeries(se) {
-  if (S.vol && S.vol.se === se) mprToggle(false);
+  if (S.vol && S.vol.se === volSe(se)) mprToggle(false);
   if (S.rfVols) S.rfVols.delete(se);
   const mid = se.images[Math.floor((se.images.length - 1) / 2)]; if (mid) thumbFor(mid); // its picture in the lists is kept
   for (const im of se.images) if (im.src && im.pixels && !coded(im)) { im.pixels = null; im.dropped = true; }
