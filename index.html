@@ -598,7 +598,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.23-1853</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.23-1902</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -686,7 +686,8 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 <script>
 // Raw DEFLATE decoder (RFC 1951) that can stop early: inflateRaw(src, limit) returns at most `limit` bytes.
 // Used to read just the DICOM header at the start of each zip entry without unpacking the image data.
-const Inflate = (() => {
+// A named function, so the slice decoders in the background can carry their own copy.
+function inflateModule() {
   'use strict';
   const LBASE = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258];
   const LEXT = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
@@ -783,7 +784,8 @@ const Inflate = (() => {
     return out.subarray(0, Math.min(o, limit));
   }
   return { inflateRaw };
-})();
+}
+const Inflate = inflateModule();
 const Zip = (() => {
   'use strict';
   // A reader is { size, read(start, end) -> Promise<ArrayBuffer> }, so a big zip
@@ -5214,7 +5216,11 @@ const BUDGET = 300e6, PREVIEW_BUDGET = 280e6, SETTLE = 140; // ms without a slic
 async function jobCodestream(m, D) {
   if (!m.z) return new Uint8Array(m.buf);
   const z = m.z;
-  const b = z.method === 0 ? z.data : await new Response(new Blob([z.data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+  let b = z.data;
+  if (z.method !== 0) { // older browsers (some Huawei and Samsung ones) cannot unzip by themselves: the JavaScript decoder does it there
+    try { b = await new Response(new Blob([z.data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer(); }
+    catch (err) { b = Inflate.inflateRaw(new Uint8Array(z.data), 0).slice().buffer; }
+  }
   const info = Object.assign({ frames: z.frames }, D.readFragments(new DataView(b), z.pixelOffset));
   return new Uint8Array(D.encodedFrame(b, info, z.frame));
 }
@@ -5229,8 +5235,8 @@ async function loadT1(b64) {
 // Worker code is built from these functions' own text. Each is also given its plain name, so the worker can call it
 // by that name even when the app's code is minified (and its functions renamed).
 function workerSrc(fns) { return Object.entries(fns).map(([k, f]) => f.toString() + (f.name && f.name !== k ? '\nconst ' + k + ' = ' + f.name + ';' : '')).join('\n'); }
-const J2K_SRC = workerSrc({ dicomModule, j2kModule, codecsModule, jobCodestream, wasmBytes, loadT1 }) +
-  '\nconst D = dicomModule(), C = codecsModule(); let M = null;\nconst ready = loadT1(' + JSON.stringify(T1_WASM) + ').then(x => { M = j2kModule(x); postMessage({ engine: x ? "wasm" : "js" }); });' +
+const J2K_SRC = workerSrc({ inflateModule, dicomModule, j2kModule, codecsModule, jobCodestream, wasmBytes, loadT1 }) +
+  '\nconst Inflate = inflateModule(), D = dicomModule(), C = codecsModule(); let M = null;\nconst ready = loadT1(' + JSON.stringify(T1_WASM) + ').then(x => { M = j2kModule(x); postMessage({ engine: x ? "wasm" : "js" }); });' +
   '\nonmessage = async e => { const m = e.data; try { const cs = await jobCodestream(m, D); let r; if (m.codec && m.codec !== "j2k") r = await C.decode(m, cs); else { await ready; r = M.decode(cs, m.reduce); } postMessage({ id: m.id, w: r.width, h: r.height, signed: r.signed, data: r.data }, [r.data.buffer]); } catch (err) { postMessage({ id: m.id, err: String((err && err.message) || err) }); } };';
 const DEC = { workers: [], free: [], jobs: new Map(), id: 1, mode: 'init', everOk: false, mainBusy: false, main: null, bytes: 0 };
 function decInit() {
