@@ -598,7 +598,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.23-1058</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.23-1853</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -831,9 +831,13 @@ const Zip = (() => {
     const data = r.view ? r.view(start, start + e.csize) : await r.read(start, start + e.csize);
     if (e.method === 0) return data instanceof ArrayBuffer ? data : data.slice().buffer;
     if (e.method !== 8) throw new Error('Unsupported zip compression (method ' + e.method + ')');
-    if (typeof DecompressionStream === 'undefined') throw new Error('This browser cannot unzip files; update it');
-    const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-    return new Response(stream).arrayBuffer();
+    // older browsers (some Huawei and Samsung ones) cannot unzip by themselves: the JavaScript decoder does it there
+    if (typeof DecompressionStream !== 'undefined') {
+      try { return await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer(); }
+      catch (err) { }
+    }
+    const u = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    return Inflate.inflateRaw(u, e.usize || 0).slice().buffer;
   }
 
   // In-memory zip only: where an entry's data starts, without copying anything.
@@ -5010,6 +5014,9 @@ $('#cmpClose').addEventListener('click', cmpStop);
 $('#btnMore').addEventListener('click', () => { $('#morePrivacyTxt').textContent = S.anon ? 'Show patient details' : 'Hide patient details'; openSheet('#sheetMore'); });
 document.querySelectorAll('#sheetMore [data-do]').forEach(b => b.addEventListener('click', () => { $('#sheetMore').hidden = true; $('#' + b.dataset.do).click(); }));
 $('#inFolder2').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; $('#sheetMore').hidden = true; if (f.length) addFiles(f); });
+// Samsung Internet, Huawei Browser, HarmonyOS and in-app web views have no folder picker, and a folder request there comes back empty.
+// There the folder buttons open the ordinary picker instead: Select all inside the folder, or pick a .zip of it.
+if (/SamsungBrowser|HuaweiBrowser|HarmonyOS|OpenHarmony|; wv\)/.test(navigator.userAgent)) ['#inFolder', '#inFolder2'].forEach(s => { const i = $(s); if (i) i.removeAttribute('webkitdirectory'); });
 
 /* ---------- MPR view switch: all three views, or one of them filling the screen ---------- */
 // Ax / Cor / Sag choose the big view; All shows the other two beside it, or hides them.
@@ -5638,21 +5645,22 @@ async function rdEntry(D, m) {
   return { kind: 'px', info, pixels, bytes: m.read };
 }
 const RD_SRC = workerSrc({ dicomModule, rdEntry }) +
-  '\nconst D = dicomModule();\nonmessage = async e => { const c = e.data.chunk;' +
+  '\nconst D = dicomModule();\nonmessage = async e => { try { const c = e.data.chunk;' +
   ' if (c) { const ab = await c.blob.slice(c.start, c.end).arrayBuffer(); for (const m of e.data.items) { m.ab = ab; m.lho -= c.start; } }' +
   ' const tr = [], out = await Promise.all(e.data.items.map(m => rdEntry(D, m).catch(() => ({ kind: "slow" }))));' +
-  ' for (const r of out) { if (r.buf) tr.push(r.buf); if (r.frames) tr.push(...r.frames); if (r.pixels) for (const p of r.pixels) if (!tr.includes(p.buffer)) tr.push(p.buffer); } postMessage({ id: e.data.id, out }, tr); };';
+  ' for (const r of out) { if (r.buf) tr.push(r.buf); if (r.frames) tr.push(...r.frames); if (r.pixels) for (const p of r.pixels) if (!tr.includes(p.buffer)) tr.push(p.buffer); } postMessage({ id: e.data.id, out }, tr);' +
+  ' } catch (err) { postMessage({ id: e.data.id, out: e.data.items.map(() => ({ kind: "slow" })) }); } };';
 const RD = { ws: null, free: [], wait: [], jobs: new Map(), id: 1 };
 function rdInit() {
   if (RD.ws) return RD.ws.length > 0;
   RD.ws = [];
-  if (typeof Worker === 'undefined' || typeof DecompressionStream === 'undefined' || window.__noRd) return false;
+  if (typeof Worker === 'undefined' || !rawUnzipOk() || window.__noRd) return false;
   try {
     const url = URL.createObjectURL(new Blob([RD_SRC], { type: 'text/javascript' }));
     for (let i = 0; i < clamp((navigator.hardwareConcurrency || 4) - 2, 2, 6); i++) { // unpacking a zip is processor work: all but two cores
       const w = new Worker(url);
-      w.onmessage = e => { const job = RD.jobs.get(e.data.id); RD.jobs.delete(e.data.id); job(e.data.out); };
-      w.onerror = e => { if (e.preventDefault) e.preventDefault(); };
+      w.onmessage = e => { const job = RD.jobs.get(e.data.id); RD.jobs.delete(e.data.id); if (job) job.res(e.data.out); };
+      w.onerror = e => { if (e.preventDefault) e.preventDefault(); rdGiveUp(); };
       RD.ws.push(w); RD.free.push(w);
     }
   } catch (err) { RD.ws = []; }
@@ -5660,10 +5668,24 @@ function rdInit() {
 }
 setTimeout(rdInit, 600); // start the readers early, while the user is still choosing files
 // A worker takes several messages at a time (they wait on storage, not on its processor): the next free one in turn.
+// A reader that fails, or does not answer within a minute, never leaves the study stuck on "Opening":
+// its files, and every file after them, are read on the page instead.
 async function rdRun(items, chunk) {
+  const slow = () => items.map(() => ({ kind: 'slow' }));
+  if (RD.dead) return slow();
   const w = RD.ws[RD.next = ((RD.next || 0) + 1) % RD.ws.length], id = RD.id++;
-  return new Promise(res => { RD.jobs.set(id, res); w.postMessage({ id, items, chunk }); });
+  return new Promise(res => {
+    const t = setTimeout(rdGiveUp, 60000);
+    RD.jobs.set(id, { res: out => { clearTimeout(t); res(out); }, n: items.length });
+    try { w.postMessage({ id, items, chunk }); } catch (err) { rdGiveUp(); }
+  });
 }
+function rdGiveUp() {
+  RD.dead = true;
+  for (const [id, job] of RD.jobs) { RD.jobs.delete(id); job.res(Array.from({ length: job.n }, () => ({ kind: 'slow' }))); }
+}
+// Can this browser unzip by itself? Older ones (some Huawei and Samsung) know the stream but not this format.
+function rawUnzipOk() { try { new DecompressionStream('deflate-raw'); return true; } catch (err) { return false; } }
 // entries: { blob, start, csize, method, lho (zip entries), name, depth, en and r (zip entry and its zip, for the slow path) }
 // On Android, Chrome hands the files of a folder to the page at about 10 a second, however they are asked for:
 // a zip is one file, so its entries come in chunks of about 12 MB, one read each, one per reader at a time and two waiting, and it opens far faster.
