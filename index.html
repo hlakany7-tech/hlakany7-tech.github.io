@@ -598,7 +598,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.23-1925</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.23-1932</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -5665,7 +5665,7 @@ const RD = { ws: null, free: [], wait: [], jobs: new Map(), id: 1 };
 function rdInit() {
   if (RD.ws) return RD.ws.length > 0;
   RD.ws = [];
-  if (typeof Worker === 'undefined' || window.__noRd) return false;
+  if (typeof Worker === 'undefined' || !rawUnzipOk() || window.__noRd) return false;
   try {
     const url = URL.createObjectURL(new Blob([RD_SRC], { type: 'text/javascript' }));
     for (let i = 0; i < clamp((navigator.hardwareConcurrency || 4) - 2, 2, 6); i++) { // unpacking a zip is processor work: all but two cores
@@ -5694,6 +5694,9 @@ async function rdRun(items, chunk) {
 // Some tablets (a Huawei one, for one) hand the page files that a background reader can never read: the read just
 // hangs. Before a study is read, one reader reads the first bytes of its first file; no answer in 4 s, and the
 // study is read on the page instead, as on browsers without readers.
+// Can this browser unzip by itself? Older ones (the Huawei tablet's, some Samsung ones) cannot, and their background
+// readers proved unreliable there too: those browsers read every study on the page, as version 1902 did.
+function rawUnzipOk() { try { new DecompressionStream('deflate-raw'); return true; } catch (err) { return false; } }
 async function rdProbe(f) {
   if (RD.dead || !f) return false;
   const w = RD.ws[0], id = RD.id++;
