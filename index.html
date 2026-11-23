@@ -598,7 +598,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.23-2027</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.23-2313</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2357,6 +2357,7 @@ const ICONS = {
   pan: '<path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/>',
   rotate: '<path d="M20 12a8 8 0 1 1-2.5-5.8"/><path d="M20 4v5h-5"/><circle cx="12" cy="12" r="1.6"/>',
   zoom: '<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5M8 10.5h5M10.5 8v5"/>',
+  loupe: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.3 15.3l5 5"/><circle cx="10.5" cy="10.5" r="2.6"/>',
   length: '<path d="M4 17L17 4l3 3L7 20z"/><path d="M8 13l2 2M11 10l2 2M14 7l2 2"/>',
   angle: '<path d="M4 19h16M4 19L15 6"/><path d="M11 19a7 7 0 0 0-2.2-5"/>',
   roi: '<ellipse cx="12" cy="12" rx="8.5" ry="5.5"/><path d="M12 12h.01"/>',
@@ -2372,6 +2373,7 @@ const TOOLS = [ // toolbar order: the everyday tools first
   ['hu', 'HU', 'Touch and move: the + just above your finger reads the HU of that one pixel. Press and hold the button for a circle'],
   ['pan', 'Pan', 'Drag to move the image'],
   ['zoom', 'Zoom', 'Drag up or down to zoom'],
+  ['loupe', 'Magnifier', 'Touch and move: the circle above your finger shows that part of the image three times larger'],
   ['rotate', 'Rotate', 'Drag around the image to turn it. It snaps to right angles'],
   ['cursor3d', '3D cursor', 'Touch and move: the cross just above your finger marks a point, and every view of this study jumps to it'],
   ['angle', 'Angle', 'Tap three points: start, vertex, end'],
@@ -2488,16 +2490,43 @@ function fitScale() {
 }
 // Zoom to the patient's body rather than the whole field of view (PET-CT is often taken with a very wide one):
 // the box around everything denser than -500 HU on the CT of the slice on screen.
+// The body on one CT slice: the pieces denser than -500 HU, on a grid of about 128 x 128. The scanner table (a thin
+// curve, apart from the body) is left out: only pieces at least 15% the size of the largest one count (arms do).
+function bodyBox(c) {
+  const C = c && (c.pixels ? { data: c.pixels, w: c.cols, h: c.rows } : c.preview); if (!C) return null;
+  const cs = c.slope || 1, ci = c.intercept || 0, thr = (-500 - ci) / cs;
+  const st = Math.max(1, Math.ceil(Math.max(C.w, C.h) / 128)), W = Math.ceil(C.w / st), H = Math.ceil(C.h / st), N = W * H;
+  const m = new Uint8Array(N); for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) m[y * W + x] = C.data[y * st * C.w + x * st] > thr ? 1 : 0;
+  const seen = new Uint8Array(N), q = new Int32Array(N), parts = [];
+  for (let i = 0; i < N; i++) {
+    if (!m[i] || seen[i]) continue;
+    let h = 0, t = 0, n = 0, x0 = W, x1 = -1, y0 = H, y1 = -1; q[t++] = i; seen[i] = 1;
+    while (h < t) {
+      const j = q[h++], x = j % W, y = (j - x) / W; n++;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      for (const k of [x > 0 ? j - 1 : -1, x < W - 1 ? j + 1 : -1, y > 0 ? j - W : -1, y < H - 1 ? j + W : -1]) if (k >= 0 && m[k] && !seen[k]) { seen[k] = 1; q[t++] = k; }
+    }
+    parts.push({ n, x0, x1, y0, y1 });
+  }
+  const big = parts.reduce((a, p) => Math.max(a, p.n), 0); if (big < 20) return null;
+  const keep = parts.filter(p => p.n >= big * 0.15), kx = c.cols / C.w * st, ky = c.rows / C.h * st;
+  return { x0: Math.min(...keep.map(p => p.x0)) * kx, x1: (Math.max(...keep.map(p => p.x1)) + 1) * kx,
+           y0: Math.min(...keep.map(p => p.y0)) * ky, y1: (Math.max(...keep.map(p => p.y1)) + 1) * ky };
+}
+// Zoom so the body fills the view (not the whole field of view with its empty corners and the table). The body is
+// measured on the slice in view and at a quarter, half and three quarters of the series, so no level is cut off.
 function fitBody() {
-  const img = cur(); if (!img || !S.W) return fit();
-  const c = img.fuse ? img.fuse.ct : img, C = c && (c.pixels ? { data: c.pixels, w: c.cols, h: c.rows } : c.preview); if (!C) return fit();
-  const cs = c.slope || 1, ci = c.intercept || 0, thr = (-500 - ci) / cs; let x0 = C.w, x1 = -1, y0 = C.h, y1 = -1;
-  for (let y = 0; y < C.h; y++) for (let x = 0, o = y * C.w; x < C.w; x++, o++) if (C.data[o] > thr) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-  if (x1 < 0 || (x1 - x0) < C.w * 0.15) return fit();
-  const kx = img.cols / C.w, ky = img.rows / C.h, bx0 = x0 * kx, bx1 = (x1 + 1) * kx, by0 = y0 * ky, by1 = (y1 + 1) * ky, a = aspect(img);
+  const img = cur(), se = curSeries(); if (!img || !se || !S.W) return fit();
+  const ct = t => t && (t.fuse ? t.fuse.ct : t), ims = se.images;
+  let b = null;
+  for (const t of [img, ims[Math.floor(ims.length * 0.25)], ims[Math.floor(ims.length * 0.5)], ims[Math.floor(ims.length * 0.75)]]) {
+    const r = bodyBox(ct(t)); if (r) b = b ? { x0: Math.min(b.x0, r.x0), x1: Math.max(b.x1, r.x1), y0: Math.min(b.y0, r.y0), y1: Math.max(b.y1, r.y1) } : r;
+  }
+  if (!b || (b.x1 - b.x0) < img.cols * 0.15) return fit();
+  const a = aspect(img);
   S.ang = 0; S.fh = 1; S.fv = 1;
-  const sc = Math.min(fitScale() * 4, Math.min(S.W / (bx1 - bx0), S.H / ((by1 - by0) * a)) * 0.9);
-  S.s = sc; S.ox = S.W / 2 - ((bx0 + bx1) / 2 - img.cols / 2) * sc; S.oy = S.H / 2 - ((by0 + by1) / 2 - img.rows / 2) * a * sc; S.fit = false;
+  const sc = Math.min(fitScale() * 4, Math.min(S.W / (b.x1 - b.x0), S.H / ((b.y1 - b.y0) * a)) * 0.92);
+  S.s = sc; S.ox = S.W / 2 - ((b.x0 + b.x1) / 2 - img.cols / 2) * sc; S.oy = S.H / 2 - ((b.y0 + b.y1) / 2 - img.rows / 2) * a * sc; S.fit = false;
 }
 function fit() {
   if (!cur() || !S.W) return;
@@ -2951,6 +2980,11 @@ function draw() {
     const moving = performance.now() - (S.moved || 0) < SETTLE, reach = moving ? clamp(Math.ceil((S.vel || 0) / 15), 6, 80) : 6;
     for (let d = 1; d <= reach && show === img; d++) for (const j of [S.idx - d * (S.dir || 1), S.idx + d * (S.dir || 1)]) { const o = ims[j]; if (o && (o.pixels || o.preview)) { show = o; break; } }
   }
+  if (S.bodyFit) { // the body fit for a CT that has just opened: once the slice in view (its CT) can be measured
+    const c0 = cur(), cc = c0 && (c0.fuse ? c0.fuse.ct : c0);
+    if (!S.fit || !S.W) S.bodyFit = false; // zoomed or moved by hand meanwhile: left as it is
+    else if (cc && (cc.pixels || cc.preview)) { S.bodyFit = false; fitBody(); }
+  }
   const ready = show.pixels || show.preview;
   if (!ready && (img.err || !S.painted)) {
     if (gpu) GLR.clear();
@@ -3066,7 +3100,10 @@ function selectSeries(i) {
   if (S.rf) { S.rf.main.se = se; S.rf.fit = true; } // coronal/sagittal: the series picked is the one reformatted
   S.si = i; S.idx = 0; S.draft = null; setTimeout(subUI, 0); S.painted = false; S.dir = 1; S.ang = 0; S.fh = 1; S.fv = 1; S.invert = false; $('#actInvert').setAttribute('aria-pressed', 'false');
   const d = seriesWindow(se, se.images[S.idx]); se.def = d;
-  S.wc = d.wc; S.ww = d.ww; S.preset = 'Default'; S.dirty = true; fit(); buildPresets(); render(); pump();
+  S.wc = d.wc; S.ww = d.ww; S.preset = 'Default'; S.dirty = true; fit();
+  // a CT (or fused PET-CT) opens with its body filling the view, as soon as its slices are there to measure
+  S.bodyFit = se.isFuse || ((se.images[0] && se.images[0].modality) || se.modality) === 'CT';
+  buildPresets(); render(); pump();
 }
 function buildPresets() {
   const se = curSeries(), box = $('#presets'); box.textContent = ''; S.keys = {};
@@ -3283,7 +3320,7 @@ cv.addEventListener('pointerdown', e => {
     if (h) { glide = null; clearTimeout(hold); drag = { tool: 'edit', edit: startEdit(h, p), x0: p.x, y0: p.y, moved: false, t0: e.timeStamp, last: p, hist: [], lastT: e.timeStamp }; render(); return; }
     startDrag(p, tool, e.timeStamp); if (drag) drag.mt = mt;
     clearTimeout(hold);
-    if (!pen && NAV.has(tool) && e.pointerType !== 'mouse') hold = setTimeout(() => { if (drag && !drag.moved && P.size === 1) beginLoupe(drag.last); }, 450);
+    if (tool === 'loupe') beginLoupe(p); // the Magnifier tool: the magnifier at once, following the finger (no press and hold)
   } else if (P.size === 2) { clearTimeout(hold); glide = null; S.loupe = null; drag = null; S.draft = null; startPinch(); render(); }
 });
 cv.addEventListener('pointermove', e => {
@@ -3936,9 +3973,7 @@ function mvInput(v) {
         step: k => { const V = S.vol; if (!V || !v.g) return false; const before = v3.dot(V.P, v.g.n); mvStep(v, k); return Math.abs(v3.dot(S.vol.P, v.g.n) - before) > 1e-6; } };
       feelDown(d.feel, p.y, e.timeStamp);
       if (h && !proGate('Oblique MPR (tilting the planes)')) { d = null; return; }
-      if (!h && !mt && e.pointerType !== 'mouse' && e.pointerType !== 'pen' && !MEASURE.has(tl) && tl !== 'cursor3d') { // press and hold: the magnifier, as on the axial
-        const dd = d; clearTimeout(v.hold); v.hold = setTimeout(() => { if (d === dd && !dd.moved && P2.size === 1) { dd.loupe = true; dd.loupeT = performance.now(); glide = null; v.loupe = { x: dd.last ? dd.last.x : dd.x0, y: dd.last ? dd.last.y : dd.y0 }; render(); } }, 450);
-      }
+      if (!h && !mt && e.pointerType !== 'pen' && tl === 'loupe') { d.loupe = true; d.loupeT = 0; glide = null; v.loupe = { x: p.x, y: p.y }; render(); return; } // the Magnifier tool, as on the axial
       if (h) d.turn = startTurn(v.kind, h, p);
       else if (e.pointerType === 'pen' || MEASURE.has(tl)) {
         const tool = MEASURE.has(tl) ? tl : 'length';
@@ -4270,6 +4305,14 @@ function paneCPU(v, C, show, im, src, wc, ww) {
   g.setTransform(k * by * sx, -k * ay * sx, -k * bx * sy, k * ax * sy, -k * (by * o.x - bx * o.y), -k * (-ay * o.x + ax * o.y));
   g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.drawImage(v.cpu, 0, 0);
   g.restore(); g.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
+  if (v.loupe) { // the magnifier: the same picture, z times larger around the point above the finger, inside the circle
+    const L = loupeGeom(v.loupe, v.W, v.H), q = 1 / det;
+    g.save(); g.beginPath(); g.arc(L.cx, L.cy, L.r, 0, 7); g.clip(); g.fillStyle = '#000'; g.fill();
+    g.translate(L.cx, L.cy); g.scale(L.z, L.z); g.translate(-L.px, -L.py);
+    g.transform(q * by * sx, -q * ay * sx, -q * bx * sy, q * ax * sy, -q * (by * o.x - bx * o.y), -q * (-ay * o.x + ax * o.y));
+    g.imageSmoothingEnabled = !S.pixels; g.drawImage(v.cpu, 0, 0);
+    g.restore(); g.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
+  }
 }
 function drawPane(C) {
   const v = C.view; if (!v || !v.W || !cur()) return;
@@ -4280,7 +4323,7 @@ function drawPane(C) {
   const sh = cmpShared(C), wc = sh ? S.wc : C.wc, ww = sh ? S.ww : C.ww;
   const g = v.ctx; g.setTransform(S.dpr, 0, 0, S.dpr, 0, 0); g.clearRect(0, 0, v.W, v.H);
   if (src && v.gl && v.gl.ok && show.spp !== 3) v.gl.drawView({ data: src.data, key: src.data, w: src.w, h: src.h, slope: show.slope, ic: show.intercept, cssW: v.W, cssH: v.H,
-    map: cmpMap(C), iw: im.cols, ih: im.rows, lo: wc - ww / 2, ww, inv: S.invert !== im.mono1 });
+    map: cmpMap(C), iw: im.cols, ih: im.rows, lo: wc - ww / 2, ww, inv: S.invert !== im.mono1, loupe: v.loupe ? loupeGeom(v.loupe, v.W, v.H) : null });
   else if (src) paneCPU(v, C, show, im, src, wc, ww); // views 5-8, and colour (fused PET-CT)
   else if (!src) { g.fillStyle = '#8d9ca4'; g.font = '500 14px Inter, system-ui, sans-serif'; g.textAlign = 'center'; g.fillText('Opening…', v.W / 2, v.H / 2); g.textAlign = 'left'; }
   const small = v.W < 300;
@@ -4292,6 +4335,7 @@ function drawPane(C) {
   v.info.textContent = lines.join('\n');
   if (show === im && (cmpList(C).length || C.draft)) drawPaneMeas(C);
   if (show === im && c3Here(C.se)) drawC3(v.ctx, cmpToScreen(C), im);
+  if (v.loupe && src) drawLoupeRing(loupeGeom(v.loupe, v.W, v.H), v.ctx);
 }
 function cmpInput(v) { // bound once per pane; acts on whichever series the pane shows now (v.__C)
   const el = v.cv, P2 = new Map(); let d = null, pz = null, last = null; let C = null;
@@ -4313,6 +4357,7 @@ function cmpInput(v) { // bound once per pane; acts on whichever series the pane
         step: k => { if (S.cmpSync) { const b = S.idx; setIdx(S.idx + k); return S.idx !== b; } const b = CC.idx; CC.idx = clamp(CC.idx + k, 0, CC.se.images.length - 1); render(); pump(); return CC.idx !== b; } };
       feelDown(d.feel, p.y, e.timeStamp);
       if (S.rf) { rfInput(v, C, e, 'down', d); if (mt) d.wl = true; return; }
+      if (!mt && e.pointerType !== 'pen' && S.tool === 'loupe') { d.loupe = true; v.loupe = { x: p.x, y: p.y }; render(); return; } // the Magnifier tool, as on the main view
       // the toolbar's tools work in every pane, as on the main view
       const tool = e.pointerType === 'pen' ? (MEASURE.has(S.tool) ? S.tool : 'length') : mt || S.tool, img = cmpImg(C);
       if (tool === 'cursor3d' && img && cur()) { // the 3D cursor from this pane: the main view and the others follow
@@ -4334,7 +4379,8 @@ function cmpInput(v) { // bound once per pane; acts on whichever series the pane
         Object.assign(d, { tool, ox0: S.ox, oy0: S.oy, s0: S.s, ang0: S.ang, a0: Math.atan2(p.y - cy, p.x - cx) });
       }
     }
-    else if (P2.size === 2 && S.rf) { d = null; pz = {}; rfPinch(v, ...P2.values(), pz); }
+    else if (P2.size === 2) { clearTimeout(v.hold); if (v.loupe) { v.loupe = null; render(); } }
+    if (P2.size === 2 && S.rf) { d = null; pz = {}; rfPinch(v, ...P2.values(), pz); }
     else if (P2.size === 2) { d = null; const [a, b] = [...P2.values()], m = toMain({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }); pz = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: m.x, my: m.y, s0: S.s, ox0: S.ox, oy0: S.oy }; }
   });
   el.addEventListener('pointermove', e => {
@@ -4345,7 +4391,9 @@ function cmpInput(v) { // bound once per pane; acts on whichever series the pane
       zoomAbout(pz.mx, pz.my, pz.s0, pz.ox0, pz.oy0, pz.s0 * (Math.hypot(a.x - b.x, a.y - b.y) || 1) / pz.d0);
       S.ox += m.x - pz.mx; S.oy += m.y - pz.my; render();
     } else if (d) {
-      const p = at(e); if (Math.hypot(p.x - d.x0, p.y - d.y0) > 6) d.moved = true;
+      const p = at(e);
+      if (d.loupe) { v.loupe = { x: p.x, y: p.y }; render(); return; } // the magnifier follows the finger
+      d.last = p; if (Math.hypot(p.x - d.x0, p.y - d.y0) > 6) d.moved = true;
       if (S.rf) { d.p = p; rfInput(v, C, e, 'move', d); return; }
       if (d.measure && C.draft) { const toI = cmpMap(C), q = toI(p.x, p.y); if (C.draft.type === 'angle') C.draft.pts[C.draft.pts.length - 1] = q; else if (C.draft.type === 'hu') C.draft.p = toI(p.x, p.y - (d.off || 0)); else if (C.draft.type === 'text') C.draft.p = q; else C.draft.b = q; render(); return; }
       if (d.edit) { moveEdit(d.edit, p); return; }
@@ -4362,7 +4410,8 @@ function cmpInput(v) { // bound once per pane; acts on whichever series the pane
     }
   });
   const up = e => {
-    if (!P2.has(e.pointerId)) return; P2.delete(e.pointerId);
+    if (!P2.has(e.pointerId)) return; P2.delete(e.pointerId); clearTimeout(v.hold);
+    if (d && d.loupe) { v.loupe = null; d = null; P2.clear(); render(); return; } // lifted: the magnifier goes
     if (d && C && !S.rf && (d.measure || d.edit || d.tool)) {
       if (e.type === 'pointerup' || d.measure) {
         if (d.measure) { // a length or ROI is kept once dragged out; an angle after its third point; an HU point at once
@@ -4600,18 +4649,19 @@ function subOpen() {
     const a = main.images[0].sub.a, orig = S.series.find(s => !s.isSub && s.images.includes(a));
     if (orig) { S.subBack = main; subSwitch(orig); return; }
   }
-  if (S.subBack && S.series.includes(S.subBack) && S.subBack.images[0].sub.a && main.images.includes(S.subBack.images[0].sub.a)) { subSwitch(S.subBack); return; } // and again: back to the subtraction
+  // from the original, Subtract always opens the choice again, with the default pair ticked (venous minus non-contrast)
   const cands = S.series.filter(s => !s.isSub && s.uid !== 'sample-phantom' && s.images.length && s.images[0].spp !== 3 && s.images[0].ipp && samePatient(s, main));
   if (cands.length < 2) { say('Subtraction needs two series of this patient: one with contrast and one before it', 4000); return; }
   // the defaults: in Compare, the main view minus the view showing the before-contrast series; otherwise the series on screen minus the one named so
   const shown = S.cmps.map(C => C.se), pre = se => PRE_RX.test(se.desc || '');
-  // default: Arterial minus Non-contrast (by their names); otherwise the series on screen minus the one before contrast
-  const ART_RX = /arter|\bart\b|\bcta\b|angio|early|\bAP\b/i, study = main.studyUid, same = cands.filter(s => s.studyUid === study);
-  const arts = same.filter(s => ART_RX.test(s.desc || '') && !pre(s)), big = l => l.slice().sort((x, y) => y.images.length - x.images.length)[0];
-  let A = big(arts) || (main.isSub ? main.images[0].sub.a && cands.find(s => s.images.includes(main.images[0].sub.a)) : main);
+  // default: Venous (portal) minus Non-contrast (by their names); with no venous phase, Arterial minus Non-contrast;
+  // otherwise the series on screen minus the one before contrast
+  const VEN_RX = /venous|\bven\b|portal|\bp\.?v\.?\b|\bpvp\b/i, ART_RX = /arter|\bart\b|\bcta\b|angio|early|\bAP\b/i, study = main.studyUid, same = cands.filter(s => s.studyUid === study);
+  const vens = same.filter(s => VEN_RX.test(s.desc || '') && !pre(s)), arts = same.filter(s => ART_RX.test(s.desc || '') && !pre(s)), big = l => l.slice().sort((x, y) => y.images.length - x.images.length)[0];
+  let A = big(vens) || big(arts) || (main.isSub ? main.images[0].sub.a && cands.find(s => s.images.includes(main.images[0].sub.a)) : main);
   if (!A || pre(A)) A = cands.find(s => !pre(s) && s !== A) || A;
   const pool = cands.filter(s => s !== A && s.studyUid === A.studyUid);
-  const B = big(pool.filter(pre)) || shown.find(s => pool.includes(s)) || pool[0] || cands.find(s => s !== A);
+  let B = big(pool.filter(pre)) || shown.find(s => pool.includes(s)) || pool[0] || cands.find(s => s !== A);
   for (const [id, pick] of [['#subA', A], ['#subB', B]]) {
     const sel = $(id); sel.textContent = '';
     cands.forEach((s, i) => { const o = document.createElement('option'); o.value = i; o.textContent = (s.desc || 'Series') + ' · ' + s.images.length + ' img'; if (s === pick) o.selected = true; sel.append(o); });
@@ -4782,7 +4832,9 @@ function fuseSync() { // called as the screen is drawn
 }
 function fusePetWindow(max) { const se = curSeries(), P = se && se.isFuse && S.cmps.find(C => C.se === se.fusePT); if (P) { P.wc = max / 2; P.ww = max; P.__fm = max; } }
 function fuseUI() { // the button shows itself when the study has a PET and a CT; lit while the fused view is on screen
-  const b = $('#actFuse'); if (!b) return; const se = curSeries(), on = !!(se && se.isFuse), can = on || !!fusePair(se);
+  // Fuse shows once the study has finished loading: pressed while the CT or PET is still coming in, it stuttered for a minute
+  let loading = false; try { loading = !!(LIVE_ST && !LIVE_ST.done); } catch (e) { } // (before the loader is set up: nothing loading)
+  const b = $('#actFuse'); if (!b) return; const se = curSeries(), on = !!(se && se.isFuse), can = on || (!loading && !!fusePair(se));
   const key = can + ':' + on; if (b.__k === key) return; b.__k = key;
   b.hidden = !can; b.setAttribute('aria-pressed', on);
 }
@@ -5711,6 +5763,29 @@ async function rdAll(list, st, chunked, tight) {
     const now = Date.now(); if (!st.opened && now - st.last > 80) { st.last = now; showLoading(st); }
   });
 }
+// A PET-CT opens on its CT: the PET (mostly black, little read on its own) is no longer read first just because it has
+// more slices. The first file of each folder says what the folder holds; the CT folder is read and shown first, the PET after it.
+const petLike = se => /^(PT|NM)$/.test(((se.images[0] && se.images[0].modality) || se.modality || '').toUpperCase());
+async function groupHead(e) {
+  try {
+    const ab = e.en ? await Zip.read(e.r, e.en) : await e.blob.slice(0, 131072).arrayBuffer(), h = DICOM.parse(ab, { headerOnly: true });
+    return { mod: String(h.modality || '').trim().toUpperCase(), desc: String(h.seriesDesc || '') };
+  } catch (err) { return { mod: '', desc: '' }; }
+}
+// A CT with several phases opens on its venous (portal) phase, the one read first: that folder is read first and
+// shown as soon as it is complete, the other phases follow. (Folders named by the scanner's series description.)
+const VENOUS_RX = /venous|\bven\b|portal|\bp\.?v\.?\b|\bpvp\b/i;
+const isVenous = se => VENOUS_RX.test(se.desc || '') && !PRE_RX.test(se.desc || '');
+async function ctFirst(gs) {
+  if (gs.length < 2) return gs;
+  const heads = await Promise.all(gs.map(g => groupHead(g[0]))), mods = heads.map(h => h.mod);
+  if (!mods.includes('CT') || !mods.some(m => m === 'PT' || m === 'NM')) { // not a PET-CT: the venous phase first, if there is one
+    const v = gs.map((g, i) => [g, heads[i]]).filter(([g, h]) => g.length >= 16 && VENOUS_RX.test(h.desc) && !PRE_RX.test(h.desc)).sort((a, b) => b[0].length - a[0].length)[0];
+    return v ? [v[0], ...gs.filter(g => g !== v[0])] : gs; // otherwise the biggest folder first, as before
+  }
+  const rank = m => m === 'CT' ? 0 : m === 'PT' || m === 'NM' ? 2 : 1;
+  return gs.map((g, i) => [g, rank(mods[i])]).sort((a, b) => (a[1] - b[1]) || (b[0].length - a[0].length)).map(x => x[0]);
+}
 async function rdZip(r, name, st, depth) {
   if (depth >= 3) { st.n++; st.bad.push(name + ': archive nested too deep'); return; }
   let list;
@@ -5728,7 +5803,7 @@ async function rdZip(r, name, st, depth) {
   // The main series first: PACS zips keep each series in a folder of its own. The biggest folder is read first and
   // its series opens, complete, as soon as it is in; the other series follow quietly and appear in the Series list.
   const groups = new Map(); for (const e of fast) { const d = e.en.name.replace(/[^/]*$/, ''); if (!groups.has(d)) groups.set(d, []); groups.get(d).push(e); }
-  const gs = [...groups.values()].sort((a, b) => b.length - a.length);
+  const gs = await ctFirst([...groups.values()].sort((a, b) => b.length - a.length));
   if (st.early && gs.length > 1 && gs[0].length >= 16) {
     await rdAll(gs[0], st, true, true);
     st.early();
@@ -5785,7 +5860,7 @@ async function addFiles(files, opts) {
   const list = [...files]; if (!list.length) return;
   const st = { ok: 0, n: 0, total: list.length, bad: [], last: 0, seen: new Set(), t0: performance.now(), memN: 0 }; LIVE_ST = st;
   const openMain = () => { // the largest series read so far, at its first slice
-    const main = [...st.seen].sort((a, b) => b.images.length - a.images.length)[0];
+    const main = [...st.seen].sort((a, b) => (petLike(a) - petLike(b)) || ((isVenous(b) && b.images.length >= 16) - (isVenous(a) && a.images.length >= 16)) || (b.images.length - a.images.length))[0]; // a PET-CT opens on its CT; a CT with phases on its venous phase
     // a newly opened case starts on its own: one plain view (Compare and MPR close; the earlier case stays in Series)
     if (!(opts && opts.restore)) { if (S.cmps.length || S.rf) { S.cmps = []; S.rf = null; cmpLayout(); } if (S.vr) vrClose(); if (S.vol) mprToggle(false); S.keepVol = null; S.subBack = null; }
     selectSeries(S.series.indexOf(main));
@@ -5806,7 +5881,7 @@ async function addFiles(files, opts) {
       // read first and its series opens, complete, as soon as it is in; the others follow behind it
       const dir = f => (f.webkitRelativePath || f.__path || '').replace(/[^/]*$/, ''), groups = new Map();
       for (const e of ents) { const d = dir(e.blob); if (!groups.has(d)) groups.set(d, []); groups.get(d).push(e); }
-      const gs = [...groups.values()].sort((a, b) => b.length - a.length);
+      const gs = await ctFirst([...groups.values()].sort((a, b) => b.length - a.length));
       st.hint = rest.length >= 300 && matchMedia('(pointer: coarse)').matches; // a phone or tablet: folders are slow there
       if (st.early && gs.length > 1 && gs[0].length >= 16) { st.firstN = gs[0].length; await rdAll(gs[0], st); st.early(); await rdAll(gs.slice(1).flat(), st); }
       else await rdAll(ents, st);
@@ -5839,6 +5914,7 @@ async function addFiles(files, opts) {
   if (st.seen.size) { if (st.bad.length) say(st.bad.length + ' file' + (st.bad.length === 1 ? '' : 's') + ' could not be read and ' + (st.bad.length === 1 ? 'was' : 'were') + ' skipped', 4000); }
   else say(st.bad.length ? st.bad[0] : 'No DICOM images found', 9000);
   if (st.bad.length) console.warn(st.bad.join('\n'));
+  st.done = true; fuseUI(); // the study is all in: Fuse can show
   if (st.seen.size && !(opts && opts.restore)) keepStudy(list);
 }
 $('#inFiles').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; if (f.length) addFiles(f); });
