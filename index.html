@@ -598,7 +598,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.23-1915</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.23-1925</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -5654,7 +5654,9 @@ async function rdEntry(D, m) {
   return { kind: 'px', info, pixels, bytes: m.read };
 }
 const RD_SRC = workerSrc({ inflateModule, dicomModule, rdEntry }) +
-  '\nconst Inflate = inflateModule(), D = dicomModule();\nonmessage = async e => { try { const c = e.data.chunk;' +
+  '\nconst Inflate = inflateModule(), D = dicomModule();\nonmessage = async e => { try {' +
+  ' if (e.data.probe) { const ab = await e.data.blob.slice(0, 132).arrayBuffer(); postMessage({ id: e.data.id, out: ab.byteLength }); return; }' +
+  ' const c = e.data.chunk;' +
   ' if (c) { const ab = await c.blob.slice(c.start, c.end).arrayBuffer(); for (const m of e.data.items) { m.ab = ab; m.lho -= c.start; } }' +
   ' const tr = [], out = await Promise.all(e.data.items.map(m => rdEntry(D, m).catch(() => ({ kind: "slow" }))));' +
   ' for (const r of out) { if (r.buf) tr.push(r.buf); if (r.frames) tr.push(...r.frames); if (r.pixels) for (const p of r.pixels) if (!tr.includes(p.buffer)) tr.push(p.buffer); } postMessage({ id: e.data.id, out }, tr);' +
@@ -5688,6 +5690,20 @@ async function rdRun(items, chunk) {
     RD.jobs.set(id, { res: out => { clearTimeout(t); res(out); }, n: items.length });
     try { w.postMessage({ id, items, chunk }); } catch (err) { rdGiveUp(); }
   });
+}
+// Some tablets (a Huawei one, for one) hand the page files that a background reader can never read: the read just
+// hangs. Before a study is read, one reader reads the first bytes of its first file; no answer in 4 s, and the
+// study is read on the page instead, as on browsers without readers.
+async function rdProbe(f) {
+  if (RD.dead || !f) return false;
+  const w = RD.ws[0], id = RD.id++;
+  const ok = await new Promise(res => {
+    const t = setTimeout(() => { RD.jobs.delete(id); res(false); }, 4000);
+    RD.jobs.set(id, { res: n => { clearTimeout(t); res(typeof n === 'number' && n >= 0); }, n: 0 });
+    try { w.postMessage({ id, probe: true, blob: f }); } catch (err) { clearTimeout(t); RD.jobs.delete(id); res(false); }
+  });
+  if (!ok) RD.dead = true;
+  return ok;
 }
 function rdGiveUp() {
   RD.dead = true;
@@ -5812,7 +5828,7 @@ async function addFiles(files, opts) {
     finishLoad(); showLoading(null); openMain(); st.opened = true; st.tFirst = performance.now() - st.t0;
   };
   $('#status').classList.add('off'); showLoading(st); await tick();
-  if (rdInit()) { // a .zip goes straight to its table of contents, without a first read to check what it is
+  if (rdInit() && await rdProbe(list[0])) { // a .zip goes straight to its table of contents, without a first read to check what it is
     const zips = list.filter(f => /\.zip$/i.test(f.name) && f.size > 22), rest = list.filter(f => !zips.includes(f));
     for (const f of zips) { try { await rdZip(Zip.fromBlob(f), f.name, st, 0); } catch (err) { st.bad.push(f.name + ': ' + err.message); } }
     if (rest.length) {
