@@ -663,7 +663,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1524</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1530</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -4709,7 +4709,7 @@ function consGoOffline(quiet) {
   if (ws) try { ws.close(); } catch (e) { }
   if (!quiet) { consStatus('Offline'); consUI(); }
 }
-const consSend = (dst, type, payload) => { if (CONS.ws && CONS.ws.readyState === 1) { CONS.ws.send(JSON.stringify({ type, payload, dst })); if (type !== 'CANDIDATE') consLog('sent ' + type + ' to ' + dst.replace(/^sliceview-/, '')); } else consLog('not sent ' + type + ' (offline)'); };
+const consSend = (dst, type, payload) => { if (CONS.ws && CONS.ws.readyState === 1) { CONS.ws.send(JSON.stringify(payload ? { type, payload, dst } : { type, dst })); if (type !== 'CANDIDATE') consLog('sent ' + type + ' to ' + dst.replace(/^sliceview-/, '')); } else consLog('not sent ' + type + ' (offline)'); };
 function consSignal(m) {
   if (m.type === 'OPEN') { CONS.online = true; CONS.retry = 0; consStatus('Online as ' + CONS.me + ': colleagues can reach you by this name'); consUI();
     for (const p of [...CONS.peers.values()]) if (p.caller && p.state === 'connecting') { consClose(p, true); consPeer(p.id, p.name, true); } // calls waiting: sent again
@@ -4720,13 +4720,13 @@ function consSignal(m) {
   if (m.type === 'LEAVE') { const p = [...CONS.peers.values()].find(x => x.id === m.src); if (p) consClose(p, true, 'left'); return; }
   const pl = m.payload || {};
   if (m.type === 'OFFER') {
-    const name = String(pl.from || m.src.replace(/^sliceview-/, '')).slice(0, 40);
+    const name = String((pl.metadata && pl.metadata.from) || m.src.replace(/^sliceview-/, '')).slice(0, 40);
     const old = CONS.peers.get(m.src);
     if (old && old.caller && old.state === 'connecting' && consKey(CONS.me) < m.src) return; // both called at once: one call is kept (the other phone answers ours)
     if (old && !old.caller && old.offer === pl.sdp.sdp && old.state !== 'closed') return; // the same call again (it is repeated until answered)
     if (old) consClose(old, true);
-    const p = consPeer(m.src, name, false); p.offer = pl.sdp.sdp;
-    p.pc.setRemoteDescription(pl.sdp).then(() => p.pc.createAnswer()).then(a => p.pc.setLocalDescription(a)).then(() => consSend(m.src, 'ANSWER', { sdp: p.pc.localDescription, connectionId: pl.connectionId, from: CONS.me })).then(() => consFlush(p)).catch(() => consClose(p, true));
+    const p = consPeer(m.src, name, false); p.offer = pl.sdp.sdp; if (pl.connectionId) p.cid = pl.connectionId;
+    p.pc.setRemoteDescription(pl.sdp).then(() => p.pc.createAnswer()).then(a => p.pc.setLocalDescription(a)).then(() => consSend(m.src, 'ANSWER', { sdp: { type: p.pc.localDescription.type, sdp: p.pc.localDescription.sdp }, type: 'data', connectionId: p.cid, browser: 'chrome' })).then(() => consFlush(p)).catch(() => consClose(p, true));
     return;
   }
   const p = CONS.peers.get(m.src); if (!p) return;
@@ -4745,14 +4745,15 @@ function consPeer(id, name, caller) {
     consClose(p, true);
   }, caller ? 90000 : 30000);
   pc.oniceconnectionstatechange = () => { consLog(name + ': route ' + pc.iceConnectionState); consUI(); };
-  pc.onicecandidate = e => { if (e.candidate) consSend(id, 'CANDIDATE', { candidate: e.candidate, connectionId: 'sv' }); };
+  p.cid = 'dc_' + Math.random().toString(36).slice(2, 12);
+  pc.onicecandidate = e => { if (e.candidate) consSend(id, 'CANDIDATE', { candidate: e.candidate.toJSON(), type: 'data', connectionId: p.cid }); };
   pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') { consNote(p, 'The connection failed (some networks block direct connections; try the same Wi-Fi)'); consClose(p, true); } };
   const wire = dc => { p.dc = dc; dc.binaryType = 'arraybuffer'; dc.bufferedAmountLowThreshold = 1 << 20;
     dc.onopen = () => { p.state = 'open'; consNote(p, 'Connected with ' + p.name); consUI(); consChatOpen(p); };
     dc.onclose = () => { if (p.state !== 'closed') consClose(p, true, 'left'); };
     dc.onmessage = ev => consData(p, ev.data); };
   if (caller) { wire(pc.createDataChannel('sv', { ordered: true }));
-    const offer = () => consSend(id, 'OFFER', { sdp: pc.localDescription, type: 'data', connectionId: 'sv', from: CONS.me });
+    const offer = () => consSend(id, 'OFFER', { sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, type: 'data', connectionId: p.cid, label: p.cid, reliable: true, serialization: 'raw', metadata: { from: CONS.me }, browser: 'chrome' });
     pc.createOffer().then(o => pc.setLocalDescription(o)).then(offer).catch(() => consClose(p, true));
     p.again = setInterval(() => { if (p.answered || p.state !== 'connecting') { clearInterval(p.again); return; } if (CONS.online && pc.localDescription) offer(); }, 5000); } // repeated until answered: they may open Sliceview a moment later
   else pc.ondatachannel = e => wire(e.channel);
@@ -4857,7 +4858,7 @@ $('#consRecent').addEventListener('click', e => { const b = e.target.closest('bu
 $('#consPeers').addEventListener('click', e => { const b = e.target.closest('button'); const p = b && CONS.peers.get(b.dataset.id); if (p) { $('#sheetCons').hidden = true; consChatOpen(p); } });
 $('#btnChat').addEventListener('click', () => { const p = CONS.open || [...CONS.peers.values()].sort((a, b) => b.unread - a.unread)[0]; if (!p) return; if (!$('#consChat').hidden && CONS.open === p) { $('#consChat').hidden = true; return; } consChatOpen(p); });
 $('#consHide').addEventListener('click', () => { $('#consChat').hidden = true; });
-$('#consEnd').addEventListener('click', () => { const p = CONS.open; if (!p) return; consText(p, { t: 'bye' }); consSend(p.id, 'LEAVE', {}); consClose(p, true); });
+$('#consEnd').addEventListener('click', () => { const p = CONS.open; if (!p) return; consText(p, { t: 'bye' }); consSend(p.id, 'LEAVE'); consClose(p, true); });
 $('#consForm').addEventListener('submit', e => { e.preventDefault(); const p = CONS.open, i = $('#consMsg'), t = i.value.trim(); if (!p || !t || p.state !== 'open') return; consText(p, { t: 'chat', text: t }); p.chat.push({ from: CONS.me, text: t }); i.value = ''; consChatDraw(); });
 $('#consChat').querySelector('.cons-send').addEventListener('click', e => { const b = e.target.closest('button'); if (b && CONS.open && CONS.open.state === 'open') consOffer(CONS.open, b.dataset.s); });
 $('#consLog').addEventListener('click', e => { const b = e.target.closest('button[data-a]'); const p = CONS.open; if (!b || !p || !p.inbox) return;
