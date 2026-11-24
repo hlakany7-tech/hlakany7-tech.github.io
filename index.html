@@ -663,7 +663,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1742</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1751</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -4986,7 +4986,7 @@ async function consIngestFile(c, r, f, data) {
   if (c.inbox !== r || c.state === 'closed') return; // ended meanwhile: dropped
   const dup = f.i != null && (r.have || (r.have = new Set())).has(f.i); if (f.i != null) r.have.add(f.i); // never the same slice twice
   if (!dup) try {
-    if (b) { const res = addBuffer(b.buffer.byteLength === b.length ? b.buffer : b.slice().buffer, 'case-' + f.n); if (res) for (const s of res.all) { s.__consCase = r.caseId; } }
+    if (b) { const res = addBuffer(b.buffer.byteLength === b.length ? b.buffer : b.slice().buffer, 'case-' + f.n); if (res) for (const s of res.all) { s.__consCase = r.caseId; r.lastBase = String(s.uid).split('#')[0]; } }
   } catch (e) { }
   if (!c.cases.includes(r.caseId)) c.cases.push(r.caseId);
   r.got++; consText(c, { t: 'ack', id: r.id, n: f.n });
@@ -4996,6 +4996,7 @@ function consArriving(se) { // a series of a case still arriving: how many of it
   if (!se || !se.__consCase) return null;
   for (const c of CONS.peers.values()) { const r = c.inbox; if (!r || r.caseId !== se.__consCase || !r.sizes) continue;
     const base = String(se.uid).split('#')[0], need = r.sizes[base]; if (!need) return null;
+    if (r.lastBase && r.lastBase !== base) return null; // the next series has started coming: this one is all in
     const got = S.series.filter(s => s.__consCase === r.caseId && String(s.uid).split('#')[0] === base).reduce((a, s) => a + s.images.length, 0);
     return got < need ? { got, need, r } : null; }
   return null;
@@ -5012,6 +5013,7 @@ function consRecvDone(c, r) {
     const main = mine().sort((a, b) => b.images.length - a.images.length)[0];
     if (S.cmps.length || S.rf) { S.cmps = []; S.rf = null; cmpLayout(); } if (S.vol) mprToggle(false);
     selectSeries(S.series.indexOf(main)); S.idx = 0; // the slice the sender was on comes first
+    if (innerWidth < 700) $('#consChat').hidden = true; // a phone: the case on the whole screen (the chat button brings the conversation back)
     clearInterval(r.wantT); r.wantT = setInterval(() => { // where you are looking: the slices around it come next
       if (c.inbox !== r) { clearInterval(r.wantT); return; }
       const se = curSeries(), im = cur(); if (!se || se.__consCase !== r.caseId || !im || im.location == null) return;
