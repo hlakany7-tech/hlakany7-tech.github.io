@@ -126,7 +126,39 @@ body.vr #vswitch, body.vr #cmpbar, body.vr #planesReset, body.vr #presets, body.
 .views.cmp.rf[data-n="1"] { --n: 1; } .views.cmp.rf[data-n="2"] { --n: 2; } .views.cmp.rf[data-n="3"] { --n: 3; } .views.cmp.rf[data-n="4"] { --n: 4; }
 .views.cmp.rf[data-n="5"], .views.cmp.rf[data-n="6"] { --n: 3; grid-template-rows: repeat(2, minmax(0, 1fr)); }
 .views.cmp.rf[data-n="7"], .views.cmp.rf[data-n="8"] { --n: 4; grid-template-rows: repeat(2, minmax(0, 1fr)); }
+.fsl { display: inline-flex; align-items: center; gap: 6px; } .fsl svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.roi-menu { position: fixed; z-index: 60; display: flex; gap: 4px; padding: 5px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+.roi-menu[hidden] { display: none; }
+.roi-menu button { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 70px; padding: 8px 6px; border: 0; border-radius: 10px; background: transparent; color: var(--fg); font: 500 12px var(--font-ui); cursor: pointer; }
+.roi-menu button[aria-current="true"] { background: var(--accent); color: var(--accent-ink); }
+.roi-menu svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.tagcard { max-width: 980px; height: 100%; }
+.tagttl { display: flex; flex-direction: column; min-width: 0; } .tagttl .note { margin: 0; overflow-wrap: anywhere; }
+#tagFind { width: 100%; box-sizing: border-box; min-height: 42px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2); color: var(--fg); font: 14px var(--font-ui); }
+.tagwrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+.tags { width: 100%; border-collapse: collapse; font: 12.5px/1.35 var(--font-mono); }
+.tags th { position: sticky; top: 0; background: var(--panel-2); color: var(--muted); font: 600 11px var(--font-ui); text-transform: uppercase; letter-spacing: .05em; text-align: left; padding: 7px 6px; }
+.tags td { padding: 4px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+.tags .tg { color: var(--muted); white-space: nowrap; } .tags .vr { color: var(--muted); } .tags .nm { font-family: var(--font-ui); min-width: 150px; }
+.tags .vl { overflow-wrap: anywhere; min-width: 160px; } .tags .vl.pii-off { color: var(--muted); font-style: italic; }
+.tags .tg2 { display: none; }
+@media (max-width: 600px) { .tags .tg, .tags .vr, .tags th:nth-child(1), .tags th:nth-child(3) { display: none; } .tags .tg2 { display: block; color: var(--muted); font: 11px var(--font-mono); } .tags .nm { min-width: 0; width: 45%; } .tags .vl { min-width: 0; } }
+.tags tr.it td { color: var(--accent); border-top-style: dashed; } .tags .none { color: var(--muted); padding: 14px; font-family: var(--font-ui); }
 .cmp-bar[hidden] { display: none; }
+#btnChat { position: relative; } #btnChat[hidden], #consChat[hidden], #consProg[hidden] { display: none !important; }
+.cbadge { position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: #e5484d; color: #fff; font: 700 10px/16px var(--font-ui); }
+.cons-recent { display: flex; flex-wrap: wrap; gap: 6px; }
+.cons-chat { position: fixed; z-index: 55; right: max(12px, env(safe-area-inset-right, 0px)); bottom: max(12px, env(safe-area-inset-bottom, 0px)); width: min(380px, calc(100vw - 24px)); height: min(460px, 62vh); display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 14px 40px rgba(0,0,0,.55); }
+.cons-head { display: flex; align-items: center; gap: 8px; } .cons-head b { font: 600 15px var(--font-ui); } .cons-head span { flex: 1; color: var(--muted); font-size: 12px; } .cons-head .btn { min-height: 34px; padding: 0 12px; }
+.cons-send { display: flex; gap: 6px; } .cons-send .btn { flex: 1; justify-content: center; min-height: 36px; font-size: 13px; }
+.cons-prog { position: relative; height: 22px; border-radius: 8px; background: var(--panel-2); overflow: hidden; font: 600 12px/22px var(--font-ui); text-align: center; }
+.cons-prog i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); opacity: .35; } .cons-prog span { position: relative; }
+.cons-log { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 2px; }
+.cm { max-width: 85%; padding: 7px 10px; border-radius: 12px; font: 14px/1.35 var(--font-ui); overflow-wrap: anywhere; }
+.cm.me { align-self: flex-end; background: var(--accent); color: var(--accent-ink); } .cm.them { align-self: flex-start; background: var(--panel-2); }
+.cm.sys { align-self: center; max-width: 100%; color: var(--muted); font-size: 12px; text-align: center; padding: 2px 6px; }
+.cm.ask { align-self: stretch; max-width: 100%; background: var(--panel-2); border: 1px solid var(--accent); } .ask-b { display: flex; gap: 6px; margin-top: 8px; } .ask-b .btn { flex: 1; justify-content: center; min-height: 36px; }
+.cons-form { display: flex; gap: 6px; } .cons-form input { flex: 1; min-width: 0; min-height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2); color: var(--fg); font: 14px var(--font-ui); }
 .act[hidden] { display: none; }
 .views.cmp[data-n="5"] .cmp-info, .views.cmp[data-n="6"] .cmp-info, .views.cmp[data-n="7"] .cmp-info, .views.cmp[data-n="8"] .cmp-info { font-size: 10px; padding: 5px 7px; }
 .cmp-bar .chip.cmpChange { font-size: 0; width: 36px; min-width: 36px; padding: 0; justify-content: center; } /* Change: a compact icon button in every view */
@@ -375,7 +407,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
   .bar .actions { gap: 4px; }
 }
 #btnMore { display: inline-flex; } /* the ⋯ menu on every screen size (it holds Report) */
-#btnReport[hidden] { display: none !important; }
+#btnReport[hidden], #anonGo[hidden], #anonDone[hidden], #anonShare[hidden] { display: none !important; }
 </style>
 
 <header class="bar">
@@ -390,7 +422,8 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
     <button class="btn" id="btn3D" aria-pressed="false" title="3D: bone, vessels, soft tissue, MIP">3D</button>
     <button class="btn" id="btnCmp" aria-pressed="false" aria-label="Layout" title="Layout: 1, 2, 3 or 4 views"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/><path d="M12 3.5v17M3.5 12h17"/></svg></button>
     <button class="btn" id="btnReport" hidden aria-pressed="false" aria-label="Report" title="Write the report"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M9.5 12h6M9.5 15.5h6M9.5 8.5h2.5"/></svg><span class="long">Report</span></button>
-    <button class="btn" id="btnFocus" aria-pressed="false" aria-label="Focus" title="Hide the controls (F)"><span class="long">Focus</span><span class="short"><svg viewBox="0 0 24 24"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/></svg></span></button>
+    <button class="btn" id="btnChat" aria-label="Conversation with a colleague" title="Conversation with a colleague" hidden><svg viewBox="0 0 24 24" style="width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M4 5h16v11H9l-5 4z"/></svg><b class="cbadge" hidden></b></button>
+    <button class="btn" id="btnFocus" aria-pressed="false" aria-label="Full screen" title="Full screen: hide the controls (F)"><span class="long fsl"><svg viewBox="0 0 24 24"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/></svg>Full screen</span><span class="short"><svg viewBox="0 0 24 24"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/></svg></span></button>
     <button class="btn rare" id="btnPrivacy" aria-pressed="false" title="Hide patient details on screen">Hide PHI</button>
     <button class="btn more-only" id="btnMore" aria-label="More"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></button>
   </div>
@@ -581,10 +614,37 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
   <div class="card" role="dialog" aria-label="Keyboard and mouse">
     <div class="head"><h2>Keyboard and mouse</h2><button class="btn" data-close>Close</button></div>
     <p class="note">The same keys and mouse buttons as RadiAnt.</p>
-    <table class="keys"><tr><th colspan="2">Mouse</th></tr><tr><td><kbd>Left drag</kbd></td><td>The tool chosen in the toolbar</td></tr><tr><td><kbd>Middle drag</kbd></td><td>Window: left/right width, up/down level</td></tr><tr><td><kbd>Right drag</kbd></td><td>Zoom</td></tr><tr><td><kbd>Back side button</kbd></td><td>Pan</td></tr><tr><td><kbd>Forward side button</kbd></td><td>Length</td></tr><tr><td><kbd>Wheel</kbd></td><td>Next / previous slice (in MPR: the view under the mouse)</td></tr><tr><td><kbd>Ctrl + wheel</kbd></td><td>Zoom at the mouse</td></tr><tr><th colspan="2">Slices and series</th></tr><tr><td><kbd>↑ ↓</kbd></td><td>Previous / next slice</td></tr><tr><td><kbd>Page Up / Page Down</kbd></td><td>10 slices back / forward</td></tr><tr><td><kbd>← →</kbd></td><td>Previous / next series</td></tr><tr><td><kbd>Home / End</kbd></td><td>First / last series</td></tr><tr><td><kbd>Space</kbd></td><td>Cine play / stop</td></tr><tr><th colspan="2">Window</th></tr><tr><td><kbd>0</kbd></td><td>Default window</td></tr><tr><td><kbd>1</kbd></td><td>Full dynamic</td></tr><tr><td><kbd>2 … 7</kbd></td><td>CT Abdomen, Angio, Bone, Brain, Chest, Lungs</td></tr><tr><td><kbd>F11</kbd></td><td>Negative</td></tr><tr><td><kbd>Ctrl + F11</kbd></td><td>Custom window</td></tr><tr><th colspan="2">Tools</th></tr><tr><td><kbd>B</kbd></td><td>Scroll</td></tr><tr><td><kbd>W</kbd></td><td>Window</td></tr><tr><td><kbd>M</kbd></td><td>Pan</td></tr><tr><td><kbd>Z</kbd></td><td>Zoom</td></tr><tr><td><kbd>L</kbd></td><td>Length</td></tr><tr><td><kbd>H</kbd></td><td>HU point</td></tr><tr><td><kbd>E</kbd></td><td>HU area (circle)</td></tr><tr><td><kbd>A</kbd></td><td>Angle</td></tr><tr><td><kbd>R</kbd></td><td>Rotate</td></tr><tr><td><kbd>Delete</kbd></td><td>Delete the selected measurement</td></tr><tr><td><kbd>Ctrl + Z</kbd></td><td>Undo</td></tr><tr><td><kbd>Esc</kbd></td><td>Deselect, close</td></tr><tr><th colspan="2">View</th></tr><tr><td><kbd>Ctrl + + / Ctrl + −</kbd></td><td>Zoom in / out</td></tr><tr><td><kbd>Ctrl + 0</kbd></td><td>Fit</td></tr><tr><td><kbd>Ctrl + 1 … 4</kbd></td><td>Zoom 100% / 200% / 400% / 800%</td></tr><tr><td><kbd>Ctrl + arrows</kbd></td><td>Pan</td></tr><tr><td><kbd>Ctrl + [ / ]</kbd></td><td>Rotate 90° left / right</td></tr><tr><td><kbd>Ctrl + Shift + [ / ]</kbd></td><td>Flip horizontal / vertical</td></tr><tr><td><kbd>Ctrl + Shift + \</kbd></td><td>Clear rotation and flips</td></tr><tr><td><kbd>F</kbd></td><td>Focus: hide the controls</td></tr><tr><td><kbd>Shift + F12</kbd></td><td>Hide patient details</td></tr><tr><th colspan="2">MPR and Compare</th></tr><tr><td><kbd>Ctrl + Alt + 1 / 2 / 3</kbd></td><td>Coronal / sagittal / axial</td></tr><tr><td><kbd>C or Ctrl + F12</kbd></td><td>Crosshair on / off</td></tr><tr><td><kbd>F5</kbd></td><td>Compare: Sync on / off</td></tr><tr><th colspan="2">Files</th></tr><tr><td><kbd>Ctrl + O</kbd></td><td>Open files</td></tr><tr><td><kbd>Ctrl + Shift + O</kbd></td><td>Open a folder</td></tr><tr><td><kbd>Drag and drop</kbd></td><td>Files, zips or whole folders onto the window</td></tr><tr><td><kbd>?</kbd></td><td>This list</td></tr></table>
+    <table class="keys"><tr><th colspan="2">Mouse</th></tr><tr><td><kbd>Left drag</kbd></td><td>The tool chosen in the toolbar</td></tr><tr><td><kbd>Middle drag</kbd></td><td>Window: left/right width, up/down level</td></tr><tr><td><kbd>Right drag</kbd></td><td>Zoom</td></tr><tr><td><kbd>Back side button</kbd></td><td>Pan</td></tr><tr><td><kbd>Forward side button</kbd></td><td>Length</td></tr><tr><td><kbd>Wheel</kbd></td><td>Next / previous slice (in MPR: the view under the mouse)</td></tr><tr><td><kbd>Ctrl + wheel</kbd></td><td>Zoom at the mouse</td></tr><tr><th colspan="2">Slices and series</th></tr><tr><td><kbd>↑ ↓</kbd></td><td>Previous / next slice</td></tr><tr><td><kbd>Page Up / Page Down</kbd></td><td>10 slices back / forward</td></tr><tr><td><kbd>← →</kbd></td><td>Previous / next series</td></tr><tr><td><kbd>Home / End</kbd></td><td>First / last series</td></tr><tr><td><kbd>Space</kbd></td><td>Cine play / stop</td></tr><tr><th colspan="2">Window</th></tr><tr><td><kbd>0</kbd></td><td>Default window</td></tr><tr><td><kbd>1</kbd></td><td>Full dynamic</td></tr><tr><td><kbd>2 … 7</kbd></td><td>CT Abdomen, Angio, Bone, Brain, Chest, Lungs</td></tr><tr><td><kbd>F11</kbd></td><td>Negative</td></tr><tr><td><kbd>Ctrl + F11</kbd></td><td>Custom window</td></tr><tr><th colspan="2">Tools</th></tr><tr><td><kbd>B</kbd></td><td>Scroll</td></tr><tr><td><kbd>W</kbd></td><td>Window</td></tr><tr><td><kbd>M</kbd></td><td>Pan</td></tr><tr><td><kbd>Z</kbd></td><td>Zoom</td></tr><tr><td><kbd>L</kbd></td><td>Length</td></tr><tr><td><kbd>H</kbd></td><td>HU point</td></tr><tr><td><kbd>E</kbd></td><td>Ellipse area (hold the HU button for rectangle and freehand)</td></tr><tr><td><kbd>A</kbd></td><td>Angle</td></tr><tr><td><kbd>R</kbd></td><td>Rotate</td></tr><tr><td><kbd>Delete</kbd></td><td>Delete the selected measurement</td></tr><tr><td><kbd>Ctrl + Z</kbd></td><td>Undo</td></tr><tr><td><kbd>Esc</kbd></td><td>Deselect, close</td></tr><tr><th colspan="2">View</th></tr><tr><td><kbd>Ctrl + + / Ctrl + −</kbd></td><td>Zoom in / out</td></tr><tr><td><kbd>Ctrl + 0</kbd></td><td>Fit</td></tr><tr><td><kbd>Ctrl + 1 … 4</kbd></td><td>Zoom 100% / 200% / 400% / 800%</td></tr><tr><td><kbd>Ctrl + arrows</kbd></td><td>Pan</td></tr><tr><td><kbd>Ctrl + [ / ]</kbd></td><td>Rotate 90° left / right</td></tr><tr><td><kbd>Ctrl + Shift + [ / ]</kbd></td><td>Flip horizontal / vertical</td></tr><tr><td><kbd>Ctrl + Shift + \</kbd></td><td>Clear rotation and flips</td></tr><tr><td><kbd>F</kbd></td><td>Full screen: hide the controls</td></tr><tr><td><kbd>Shift + F12</kbd></td><td>Hide patient details</td></tr><tr><td><kbd>I</kbd></td><td>DICOM tags of the image</td></tr><tr><th colspan="2">MPR and Compare</th></tr><tr><td><kbd>Ctrl + Alt + 1 / 2 / 3</kbd></td><td>Coronal / sagittal / axial</td></tr><tr><td><kbd>C or Ctrl + F12</kbd></td><td>Crosshair on / off</td></tr><tr><td><kbd>F5</kbd></td><td>Compare: Sync on / off</td></tr><tr><th colspan="2">Files</th></tr><tr><td><kbd>Ctrl + O</kbd></td><td>Open files</td></tr><tr><td><kbd>Ctrl + Shift + O</kbd></td><td>Open a folder</td></tr><tr><td><kbd>Drag and drop</kbd></td><td>Files, zips or whole folders onto the window</td></tr><tr><td><kbd>?</kbd></td><td>This list</td></tr></table>
   </div>
 </div>
 
+<div class="sheet" id="sheetCons" hidden>
+  <div class="card" role="dialog" aria-label="Colleagues">
+    <div class="head"><h2>Colleagues</h2><button class="btn" data-close>Close</button></div>
+    <div class="field"><label for="consName">Your name (colleagues reach you by it)</label><input id="consName" type="text" autocomplete="off" spellcheck="false" placeholder="e.g. Hashem"></div>
+    <button class="btn primary" id="consOnline" style="justify-content:center">Go online</button>
+    <p class="note" id="consStatus">Offline</p>
+    <div class="field"><label for="consTo">Colleague's name</label><input id="consTo" type="text" autocomplete="off" spellcheck="false" placeholder="e.g. Ahmed" enterkeyhint="go"></div>
+    <button class="btn" id="consCall" style="justify-content:center">Connect</button>
+    <div id="consRecent" class="cons-recent"></div>
+    <div class="list" id="consPeers"></div>
+    <p class="note">Both phones need Sliceview open and online. The case goes straight from one phone to the other, anonymised, and is not stored anywhere: it closes when the conversation ends.</p>
+  </div>
+</div>
+<div id="consChat" class="cons-chat" hidden>
+  <div class="cons-head"><b id="consWho"></b><span id="consState"></span><button class="btn" id="consEnd" title="End the conversation and close the shared case">End</button><button class="btn" id="consHide" aria-label="Hide">✕</button></div>
+  <div class="cons-send"><button class="btn" type="button" data-s="series">Send this series</button><button class="btn" type="button" data-s="study">Send the whole study</button></div>
+  <div id="consProg" class="cons-prog" hidden><span></span><i></i></div>
+  <div id="consLog" class="cons-log"></div>
+  <form id="consForm" class="cons-form"><input id="consMsg" type="text" autocomplete="off" placeholder="Message" enterkeyhint="send"><button class="btn primary" type="submit">Send</button></form>
+</div>
+<div class="sheet" id="sheetTags" hidden>
+  <div class="card tagcard" role="dialog" aria-label="DICOM tags">
+    <div class="head"><div class="tagttl"><h2>DICOM tags</h2><span id="tagWhat" class="note"></span></div><button class="btn" data-close>Close</button></div>
+    <input id="tagFind" type="search" placeholder="Find a tag, name or value" autocomplete="off" spellcheck="false" enterkeyhint="search">
+    <div class="tagwrap"><table class="tags"><thead><tr><th>Tag</th><th>Name</th><th>VR</th><th>Value</th></tr></thead><tbody id="tagList"></tbody></table></div>
+  </div>
+</div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
     <div class="head"><h2>More</h2><button class="btn" data-close>Close</button></div>
@@ -592,13 +652,15 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
       <button class="item" type="button" data-do="btnReport">Write a report</button>
+      <button class="item" type="button" id="btnCons">Colleagues: send a case</button>
+      <button class="item" type="button" id="btnTags">DICOM tags of this image</button>
       <button class="item" type="button" id="btnKeys">Keyboard and mouse shortcuts</button>
       <button class="item" type="button" data-do="btnServer">DICOMweb server</button>
       <button class="item" type="button" data-do="btnSample">Sample study</button>
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.23-2313</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1406</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -613,12 +675,17 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
   </div>
 </div>
 <div class="sheet" id="sheetShare" hidden>
-  <div class="card" role="dialog" aria-label="Share image">
-    <div class="head"><h2>Share image</h2><button class="btn" data-close>Close</button></div>
+  <div class="card" role="dialog" aria-label="Share">
+    <div class="head"><h2>Share</h2><button class="btn" data-close>Close</button></div>
     <img id="shareImg" alt="The image to share" style="width:100%;max-height:46vh;object-fit:contain;background:#000;border-radius:10px">
     <label class="checkrow" style="display:flex;gap:10px;align-items:center;margin:10px 2px"><input type="checkbox" id="sharePhi"> Show the patient's name and ID</label>
     <div style="display:flex;gap:8px"><button class="btn primary" id="shareGo" style="flex:1;justify-content:center">Share…</button><button class="btn" id="shareSave" style="flex:1;justify-content:center">Save image</button></div>
     <p class="note" id="shareNote">The name, ID and birth date are left out unless you tick the box.</p>
+    <div class="cmpgroup">Send the scans, anonymised</div>
+    <div class="seg" id="anonScope"><button type="button" data-s="series" aria-pressed="true">This series</button><button type="button" data-s="study">Whole study</button></div>
+    <button class="btn" id="anonGo" style="justify-content:center">Make anonymised zip</button>
+    <div id="anonDone" style="display:flex;gap:8px" hidden><button class="btn primary" id="anonShare" style="flex:1;justify-content:center">Share zip…</button><button class="btn" id="anonSave" style="flex:1;justify-content:center">Save zip</button></div>
+    <p class="note" id="anonNote">DICOM files that open in Sliceview, RadiAnt or any viewer, with every slice. The name, ID, birth date, accession number, doctors, hospital and private tags are removed and the UIDs replaced. Screenshots and dose reports are left out, since their pictures can show the name.</p>
   </div>
 </div>
 <div class="sheet" id="sheetSlab" hidden>
@@ -2224,6 +2291,7 @@ function dicomModule() {
     }
     if (!info.slope) info.slope = 1;
     if (info.palette) { info.spp = 3; info.bitsAllocated = info.bitsStored = 8; info.pixelRep = 0; } // shown as 8-bit RGB
+    info.hdr = new Uint8Array(buf.slice(0, Math.min(info.pixelOffset, 262144))); // the header as it is in the file, for the DICOM tags list
     return info;
   }
 
@@ -2361,6 +2429,8 @@ const ICONS = {
   length: '<path d="M4 17L17 4l3 3L7 20z"/><path d="M8 13l2 2M11 10l2 2M14 7l2 2"/>',
   angle: '<path d="M4 19h16M4 19L15 6"/><path d="M11 19a7 7 0 0 0-2.2-5"/>',
   roi: '<ellipse cx="12" cy="12" rx="8.5" ry="5.5"/><path d="M12 12h.01"/>',
+  rect: '<rect x="4" y="6.5" width="16" height="11" rx="1"/><path d="M12 12h.01"/>',
+  free: '<path d="M4.5 12.5c-.8-4.2 3.2-7.6 7.4-6.6 2.2.5 2.6 2.3 4.6 2.2 2.6-.1 3.8 2.6 2.4 4.8-1.3 2-3.6 1.6-4.6 3.6-1.2 2.4-4.6 2.6-6.6 1.2-1.6-1.1-2.9-2.9-3.2-5.2z"/>',
   hu: '<path d="M12 3v6M12 15v6M3 12h6M15 12h6"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/>',
   arrow: '<path d="M5 19L18 6"/><path d="M10.5 6H18v7.5"/>',
   text: '<path d="M5 5.5h14M12 5.5V19M9 19h6"/>',
@@ -2370,7 +2440,7 @@ const TOOLS = [ // toolbar order: the everyday tools first
   ['scroll', 'Scroll', 'Drag up or down to move through slices'],
   ['wl', 'Window', 'Drag to change window width (left, right) and level (up, down)'],
   ['length', 'Length', 'Drag to measure a distance'],
-  ['hu', 'HU', 'Touch and move: the + just above your finger reads the HU of that one pixel. Press and hold the button for a circle'],
+  ['hu', 'HU', 'Touch and move: the + just above your finger reads the HU of that one pixel. Press and hold the button for an ellipse, rectangle or freehand area'],
   ['pan', 'Pan', 'Drag to move the image'],
   ['zoom', 'Zoom', 'Drag up or down to zoom'],
   ['loupe', 'Magnifier', 'Touch and move: the circle above your finger shows that part of the image three times larger'],
@@ -2379,7 +2449,9 @@ const TOOLS = [ // toolbar order: the everyday tools first
   ['angle', 'Angle', 'Tap three points: start, vertex, end'],
   ['arrow', 'Arrow', 'Drag from where the note goes to the finding: the arrowhead lands where you lift your finger'],
   ['text', 'Text', 'Tap where the note goes, then type it'],
-  ['roi', 'HU area', 'Drag to outline a circle: mean HU, SD and area'],
+  ['roi', 'Ellipse', 'Drag to outline an ellipse: mean, SD and area'],
+  ['rect', 'Rectangle', 'Drag to outline a rectangle: mean, SD and area'],
+  ['free', 'Freehand', 'Draw around the area: mean, SD and area'],
 ];
 const CT_PRESETS = [ // same set and order as RadiAnt: keys 2 to 7
   ['CT Abdomen', 60, 400], ['CT Angio', 300, 600], ['CT Bone', 300, 1500],
@@ -2515,14 +2587,19 @@ function bodyBox(c) {
 }
 // Zoom so the body fills the view (not the whole field of view with its empty corners and the table). The body is
 // measured on the slice in view and at a quarter, half and three quarters of the series, so no level is cut off.
-function fitBody() {
-  const img = cur(), se = curSeries(); if (!img || !se || !S.W) return fit();
+function seriesBody(se, img) { // the body over a series (image pixels), or null when it cannot be found
   const ct = t => t && (t.fuse ? t.fuse.ct : t), ims = se.images;
   let b = null;
   for (const t of [img, ims[Math.floor(ims.length * 0.25)], ims[Math.floor(ims.length * 0.5)], ims[Math.floor(ims.length * 0.75)]]) {
     const r = bodyBox(ct(t)); if (r) b = b ? { x0: Math.min(b.x0, r.x0), x1: Math.max(b.x1, r.x1), y0: Math.min(b.y0, r.y0), y1: Math.max(b.y1, r.y1) } : r;
   }
-  if (!b || (b.x1 - b.x0) < img.cols * 0.15) return fit();
+  return b && img && (b.x1 - b.x0) >= img.cols * 0.15 ? b : null;
+}
+const isCTlike = se => !!se && (se.isFuse || ((se.images[0] && se.images[0].modality) || se.modality) === 'CT');
+function fitBody() {
+  const img = cur(), se = curSeries(); if (!img || !se || !S.W) return fit();
+  const b = seriesBody(se, img);
+  if (!b) return fit();
   const a = aspect(img);
   S.ang = 0; S.fh = 1; S.fv = 1;
   const sc = Math.min(fitScale() * 4, Math.min(S.W / (b.x1 - b.x0), S.H / ((b.y1 - b.y0) * a)) * 0.92);
@@ -2558,21 +2635,20 @@ function angleOf(img, a, v, b) {
   const m = Math.hypot(...u1) * Math.hypot(...u2); if (!m) return 0;
   return Math.acos(clamp((u1[0] * u2[0] + u1[1] * u2[1]) / m, -1, 1)) * 180 / Math.PI;
 }
-function roiStats(img, a, b) {
-  if (img.fuse) return fuseRoi(img, a, b); // fused: SUV of the PET inside the circle
-  const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2, rx = Math.abs(b.x - a.x) / 2, ry = Math.abs(b.y - a.y) / 2;
+function roiStats(img, a, b, m) {
+  if (img.fuse) return fuseRoi(img, a, b, m); // fused: SUV of the PET inside the outline
+  const R = roiShape(m || {}, a, b); if (!R.area) return null;
   let n = 0, sum = 0, sum2 = 0, max = -Infinity, min = Infinity;
-  const x0 = Math.max(0, Math.floor(cx - rx)), x1 = Math.min(img.cols - 1, Math.ceil(cx + rx));
-  const y0 = Math.max(0, Math.floor(cy - ry)), y1 = Math.min(img.rows - 1, Math.ceil(cy + ry));
+  const x0 = Math.max(0, Math.floor(R.x0)), x1 = Math.min(img.cols - 1, Math.ceil(R.x1));
+  const y0 = Math.max(0, Math.floor(R.y0)), y1 = Math.min(img.rows - 1, Math.ceil(R.y1));
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-    const dx = (x + 0.5 - cx) / rx, dy = (y + 0.5 - cy) / ry;
-    if (dx * dx + dy * dy > 1) continue;
+    if (!R.inside(x + 0.5, y + 0.5)) continue;
     const v = img.pixels[y * img.cols + x] * img.slope + img.intercept;
     n++; sum += v; sum2 += v * v; if (v > max) max = v; if (v < min) min = v;
   }
   if (!n) return null;
   const mean = sum / n, sd = Math.sqrt(Math.max(0, sum2 / n - mean * mean));
-  const f = phys(img), area = Math.PI * rx * ry * f.x * f.y;
+  const f = phys(img), area = R.area * f.x * f.y;
   return { n, mean, sd, area, unit: f.unit, max, min };
 }
 // The ROI's reading, the same in every view: mean, min, max (HU on CT), SD, area; on PET SUVmax and mean;
@@ -2589,6 +2665,33 @@ function roiLabel(st, u, suv) {
 // Editing: each measurement has grab points (its ends, or the ROI's four sides) and a body.
 // Dragging a grab point reshapes it; dragging the body moves it whole.
 function roiBox(m) { return { x0: Math.min(m.a.x, m.b.x), x1: Math.max(m.a.x, m.b.x), y0: Math.min(m.a.y, m.b.y), y1: Math.max(m.a.y, m.b.y) }; }
+// ROI shapes: an ellipse (the default; a and b are its box), a rectangle (shape 'rect'), or freehand (shape 'free': its outline in pts, a and b its box)
+const ROI_TOOLS = new Set(['roi', 'rect', 'free']);
+const roiDraft = (tool, q) => tool === 'free' ? { type: 'roi', shape: 'free', a: q, b: q, pts: [q] } : tool === 'rect' ? { type: 'roi', shape: 'rect', a: q, b: q } : { type: 'roi', a: q, b: q };
+function roiFit(m) { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const q of m.pts) { if (q.x < x0) x0 = q.x; if (q.x > x1) x1 = q.x; if (q.y < y0) y0 = q.y; if (q.y > y1) y1 = q.y; } m.a = { x: x0, y: y0 }; m.b = { x: x1, y: y1 }; }
+function roiGrow(d, q) { // the finger moves: the box's corner, or the next point of the outline
+  if (d.shape !== 'free') { d.b = q; return; }
+  const l = d.pts[d.pts.length - 1]; if (Math.hypot(q.x - l.x, q.y - l.y) < 0.35) return; d.pts.push(q); roiFit(d);
+}
+const inPoly = (P, x, y) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const a = P[i], b = P[j]; if ((a.y > y) !== (b.y > y) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x) c = !c; } return c; };
+function roiShape(m, a, b) { // its box, its area (pixels²) and an inside test, in image pixels
+  a = a || m.a; b = b || m.b;
+  if (m && m.shape === 'free' && m.pts && m.pts.length > 2) {
+    const P = m.pts; let ar = 0; for (let i = 0, j = P.length - 1; i < P.length; j = i++) ar += (P[j].x + P[i].x) * (P[j].y - P[i].y);
+    return { x0: Math.min(a.x, b.x), x1: Math.max(a.x, b.x), y0: Math.min(a.y, b.y), y1: Math.max(a.y, b.y), area: Math.abs(ar) / 2, inside: (x, y) => inPoly(P, x, y) };
+  }
+  const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2, rx = Math.abs(b.x - a.x) / 2, ry = Math.abs(b.y - a.y) / 2, box = { x0: cx - rx, x1: cx + rx, y0: cy - ry, y1: cy + ry };
+  if (!rx || !ry) return Object.assign(box, { area: 0, inside: () => false });
+  if (m && m.shape === 'rect') return Object.assign(box, { area: 4 * rx * ry, inside: (x, y) => Math.abs(x - cx) <= rx && Math.abs(y - cy) <= ry });
+  return Object.assign(box, { area: Math.PI * rx * ry, inside: (x, y) => { const dx = (x - cx) / rx, dy = (y - cy) / ry; return dx * dx + dy * dy <= 1; } });
+}
+function roiPath(c2, m, sc, live) { // the outline on screen; sc maps an image point to the screen
+  c2.beginPath();
+  if (m.shape === 'free' && m.pts) { m.pts.forEach((q, i) => { const s = sc(q); i ? c2.lineTo(s.x, s.y) : c2.moveTo(s.x, s.y); }); if (!live) c2.closePath(); return; }
+  const a = sc(m.a), b = sc(m.b);
+  if (m.shape === 'rect') { c2.rect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y)); return; }
+  c2.ellipse((a.x + b.x) / 2, (a.y + b.y) / 2, Math.abs(b.x - a.x) / 2 || 1, Math.abs(b.y - a.y) / 2 || 1, 0, 0, 7);
+}
 // HU of one pixel (the + sits on it): CT values in HU, other modalities as stored values
 const HU_OFF = 64; // a finger reads the pixel this far above it, so the finger never hides it
 function huAt(img, q) {
@@ -2602,6 +2705,7 @@ function measGrips(m) {
   if (m.type === 'hu' || m.type === 'text') return [m.p];
   if (m.type === 'length' || m.type === 'arrow') return [m.a, m.b];
   if (m.type === 'angle') return m.pts;
+  if (m.shape === 'free') return [];
   const r = roiBox(m), cx = (r.x0 + r.x1) / 2, cy = (r.y0 + r.y1) / 2;
   return [{ x: r.x0, y: cy }, { x: r.x1, y: cy }, { x: cx, y: r.y0 }, { x: cx, y: r.y1 }];
 }
@@ -2612,7 +2716,10 @@ function segDist(p, a, b) {
 // Hit test in any view: toS maps image (or plane) pixels to the view's screen pixels.
 function hitIn(list, toS, p, R, strict) {
   const roiIn = (m, k) => { const a = toS(m.a.x, m.a.y), b = toS(m.b.x, m.b.y), rx = Math.abs(b.x - a.x) / 2 + 4, ry = Math.abs(b.y - a.y) / 2 + 4;
-    const ex = (p.x - (a.x + b.x) / 2) / rx, ey = (p.y - (a.y + b.y) / 2) / ry; return ex * ex + ey * ey <= k * k; };
+    const ex = (p.x - (a.x + b.x) / 2) / rx, ey = (p.y - (a.y + b.y) / 2) / ry;
+    if (m.shape === 'rect') return Math.abs(ex) <= k && Math.abs(ey) <= k;
+    if (m.shape === 'free' && m.pts) { const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2; return inPoly(m.pts.map(q => toS(q.x, q.y)), cx + (p.x - cx) / k, cy + (p.y - cy) / k); } // the outline grown or shrunk about its middle
+    return ex * ex + ey * ey <= k * k; };
   if (!strict) for (let k = list.length - 1; k >= 0; k--) if (list[k].type === 'roi' && roiIn(list[k], 0.55)) return { m: list[k], grip: -1 }; // the middle of a circle always moves it
   let best = null;
   for (const m of list) measGrips(m).forEach((q, i) => {
@@ -2633,13 +2740,13 @@ function hitIn(list, toS, p, R, strict) {
 const hitMeas = (p, touch, strict) => hitIn(mlist(), (x, y) => toScreen(x, y), p, touch ? 24 : 12, strict);
 function startEdit(h, p, toI = (x, y) => toImage(x, y), list = mlist(), key = mkey()) {
   const m = h.m, copy = q => ({ x: q.x, y: q.y });
-  return { m, grip: h.grip, toI, prev: cloneList(list), key, q0: toI(p.x, p.y), orig: m.type === 'angle' ? { pts: m.pts.map(copy) } : m.type === 'hu' || m.type === 'text' ? { p: copy(m.p) } : { a: copy(m.a), b: copy(m.b) } };
+  return { m, grip: h.grip, toI, prev: cloneList(list), key, q0: toI(p.x, p.y), orig: m.type === 'angle' ? { pts: m.pts.map(copy) } : m.type === 'hu' || m.type === 'text' ? { p: copy(m.p) } : { a: copy(m.a), b: copy(m.b), pts: m.pts && m.pts.map(copy) } };
 }
 function moveEdit(E, p) {
   const m = E.m, q = E.toI(p.x, p.y), dx = q.x - E.q0.x, dy = q.y - E.q0.y, o = E.orig;
   const sh = r => ({ x: r.x + dx, y: r.y + dy });
   if (m.type === 'hu' || m.type === 'text') { m.p = sh(o.p); m.v = null; }
-  else if (E.grip < 0) { if (m.type === 'angle') m.pts = o.pts.map(sh); else { m.a = sh(o.a); m.b = sh(o.b); } }
+  else if (E.grip < 0) { if (m.type === 'angle') m.pts = o.pts.map(sh); else { m.a = sh(o.a); m.b = sh(o.b); if (o.pts) m.pts = o.pts.map(sh); } }
   else if (m.type === 'length' || m.type === 'arrow') { if (E.grip === 0) m.a = sh(o.a); else m.b = sh(o.b); }
   else if (m.type === 'angle') m.pts[E.grip] = sh(o.pts[E.grip]);
   else { // ROI: move one side, keep the opposite side where it is
@@ -2785,9 +2892,9 @@ function drawMeas(img, m, live) {
     const s = toScreen(m.p.x, m.p.y); if (live) { ctx.setLineDash([]); drawPlus(ctx, s, true); } else drawNote(ctx, s, m.text, sl);
   } else if (m.type === 'roi') {
     const a = toScreen(m.a.x, m.a.y), b = toScreen(m.b.x, m.b.y);
-    ctx.beginPath(); ctx.ellipse((a.x + b.x) / 2, (a.y + b.y) / 2, Math.abs(b.x - a.x) / 2 || 1, Math.abs(b.y - a.y) / 2 || 1, 0, 0, 7); ctx.stroke();
+    roiPath(ctx, m, q => toScreen(q.x, q.y), live); ctx.stroke();
     if (!live) for (const q of measGrips(m)) { const s = toScreen(q.x, q.y); ctx.beginPath(); ctx.arc(s.x, s.y, 3, 0, 7); ctx.fillStyle = '#ffc857'; ctx.fill(); }
-    const st = m.stats || roiStats(img, m.a, m.b);
+    const st = m.stats || (live && m.shape === 'free' ? null : roiStats(img, m.a, m.b, m));
     if (st) {
       const u = st.unit === 'px' ? '' : img.suv ? ' SUV' : (img.modality === 'CT' || img.fuse ? ' HU' : '');
       drawLabel(roiLabel(st, u, img.suv), Math.min(a.x, b.x), Math.max(a.y, b.y) + 8);
@@ -2980,10 +3087,14 @@ function draw() {
     const moving = performance.now() - (S.moved || 0) < SETTLE, reach = moving ? clamp(Math.ceil((S.vel || 0) / 15), 6, 80) : 6;
     for (let d = 1; d <= reach && show === img; d++) for (const j of [S.idx - d * (S.dir || 1), S.idx + d * (S.dir || 1)]) { const o = ims[j]; if (o && (o.pixels || o.preview)) { show = o; break; } }
   }
-  if (S.bodyFit) { // the body fit for a CT that has just opened: once the slice in view (its CT) can be measured
-    const c0 = cur(), cc = c0 && (c0.fuse ? c0.fuse.ct : c0);
+  if (S.bodyFit) { // the body fit for a CT that has just opened: once the slices it is measured on can be read
+    // (the slice in view, and a quarter, half and three quarters through; compressed slices take a moment to decode,
+    // and measuring the one slice alone zoomed too far). After 3 s it uses what is there.
+    const se = curSeries(), ims = se ? se.images : [], ct = t => t && (t.fuse ? t.fuse.ct : t);
+    const need = [cur(), ims[Math.floor(ims.length * 0.25)], ims[Math.floor(ims.length * 0.5)], ims[Math.floor(ims.length * 0.75)]].map(ct);
+    const ready = need.every(t => t && (t.pixels || t.preview)), late = performance.now() - (S.bodyFitT || 0) > 3000;
     if (!S.fit || !S.W) S.bodyFit = false; // zoomed or moved by hand meanwhile: left as it is
-    else if (cc && (cc.pixels || cc.preview)) { S.bodyFit = false; fitBody(); }
+    else if (ready || (late && need[0] && (need[0].pixels || need[0].preview))) { S.bodyFit = false; fitBody(); }
   }
   const ready = show.pixels || show.preview;
   if (!ready && (img.err || !S.painted)) {
@@ -3020,6 +3131,7 @@ function draw() {
     const lq = LQ; LQ = null; placeLabels(ctx, lq, S.W, S.H, dots); }
   drawAxialCrosshair(img);
   subUI(); fuseUI(); slabUI();
+  if (S.cmps.length && !S.rf) drawRefLines(ctx, toScreen, img, curSeries());
   if (c3Here(curSeries())) drawC3(ctx, toScreen, img);
   if (S.loupe) drawLoupeRing();
   updateOverlay();
@@ -3102,7 +3214,7 @@ function selectSeries(i) {
   const d = seriesWindow(se, se.images[S.idx]); se.def = d;
   S.wc = d.wc; S.ww = d.ww; S.preset = 'Default'; S.dirty = true; fit();
   // a CT (or fused PET-CT) opens with its body filling the view, as soon as its slices are there to measure
-  S.bodyFit = se.isFuse || ((se.images[0] && se.images[0].modality) || se.modality) === 'CT';
+  S.bodyFit = se.isFuse || ((se.images[0] && se.images[0].modality) || se.modality) === 'CT'; S.bodyFitT = performance.now(); if (S.bodyFit) setTimeout(render, 3100); // (looked at again after 3 s even if nothing else redraws)
   buildPresets(); render(); pump();
 }
 function buildPresets() {
@@ -3164,7 +3276,7 @@ function wheelSteps(e, key) {
 }
 // the side buttons must not go back/forward in the app, nor the middle button start auto-scrolling
 for (const ev of ['mousedown', 'mouseup', 'auxclick']) window.addEventListener(ev, e => { if (e.button === 3 || e.button === 4 || (e.button === 1 && e.target.closest && e.target.closest('canvas'))) e.preventDefault(); });
-const NAV = new Set(['scroll', 'wl', 'pan', 'zoom', 'rotate']), MEASURE = new Set(['length', 'angle', 'roi', 'hu', 'arrow', 'text']);
+const NAV = new Set(['scroll', 'wl', 'pan', 'zoom', 'rotate']), MEASURE = new Set(['length', 'angle', 'roi', 'rect', 'free', 'hu', 'arrow', 'text']);
 const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
 // Dragging a finger (or the scroll tool) up moves down through the study, to the next slices, like pushing a page up.
 const DRAG_DIR = -1;
@@ -3207,7 +3319,7 @@ function startDrag(p, tool, ts) {
   const q = toImage(p.x, p.y);
   if (tool === 'hu') S.draft = { type: 'hu', p: toImage(p.x, p.y - S.huOff) };
   else if (tool === 'length') S.draft = { type: 'length', a: q, b: q };
-  else if (tool === 'roi') S.draft = { type: 'roi', a: q, b: q };
+  else if (ROI_TOOLS.has(tool)) S.draft = roiDraft(tool, q);
   else if (tool === 'arrow') S.draft = { type: 'arrow', a: q, b: q };
   else if (tool === 'text') S.draft = { type: 'text', p: q };
   else if (tool === 'cursor3d') { const q3 = toImage(p.x, p.y - S.huOff), w = imgToWorld(img, q3.x, q3.y); if (w) place3D(w); } // just above the finger, as with HU
@@ -3238,7 +3350,7 @@ function moveDrag(p, ts) {
     case 'rotate': if (Math.hypot(p.x - S.ox, p.y - S.oy) > 24) { rotateView(null, drag.ang0 + Math.atan2(p.y - S.oy, p.x - S.ox) - drag.a0); } break;
     case 'zoom': zoomAbout(drag.x0, drag.y0, drag.s0, drag.ox0, drag.oy0, drag.s0 * Math.exp(-dy / 180)); linkZoom('ax'); render(); break;
     case 'length': S.draft.b = toImage(p.x, p.y); render(); break;
-    case 'roi': S.draft.b = toImage(p.x, p.y); render(); break;
+    case 'roi': case 'rect': case 'free': roiGrow(S.draft, toImage(p.x, p.y)); render(); break;
     case 'arrow': S.draft.b = toImage(p.x, p.y); render(); break;
     case 'text': S.draft.p = toImage(p.x, p.y); render(); break;
     case 'hu': S.draft.p = toImage(p.x, p.y - S.huOff); render(); break;
@@ -3253,7 +3365,7 @@ function moveDrag(p, ts) {
 function endDrag(p) {
   if (drag && drag.tool === 'edit') {
     const E = drag.edit, m = E.m;
-    if (drag.moved) { if (m.type === 'roi' && cur() && cur().pixels) m.stats = roiStats(cur(), m.a, m.b); snap(S.meas, E.key, E.prev); S.sel = { m, map: S.meas, key: E.key, kind: 'ax' }; }
+    if (drag.moved) { if (m.type === 'roi' && cur() && cur().pixels) m.stats = roiStats(cur(), m.a, m.b, m); snap(S.meas, E.key, E.prev); S.sel = { m, map: S.meas, key: E.key, kind: 'ax' }; }
     else selToggle(m, S.meas, E.key, 'ax');
     drag = null; render(); return;
   }
@@ -3264,7 +3376,8 @@ function endDrag(p) {
   else if (d.type === 'arrow') { if (Math.hypot(dx, dy) > 12) commit({ type: 'arrow', a: d.a, b: d.b }); S.draft = null; }
   else if (d.type === 'text') { const at = d.p, key = mkey(); askText(t => { if (mkey() === key) commit({ type: 'text', p: at, text: t }); else { snap(S.meas, key); const l = S.meas.get(key) || []; l.push({ type: 'text', p: at, text: t }); S.meas.set(key, l); render(); } }); S.draft = null; }
   else if (d.type === 'roi') {
-    if (Math.abs(dx) > 6 && Math.abs(dy) > 6) commit({ type: 'roi', a: d.a, b: d.b, stats: roiStats(img, d.a, d.b) });
+    const sa = toScreen(d.a.x, d.a.y), sb = toScreen(d.b.x, d.b.y);
+    if (Math.abs(sb.x - sa.x) > 6 && Math.abs(sb.y - sa.y) > 6 && (!d.pts || d.pts.length > 2)) commit(Object.assign({}, d, { stats: roiStats(img, d.a, d.b, d) }));
     S.draft = null;
   } else if (d.type === 'angle' && d.pts.length === 3) { commit({ type: 'angle', pts: d.pts }); S.draft = null; }
   render();
@@ -3366,7 +3479,7 @@ cv.addEventListener('wheel', e => {
 // Keyboard, as in RadiAnt (see "Keyboard and mouse" in the ⋯ menu)
 const KEY_TOOLS = { b: 'scroll', w: 'wl', m: 'pan', z: 'zoom', l: 'length', a: 'angle', e: 'roi', h: 'hu', r: 'rotate' };
 function pickTool(t) {
-  if (t === 'roi' || t === 'hu') { const b = document.querySelector('.tool[data-tool=hu],.tool[data-tool=roi]'); if (b && b.dataset.tool !== t) toolFace(b, t); }
+  if (ROI_TOOLS.has(t) || t === 'hu') { const b = document.querySelector('.tool[data-tool=hu],.tool[data-tool=roi],.tool[data-tool=rect],.tool[data-tool=free]'); if (b && b.dataset.tool !== t) toolFace(b, t); }
   setTool(t);
 }
 function zoomBy(k) { // keyboard zoom about the centre of the view the mouse is over (or the main view)
@@ -3421,6 +3534,7 @@ window.addEventListener('keydown', e => {
   else if (lk === 'c' && S.vol) xhairToggle();
   else if (KEY_TOOLS[lk] && !e.shiftKey) pickTool(KEY_TOOLS[lk]);
   else if (k === '?') openSheet('#sheetKeys');
+  else if (lk === 'i' && cur()) tagsOpen();
   else if ((k === 'Delete' || k === 'Backspace') && S.sel) { done(); delSel(); }
   else if (k === 'Escape') { S.sel = null; focusToggle(false); S.draft = null; document.querySelectorAll('.sheet').forEach(s => s.hidden = true); render(); }
 });
@@ -3728,6 +3842,25 @@ const worldToPlane = (v, q) => { const g = v.g; return { x: v3.dot(q, g.a) / g.h
 // view geometry: plane pixels to CSS pixels of the view
 function mvFitScale(v) { const g = v.g || planeGeom(v); return Math.min(v.W / g.iw, v.H / (g.ih * g.asp)) * 0.96; }
 function mvFit(v) { v.s = mvFitScale(v); v.ox = v.W / 2; v.oy = v.H / 2; v.fit = true; }
+// An MPR view of a CT opens with the body filling it: across, the body's width (coronal) or depth (sagittal), as found
+// on the axial slices without the table; up and down, the whole length scanned. Pinching then links the views again.
+function mvFitBody(v) {
+  const V = S.vol, se = V && V.se, img = se && se.images[0]; if (!img || !v.W || !v.H) return;
+  if (V.bodyMm === undefined) {
+    const b = seriesBody(se, se.images[Math.floor(se.images.length / 2)]), kx = V.w * V.sx / img.cols, ky = V.h * V.sy / img.rows;
+    V.bodyMm = b ? { x0: b.x0 * kx, x1: b.x1 * kx, y0: b.y0 * ky, y1: b.y1 * ky } : null;
+  }
+  const B = V.bodyMm; if (!B) return;
+  const g = planeGeom(v); let i0 = Infinity, i1 = -Infinity, j0 = Infinity, j1 = -Infinity;
+  for (const X of [B.x0, B.x1]) for (const Y of [B.y0, B.y1]) for (const Z of [0, (V.n - 1) * V.dz]) {
+    const q = [X, Y, Z], i = v3.dot(q, g.a) / g.hu - g.s0, j = v3.dot(q, g.b) / g.hv - g.t0;
+    i0 = Math.min(i0, i); i1 = Math.max(i1, i); j0 = Math.min(j0, j); j1 = Math.max(j1, j);
+  }
+  if (!(i1 > i0) || !(j1 > j0)) return;
+  const sc = Math.min(mvFitScale(v) * 4, Math.min(v.W / (i1 - i0), v.H / ((j1 - j0) * g.asp)) * 0.92);
+  if (sc <= mvFitScale(v) * 1.02) return; // the body already fills it: left fitted
+  v.s = sc; v.ox = v.W / 2 - ((i0 + i1) / 2 - g.iw / 2) * sc; v.oy = v.H / 2 - ((j0 + j1) / 2 - g.ih / 2) * sc * g.asp; v.fit = false;
+}
 const mvToImage = (v, sx, sy) => { const g = v.g; return { x: (sx - v.ox) / v.s + g.iw / 2, y: (sy - v.oy) / (v.s * g.asp) + g.ih / 2 }; };
 const mvToScreen = (v, x, y) => { const g = v.g; return { x: v.ox + (x - g.iw / 2) * v.s, y: v.oy + (y - g.ih / 2) * v.s * g.asp }; };
 const crossScreen = v => { const p = worldToPlane(v, S.vol.P); return mvToScreen(v, p.x, p.y); };
@@ -3807,6 +3940,7 @@ function drawMPR1(V) {
     const v = MV[kind]; if (!v || !v.W) continue;
     if (v.needSync) { v.needSync = false; planeGeom(v); if (S.fit) mvFit(v); else { v.s = 1; v.ox = v.W / 2; v.oy = v.H / 2; v.fit = false; linkZoom('ax'); } }
     const g = planeGeom(v);
+    if (v.bodyFit && v.W && v.H) { v.bodyFit = false; mvFitBody(v); }
     if (v.fit) mvFit(v);
     const ps = S.planeMode && S.pslab && kind === $('#views').dataset.main ? S.pslab : null; // thick slab on the single coronal/sagittal
     const key = g.key + ':' + V.ver + ':' + v3.dot(V.P, g.n).toFixed(3) + (ps ? ':' + ps.mode + ps.t : '');
@@ -3823,6 +3957,7 @@ function drawMPR1(V) {
       for (const L of viewLines(kind)) gapLine(c2, c, screenDir(v, L.d), L.col, far);
       drawHandles(c2, handlePositions(kind, c, v.W, v.H));
     }
+    if (S.c3 && S.c3.vp && S.c3.vol === V) { const q = worldToPlane(v, S.c3.vp), off = v3.dot(v3.add(S.c3.vp, V.P, -1), v.g.n); c3Cross(c2, mvToScreen(v, q.x, q.y), Math.abs(off) <= Math.max(1.5, Math.min(V.sx, V.sy, V.dz) / 2 + 0.5)); }
     drawPlaneMeas(v);
     c2.font = '500 12px "IBM Plex Mono", ui-monospace, monospace'; c2.textBaseline = 'top'; c2.fillStyle = XCOL[kind === 'oax' ? 'ax' : kind];
     c2.fillText((kind === 'cor' ? 'Coronal' : kind === 'sag' ? 'Sagittal' : 'Axial') + (isOblique() ? ' · oblique' : ''), 10, 9);
@@ -3860,16 +3995,15 @@ function mvHit(v, p, R, strict) { return hitIn((v.meas && v.meas.get(mvKey(v))) 
 // ROI statistics on the reconstructed plane (values are those shown: trilinear samples of the volume)
 function planeRoiStats(v, m) {
   const V = S.vol, g = v.g, buf = v.buf; if (!buf || buf.length !== g.iw * g.ih) return null;
-  const cx = (m.a.x + m.b.x) / 2, cy = (m.a.y + m.b.y) / 2, rx = Math.abs(m.b.x - m.a.x) / 2, ry = Math.abs(m.b.y - m.a.y) / 2;
-  if (!rx || !ry) return null;
+  const Rs = roiShape(m); if (!Rs.area) return null;
   let n = 0, sum = 0, sum2 = 0, min = Infinity, max = -Infinity;
-  const x0 = Math.max(0, Math.floor(cx - rx)), x1 = Math.min(g.iw - 1, Math.ceil(cx + rx)), y0 = Math.max(0, Math.floor(cy - ry)), y1 = Math.min(g.ih - 1, Math.ceil(cy + ry));
+  const x0 = Math.max(0, Math.floor(Rs.x0)), x1 = Math.min(g.iw - 1, Math.ceil(Rs.x1)), y0 = Math.max(0, Math.floor(Rs.y0)), y1 = Math.min(g.ih - 1, Math.ceil(Rs.y1));
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-    const dx = (x + 0.5 - cx) / rx, dy = (y + 0.5 - cy) / ry; if (dx * dx + dy * dy > 1) continue;
+    if (!Rs.inside(x + 0.5, y + 0.5)) continue;
     const val = buf[y * g.iw + x] * V.sl + V.ic; n++; sum += val; sum2 += val * val; if (val < min) min = val; if (val > max) max = val;
   }
   if (!n) return null;
-  const mean = sum / n; return { n, mean, sd: Math.sqrt(Math.max(0, sum2 / n - mean * mean)), area: Math.PI * rx * ry * g.hu * g.hv, unit: 'mm', min, max };
+  const mean = sum / n; return { n, mean, sd: Math.sqrt(Math.max(0, sum2 / n - mean * mean)), area: Rs.area * g.hu * g.hv, unit: 'mm', min, max };
 }
 function planeAngle(v, p) {
   const g = v.g, u1 = [(p[0].x - p[1].x) * g.hu, (p[0].y - p[1].y) * g.hv], u2 = [(p[2].x - p[1].x) * g.hu, (p[2].y - p[1].y) * g.hv];
@@ -3897,9 +4031,9 @@ function drawPlaneMeas(v) {
     } else if (m.type === 'text') { const q = sc(m.p); if (live) drawPlus(c2, q, true); else drawNote(c2, q, m.text, sel);
     } else if (m.type === 'roi') {
       const a = sc(m.a), b = sc(m.b);
-      c2.beginPath(); c2.ellipse((a.x + b.x) / 2, (a.y + b.y) / 2, Math.abs(b.x - a.x) / 2 || 1, Math.abs(b.y - a.y) / 2 || 1, 0, 0, 7); c2.stroke(); c2.setLineDash([]);
+      roiPath(c2, m, sc, live); c2.stroke(); c2.setLineDash([]);
       if (!live) measGrips(m).forEach(q => dotAt(sc(q), 3));
-      const st = m.stats || planeRoiStats(v, m);
+      const st = m.stats || (live && m.shape === 'free' ? null : planeRoiStats(v, m));
       if (st) {
         const u = S.vol.se.images[0].modality === 'CT' ? ' HU' : '';
         label(roiLabel(st, u, S.vol.se.images[0].suv), Math.min(a.x, b.x), Math.max(a.y, b.y) + 8);
@@ -3953,6 +4087,11 @@ function keepCrossInView(except) {
 }
 // Gestures on an MPR view: a handle turns a plane; otherwise drag moves the plane, tap moves the crosshair there,
 // pinch zooms, double tap fits. With a measuring tool (or the Pencil) one finger measures a length.
+function mvC3(v, p, off) { // the 3D cursor placed on a coronal/sagittal view (just above the finger, as on the axial)
+  const V = S.vol; if (!V || !v.g) return;
+  const q = mvToImage(v, p.x, p.y - (off || 0)), P = planeToWorld(v, q.x, q.y), k = clamp(Math.round(kOf(P[2])), 0, V.n - 1);
+  const w = imgToWorld(V.se.images[k], cxOf(P[0]), cyOf(P[1])); if (w) place3D(w, V.se, P);
+}
 function mvInput(v) {
   const el = v.cv, P2 = new Map(); let d = null, pz = null, last = null;
   const at = e => { const r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
@@ -3975,6 +4114,7 @@ function mvInput(v) {
       if (h && !proGate('Oblique MPR (tilting the planes)')) { d = null; return; }
       if (!h && !mt && e.pointerType !== 'pen' && tl === 'loupe') { d.loupe = true; d.loupeT = 0; glide = null; v.loupe = { x: p.x, y: p.y }; render(); return; } // the Magnifier tool, as on the axial
       if (h) d.turn = startTurn(v.kind, h, p);
+      else if (!mt && tl === 'cursor3d') { d.c3 = true; d.off = e.pointerType === 'touch' ? HU_OFF : 0; mvC3(v, p, d.off); }
       else if (e.pointerType === 'pen' || MEASURE.has(tl)) {
         const tool = MEASURE.has(tl) ? tl : 'length';
         const q = mvToImage(v, p.x, p.y), R = e.pointerType === 'touch' ? 24 : 12;
@@ -3987,7 +4127,7 @@ function mvInput(v) {
           if (tool === 'angle') { if (!midAngle) v.draft = { type: 'angle', pts: [] }; v.draft.pts.push(q); }
           else if (tool === 'hu') v.draft = { type: 'hu', p: mvToImage(v, p.x, p.y - d.off) };
           else if (tool === 'text') v.draft = { type: 'text', p: q };
-          else v.draft = { type: tool, a: q, b: q };
+          else v.draft = ROI_TOOLS.has(tool) ? roiDraft(tool, q) : { type: tool, a: q, b: q };
           render();
         }
       }
@@ -4010,7 +4150,8 @@ function mvInput(v) {
       if (d.loupe) { v.loupe = { x: p.x, y: p.y }; render(); return; } // the magnifier follows the finger
       d.last = p; if (Math.hypot(p.x - d.x0, p.y - d.y0) > 6) { d.moved = true; clearTimeout(v.hold); }
       if (d.turn) { moveTurn(d.turn, p); return; }
-      if (d.measure && v.draft) { const q = mvToImage(v, p.x, p.y); if (v.draft.type === 'angle') v.draft.pts[v.draft.pts.length - 1] = q; else if (v.draft.type === 'hu') v.draft.p = mvToImage(v, p.x, p.y - (d.off || 0)); else if (v.draft.type === 'text') v.draft.p = q; else v.draft.b = q; render(); return; }
+      if (d.c3) { mvC3(v, p, d.off); return; }
+      if (d.measure && v.draft) { const q = mvToImage(v, p.x, p.y); if (v.draft.type === 'angle') v.draft.pts[v.draft.pts.length - 1] = q; else if (v.draft.type === 'hu') v.draft.p = mvToImage(v, p.x, p.y - (d.off || 0)); else if (v.draft.type === 'text') v.draft.p = q; else if (v.draft.type === 'roi') roiGrow(v.draft, q); else v.draft.b = q; render(); return; }
       if (d.edit) { moveEdit(d.edit, p); return; }
       if (d.cross) { const q = mvToImage(v, p.x + d.dx, p.y + d.dy); setP(planeToWorld(v, q.x, q.y), v.kind); return; }
       if (d.tool === 'wl') {
@@ -4033,6 +4174,7 @@ function mvInput(v) {
   const up = e => {
     if (!P2.has(e.pointerId)) return; P2.delete(e.pointerId); clearTimeout(v.hold);
     if (d && d.loupe) { v.loupe = null; d = null; P2.clear(); render(); return; }
+    if (d && d.c3) { if (P2.size === 0) d = null; return; }
     if (d && e.type === 'pointerup') {
       if (d.scrolled && d.moved) feelUp(d.feel, e.timeStamp, e.pointerType !== 'mouse');
       if (d.tool === 'rotate' && d.moved && v.rot) { const deg = v.rot * 180 / Math.PI, r = Math.round(deg / 90) * 90; if (Math.abs(deg - r) < 3) rotateView(v, r * Math.PI / 180); }
@@ -4110,7 +4252,9 @@ function mprToggle(on) {
       mvInput(v);
     }
     MV[kind].fit = true; MV[kind].key = null; MV[kind].g = null; if (!again) MV[kind].meas = null; // the same volume again: its drawings stay
+    MV[kind].bodyFit = isCTlike(se0); // a CT: each view opens with the body filling it (see mvFitBody)
   }
+  if (isCTlike(se0)) requestAnimationFrame(() => requestAnimationFrame(() => { if (S.vol === plan) { fitBody(); render(); } })); // the axial too, in its new size
   if (!again) S.keepVol = null; // another series: the old volume is let go
   volFillFromMemory(); if (plan.pet) volFillFromMemory(plan.pet); if (typeof volCacheLoad === 'function') volCacheLoad(plan); render(); pump();
 }
@@ -4224,17 +4368,506 @@ function worldToImg(im, w) { // patient mm -> image pixel, and the distance from
 }
 function nearestSlice(se, w) { let best = -1, bd = Infinity; se.images.forEach((im, i) => { const q = worldToImg(im, w); if (q && Math.abs(q.off) < bd) { bd = Math.abs(q.off); best = i; } }); return best; }
 const c3Here = se => !!(S.c3 && se && se.studyUid === S.c3.study); // positions only compare within one study
-function place3D(w, srcSe) {
+function place3D(w, srcSe, vp) {
   const study = (srcSe || curSeries()).studyUid; S.c3 = { w, study };
+  const V = S.vol; // MPR: the coronal and sagittal planes go through the point, so it shows in every view
+  if (V && V.se && V.se.studyUid === study) {
+    if (!vp) { const k = nearestSlice(V.se, w), q = k >= 0 && worldToImg(V.se.images[k], w); if (q) vp = [xOf(q.x), yOf(q.y), zOf(k)]; }
+    if (vp) { S.c3.vp = vp; S.c3.vol = V; setP(vp, 'c3'); }
+  }
   const main = curSeries();
   if (main && main.studyUid === study) { const i = nearestSlice(main, w); if (i >= 0 && i !== S.idx) setIdx(i); }
   S.c3.mainIdx = S.idx;
   if (!S.rf) for (const C of S.cmps) if (C.se.studyUid === study) { const i = nearestSlice(C.se, w); if (i >= 0) { C.idx = i; C.c3idx = i; } }
   render(); pump();
 }
+/* ---------- DICOM tags: every field of the header of the image on screen (as RadiAnt's DICOM tags window) ---------- */
+const TAGDICT = (() => { const m = new Map(); for (const x of '00020000ULFile Meta Information Group Length|00020001OBFile Meta Information Version|00020002UIMedia Storage SOP Class UID|00020003UIMedia Storage SOP Instance UID|00020010UITransfer Syntax UID|00020012UIImplementation Class UID|00020013SHImplementation Version Name|00020016AESource Application Entity Title|00080005CSSpecific Character Set|00080008CSImage Type|00080012DAInstance Creation Date|00080013TMInstance Creation Time|00080016UISOP Class UID|00080018UISOP Instance UID|00080020DAStudy Date|00080021DASeries Date|00080022DAAcquisition Date|00080023DAContent Date|0008002ADTAcquisition DateTime|00080030TMStudy Time|00080031TMSeries Time|00080032TMAcquisition Time|00080033TMContent Time|00080050SHAccession Number|00080060CSModality|00080064CSConversion Type|00080070LOManufacturer|00080080LOInstitution Name|00080081STInstitution Address|00080090PNReferring Physician’s Name|00081010SHStation Name|00081030LOStudy Description|00081032SQProcedure Code Sequence|0008103ELOSeries Description|00081040LOInstitutional Department Name|00081050PNPerforming Physician’s Name|00081060PNName of Physician(s) Reading Study|00081070PNOperators’ Name|00081090LOManufacturer’s Model Name|00081140SQReferenced Image Sequence|00081150UIReferenced SOP Class UID|00081155UIReferenced SOP Instance UID|00082111STDerivation Description|00089215SQDerivation Code Sequence|00100010PNPatient’s Name|00100020LOPatient ID|00100021LOIssuer of Patient ID|00100030DAPatient’s Birth Date|00100040CSPatient’s Sex|00101000LOOther Patient IDs|00101010ASPatient’s Age|00101020DSPatient’s Size|00101030DSPatient’s Weight|00101040LOPatient’s Address|00102160SHEthnic Group|001021B0LTAdditional Patient History|00104000LTPatient Comments|00180010LOContrast/Bolus Agent|00181040LOContrast/Bolus Route|00181041DSContrast/Bolus Volume|00181042TMContrast/Bolus Start Time|00181044DSContrast/Bolus Total Dose|00181046DSContrast Flow Rate|00180015CSBody Part Examined|00180020CSScanning Sequence|00180021CSSequence Variant|00180022CSScan Options|00180023CSMR Acquisition Type|00180024SHSequence Name|00180050DSSlice Thickness|00180060DSKVP|00180080DSRepetition Time|00180081DSEcho Time|00180082DSInversion Time|00180083DSNumber of Averages|00180084DSImaging Frequency|00180086ISEcho Number(s)|00180087DSMagnetic Field Strength|00180088DSSpacing Between Slices|00180090DSData Collection Diameter|00180091ISEcho Train Length|00180093DSPercent Sampling|00180094DSPercent Phase Field of View|00180095DSPixel Bandwidth|00181000LODevice Serial Number|00181020LOSoftware Versions(s)|00181030LOProtocol Name|00181088ISHeart Rate|00181100DSReconstruction Diameter|00181110DSDistance Source to Detector|00181111DSDistance Source to Patient|00181120DSGantry/Detector Tilt|00181130DSTable Height|00181140CSRotation Direction|00181150ISExposure Time|00181151ISX-Ray Tube Current|00181152ISExposure|00181160SHFilter Type|00181170ISGenerator Power|00181190DSFocal Spot(s)|00181210SHConvolution Kernel|00181242ISActual Frame Duration|00181250SHReceive Coil Name|00181251SHTransmit Coil Name|00181310USAcquisition Matrix|00181312CSIn-plane Phase Encoding Direction|00181314DSFlip Angle|00181316DSSAR|00185100CSPatient Position|00189073FDAcquisition Duration|00189087FDDiffusion b-value|00189089FDDiffusion Gradient Orientation|00189305FDRevolution Time|00189306FDSingle Collimation Width|00189307FDTotal Collimation Width|00189309FDTable Speed|00189310FDTable Feed per Rotation|00189311FDSpiral Pitch Factor|00189345FDCTDIvol|0020000DUIStudy Instance UID|0020000EUISeries Instance UID|00200010SHStudy ID|00200011ISSeries Number|00200012ISAcquisition Number|00200013ISInstance Number|00200020CSPatient Orientation|00200032DSImage Position (Patient)|00200037DSImage Orientation (Patient)|00200052UIFrame of Reference UID|00200060CSLaterality|00200100ISTemporal Position Identifier|00200105ISNumber of Temporal Positions|00201040LOPosition Reference Indicator|00201041DSSlice Location|00204000LTImage Comments|00209056SHStack ID|00209057ULIn-Stack Position Number|00280002USSamples per Pixel|00280004CSPhotometric Interpretation|00280006USPlanar Configuration|00280008ISNumber of Frames|00280010USRows|00280011USColumns|00280030DSPixel Spacing|00280034ISPixel Aspect Ratio|00280100USBits Allocated|00280101USBits Stored|00280102USHigh Bit|00280103USPixel Representation|00280106USSmallest Image Pixel Value|00280107USLargest Image Pixel Value|00280120USPixel Padding Value|00281050DSWindow Center|00281051DSWindow Width|00281052DSRescale Intercept|00281053DSRescale Slope|00281054LORescale Type|00281055LOWindow Center & Width Explanation|00282110CSLossy Image Compression|00282112DSLossy Image Compression Ratio|00282114CSLossy Image Compression Method|00321060LORequested Procedure Description|00400244DAPerformed Procedure Step Start Date|00400245TMPerformed Procedure Step Start Time|00400253SHPerformed Procedure Step ID|00400254LOPerformed Procedure Step Description|00400275SQRequest Attributes Sequence|00401001SHRequested Procedure ID|00540016SQRadiopharmaceutical Information Sequence|00180031LORadiopharmaceutical|00181071DSRadiopharmaceutical Volume|00181072TMRadiopharmaceutical Start Time|00181074DSRadionuclide Total Dose|00181075DSRadionuclide Half Life|00181076DSRadionuclide Positron Fraction|00180026SQIntervention Drug Information Sequence|00540081USNumber of Slices|00541000CSSeries Type|00541001CSUnits|00541002CSCounts Source|00541100CSRandoms Correction Method|00541101LOAttenuation Correction Method|00541102CSDecay Correction|00541103LOReconstruction Method|00541300DSFrame Reference Time|00541321DSDecay Factor|00541322DSDose Calibration Factor|00541330USImage Index|00080100SHCode Value|00080102SHCoding Scheme Designator|00080104LOCode Meaning|00540300SQRadionuclide Code Sequence|52009229SQShared Functional Groups Sequence|52009230SQPer-frame Functional Groups Sequence|00289110SQPixel Measures Sequence|00209113SQPlane Position Sequence|00209116SQPlane Orientation Sequence|00289145SQPixel Value Transformation Sequence|00289132SQFrame VOI LUT Sequence|00209111SQFrame Content Sequence|00189117SQMR Diffusion Sequence|00880140UIStorage Media File-set UID|7FE00010OWPixel Data|FFFEE000--Item|FFFEE00D--Item Delimitation Item|FFFEE0DD--Sequence Delimitation Item'.split('|')) m.set(x.slice(0, 8), [x.slice(8, 10), x.slice(10)]); return m; })();
+const PHI_TAGS = new Set(['00100010', '00100020', '00100021', '00100030', '00101000', '00101040', '00101001', '00080090', '00081050', '00081060', '00081070', '00080080', '00080081', '00080050', '00102154', '00104000', '001021B0']);
+function dicomDump(u8) {
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), N = u8.byteLength, rows = [], UNDEF = 0xFFFFFFFF;
+  const LONGVR = new Set(['OB', 'OD', 'OF', 'OL', 'OV', 'OW', 'SQ', 'SV', 'UC', 'UN', 'UR', 'UT', 'UV']);
+  const TEXT = new Set(['AE', 'AS', 'CS', 'DA', 'DS', 'DT', 'IS', 'LO', 'LT', 'PN', 'SH', 'ST', 'TM', 'UC', 'UI', 'UR', 'UT']);
+  const h4 = n => n.toString(16).toUpperCase().padStart(4, '0');
+  let expl = true, dec = new TextDecoder('windows-1252');
+  const el = pos => {
+    const g = dv.getUint16(pos, true), e = dv.getUint16(pos + 2, true), key = h4(g) + h4(e);
+    if (g === 0xFFFE) return { g, e, key, len: dv.getUint32(pos + 4, true), off: pos + 8 };
+    if (g === 2 || expl) { const vr = String.fromCharCode(u8[pos + 4], u8[pos + 5]);
+      if (/^[A-Z]{2}$/.test(vr)) return LONGVR.has(vr) ? (pos + 12 <= N ? { g, e, key, vr, len: dv.getUint32(pos + 8, true), off: pos + 12 } : null) : { g, e, key, vr, len: dv.getUint16(pos + 6, true), off: pos + 8 }; }
+    const d = TAGDICT.get(key); return { g, e, key, vr: d ? d[0] : (e === 0 ? 'UL' : 'UN'), len: dv.getUint32(pos + 4, true), off: pos + 8, implicit: true };
+  };
+  const value = (vr, o, l) => {
+    const many = (n, f) => { const out = []; for (let i = 0; i + n <= l && out.length < 40; i += n) out.push(f(o + i)); return out.join('\\') + (l / n > 40 ? '…' : ''); };
+    if (TEXT.has(vr)) { let s = dec.decode(u8.subarray(o, o + Math.min(l, 4096))).replace(/\0/g, '').trim(); if (vr === 'DA' && /^\d{8}$/.test(s)) s = s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6); return s + (l > 4096 ? '…' : ''); }
+    if (vr === 'US') return many(2, p => dv.getUint16(p, true)); if (vr === 'SS') return many(2, p => dv.getInt16(p, true));
+    if (vr === 'UL') return many(4, p => dv.getUint32(p, true)); if (vr === 'SL') return many(4, p => dv.getInt32(p, true));
+    if (vr === 'FL') return many(4, p => +dv.getFloat32(p, true).toPrecision(7)); if (vr === 'FD') return many(8, p => +dv.getFloat64(p, true).toPrecision(10));
+    if (vr === 'AT') return many(4, p => '(' + h4(dv.getUint16(p, true)) + ',' + h4(dv.getUint16(p + 2, true)) + ')');
+    if (l <= 80) { const t = u8.subarray(o, o + l); if (l && t.every(c => c === 0 || (c >= 32 && c < 127))) return dec.decode(t).replace(/\0/g, '').trim(); }
+    return '(' + l + ' bytes)';
+  };
+  const walk = (pos, end, depth) => {
+    while (pos + 8 <= end && rows.length < 20000) {
+      const E = el(pos); if (!E) break;
+      if (E.g === 0xFFFE) return pos; // the end of an item: the caller goes on
+      const d = TAGDICT.get(E.key), name = d ? d[1] : E.g % 2 ? (E.e >= 0x10 && E.e <= 0xFF ? 'Private Creator' : 'Private') : E.e === 0 ? 'Group Length' : '', row = { tag: '(' + E.key.slice(0, 4) + ',' + E.key.slice(4) + ')', key: E.key, name, vr: E.vr, depth, value: '' };
+      rows.push(row);
+      if (E.key === '7FE00010') { row.value = E.len === UNDEF ? '(compressed image data)' : '(' + E.len + ' bytes)'; return N; }
+      if (E.vr === 'SQ' || E.len === UNDEF) {
+        let p = E.off, n = 0; const sqEnd = E.len === UNDEF ? N : Math.min(N, E.off + E.len);
+        while (p + 8 <= sqEnd) {
+          const g = dv.getUint16(p, true), e = dv.getUint16(p + 2, true), l = dv.getUint32(p + 4, true);
+          if (g === 0xFFFE && e === 0xE0DD) { p += 8; break; }
+          if (!(g === 0xFFFE && e === 0xE000)) break;
+          n++; rows.push({ tag: '', key: '', name: 'Item ' + n, vr: '', depth: depth + 1, value: '', item: true });
+          const iEnd = l === UNDEF ? N : Math.min(N, p + 8 + l); let q = walk(p + 8, iEnd, depth + 1);
+          if (l === UNDEF) { if (q + 8 <= N && dv.getUint16(q, true) === 0xFFFE && dv.getUint16(q + 2, true) === 0xE00D) q += 8; p = q; } else p = iEnd;
+        }
+        row.value = n + (n === 1 ? ' item' : ' items'); pos = E.len === UNDEF ? p : sqEnd; continue;
+      }
+      if (E.off + E.len > N) { row.value = '(not kept)'; break; }
+      row.value = value(E.vr, E.off, E.len);
+      if (E.key === '00020010') expl = row.value !== '1.2.840.10008.1.2';
+      if (E.key === '00080005' && /192/.test(row.value)) dec = new TextDecoder('utf-8');
+      pos = E.off + E.len;
+    }
+    return pos;
+  };
+  walk(N > 132 && u8[128] === 68 && u8[129] === 73 && u8[130] === 67 && u8[131] === 77 ? 132 : 0, N, 0);
+  return rows;
+}
+function tagsOpen() {
+  const t = cur(), im = t && t.fuse ? t.fuse.ct : t, se = curSeries();
+  const box = $('#tagList'), q = $('#tagFind');
+  $('#tagWhat').textContent = !im ? 'No image open' : (se && se.desc ? se.desc + ' · ' : '') + 'image ' + (S.idx + 1) + ' of ' + (se ? se.images.length : 1) + (t && t.fuse ? ' · the CT' : '');
+  const rows = im && im.hdr ? dicomDump(im.hdr) : [];
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const draw = () => {
+    const f = q.value.trim().toLowerCase();
+    const list = f ? rows.filter(r => !r.item && (r.tag + ' ' + r.key + ' ' + r.name + ' ' + (S.anon && PHI_TAGS.has(r.key) ? '' : r.value)).toLowerCase().includes(f)) : rows;
+    box.innerHTML = list.length ? list.slice(0, 4000).map(r => {
+      const hide = S.anon && PHI_TAGS.has(r.key) && r.value;
+      return '<tr' + (r.item ? ' class="it"' : '') + '><td class="tg">' + esc(r.tag) + '</td><td class="nm" style="padding-left:' + (6 + r.depth * 14) + 'px">' + esc(r.name) + (r.tag ? '<span class="tg2">' + esc(r.tag + ' ' + r.vr) + '</span>' : '') + '</td><td class="vr">' + esc(r.vr) + '</td><td class="vl' + (hide ? ' pii-off' : '') + '">' + (hide ? 'hidden' : esc(r.value)) + '</td></tr>';
+    }).join('') : '<tr><td colspan="4" class="none">' + (im && !im.hdr ? 'The header of this image was not kept (open the study again to see it)' : rows.length ? 'Nothing matches' : 'No tags') + '</td></tr>';
+  };
+  q.oninput = draw; q.value = ''; draw();
+  openSheet('#sheetTags');
+}
+/* ---------- anonymised export: the series or study as DICOM files in a zip, without the patient's identity ----------
+   Each file is rewritten: name and ID replaced by a code, birth date, accession number, doctors, hospital, other
+   patient details and private tags removed, and the study, series, image and frame-of-reference UIDs replaced by new
+   ones (the same across the export, so the series still belong together). The images themselves are copied unchanged. */
+const ANON_REMOVE = new Set(['00080014', '00080080', '00080081', '00080082', '00080092', '00080094', '00080096', '00081010', '00081040', '00081048', '00081049',
+  '00081050', '00081052', '00081060', '00081062', '00081070', '00081072', '00081110', '00081111', '00081115', '00081120', '00081140', '00081155', '00082112',
+  '00181000', '00200010', '00204000', '00400006', '00400244', '00400253', '00400275', '00401001', '00402001', '0040A124', '00880140', '01000420', '00080201']);
+const ANON_KEEP10 = new Set(['00100040', '00101010', '00101020', '00101030']); // sex, age, size, weight (weight: PET SUV)
+const ANON_UIDS = new Set(['0020000D', '0020000E', '00080018', '00200052']);
+const ANON_IMPL = '2.25.297011556178405391640101957393125573227';
+function anonUid(ctx, old) { // a new UID for an old one, the same each time within this export
+  if (!ctx.uids.has(old)) { const r = crypto.getRandomValues(new Uint32Array(4)); let n = 0n; for (const x of r) n = (n << 32n) | BigInt(x); ctx.uids.set(old, '2.25.' + n.toString()); }
+  return ctx.uids.get(old);
+}
+function anonDicom(u8, ctx, tail) {
+  // u8: a DICOM file (or only its header, when tail is given: the pixel data element to put after it).
+  // Returns the anonymised file, or null when it cannot be rewritten (big endian, deflated, unreadable).
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), N = u8.byteLength, UNDEF = 0xFFFFFFFF;
+  const LONGVR = new Set(['OB', 'OD', 'OF', 'OL', 'OV', 'OW', 'SQ', 'SV', 'UC', 'UN', 'UR', 'UT', 'UV']);
+  const h4 = n => n.toString(16).toUpperCase().padStart(4, '0'), dec = new TextDecoder('windows-1252');
+  const txt = (o, l) => dec.decode(u8.subarray(o, o + l)).replace(/\0/g, '').trim();
+  let pos = N > 132 && u8[128] === 68 && u8[129] === 73 && u8[130] === 67 && u8[131] === 77 ? 132 : 0;
+  let ts = null, sopClass = null;
+  while (pos + 8 <= N && dv.getUint16(pos, true) === 2) { // the file meta group (always explicit)
+    const e = dv.getUint16(pos + 2, true), vr = String.fromCharCode(u8[pos + 4], u8[pos + 5]), lg = LONGVR.has(vr);
+    const len = lg ? dv.getUint32(pos + 8, true) : dv.getUint16(pos + 6, true), off = pos + (lg ? 12 : 8);
+    if (e === 0x10) ts = txt(off, len); if (e === 2) sopClass = txt(off, len);
+    pos = off + len;
+  }
+  const ds = pos;
+  if (ts === '1.2.840.10008.1.2.2' || ts === '1.2.840.10008.1.2.1.99') return null; // big endian, deflated: left out
+  const expl = ts ? ts !== '1.2.840.10008.1.2' : /^[A-Z]{2}$/.test(String.fromCharCode(u8[ds + 4] || 0, u8[ds + 5] || 0));
+  if (!ts) ts = expl ? '1.2.840.10008.1.2.1' : '1.2.840.10008.1.2';
+  if (ctx.ts) ts = ctx.ts; // rebuilt from decoded pixels: stored plainly
+  const head = p => { // one element's tag, VR, length and where its value starts
+    const g = dv.getUint16(p, true), e = dv.getUint16(p + 2, true);
+    if (g === 0xFFFE) return { g, e, len: dv.getUint32(p + 4, true), off: p + 8 };
+    if (expl) { const vr = String.fromCharCode(u8[p + 4], u8[p + 5]); return LONGVR.has(vr) ? { g, e, vr, len: dv.getUint32(p + 8, true), off: p + 12 } : { g, e, vr, len: dv.getUint16(p + 6, true), off: p + 8 }; }
+    return { g, e, vr: null, len: dv.getUint32(p + 4, true), off: p + 8 };
+  };
+  const skipSeq = p => { // p: just after an undefined-length element's header; returns just after its delimiter
+    while (p + 8 <= N) {
+      const g = dv.getUint16(p, true), e = dv.getUint16(p + 2, true), l = dv.getUint32(p + 4, true);
+      if (g === 0xFFFE && e === 0xE0DD) return p + 8;
+      if (g === 0xFFFE && e === 0xE000) { if (l !== UNDEF) { p += 8 + l; continue; } p = skipItem(p + 8); continue; }
+      return -1;
+    }
+    return -1;
+  };
+  const skipItem = p => { // inside an undefined-length item: elements until its delimiter
+    while (p + 8 <= N) {
+      const E = head(p); if (E.g === 0xFFFE && E.e === 0xE00D) return p + 8;
+      if (E.g === 0xFFFE) return -1;
+      p = E.len === UNDEF ? skipSeq(E.off) : E.off + E.len; if (p < 0) return -1;
+    }
+    return -1;
+  };
+  const out = []; // [tag number, bytes]
+  const enc = (g, e, vr, s) => { // a new element, encoded like the rest of the file
+    let v = new TextEncoder().encode(s); if (v.length % 2) { const w = new Uint8Array(v.length + 1); w.set(v); w[v.length] = vr === 'UI' ? 0 : 32; v = w; }
+    const b = new Uint8Array(8 + v.length), d = new DataView(b.buffer); d.setUint16(0, g, true); d.setUint16(2, e, true);
+    if (expl) { b[4] = vr.charCodeAt(0); b[5] = vr.charCodeAt(1); d.setUint16(6, v.length, true); } else d.setUint32(4, v.length, true);
+    b.set(v, 8); return b;
+  };
+  const encUS = (g, e, n) => { const b = new Uint8Array(10), d = new DataView(b.buffer); d.setUint16(0, g, true); d.setUint16(2, e, true); if (expl) { b[4] = 85; b[5] = 83; d.setUint16(6, 2, true); } else d.setUint32(4, 2, true); d.setUint16(8, n, true); return b; };
+  const put = (g, e, b) => out.push([g * 65536 + e, b]);
+  let sop = null, pixel = -1; const seen = new Set();
+  pos = ds;
+  while (pos + 8 <= N) {
+    const E = head(pos); if (E.g === 0xFFFE) return null;
+    const key = h4(E.g) + h4(E.e), tag = E.g * 65536 + E.e;
+    if (key === '7FE00010') { pixel = pos; break; }
+    const end = E.len === UNDEF ? skipSeq(E.off) : E.off + E.len;
+    if (end < 0 || end > N) return null;
+    seen.add(key);
+    const drop = (E.g % 2 === 1 && E.g !== 0x7053) || ANON_REMOVE.has(key) || E.g === 0x0032 || E.g === 0x0038 || (E.g === 0x0010 && !ANON_KEEP10.has(key) && !['00100010', '00100020', '00100030'].includes(key)) || (ctx.drop && ctx.drop.has(key));
+    if (drop) { pos = end; continue; }
+    if (key === '00100010') put(E.g, E.e, enc(E.g, E.e, 'PN', ctx.code));
+    else if (key === '00100020') put(E.g, E.e, enc(E.g, E.e, 'LO', ctx.code));
+    else if (key === '00100030' || key === '00080050' || key === '00080090') put(E.g, E.e, enc(E.g, E.e, key === '00080090' ? 'PN' : key === '00080050' ? 'SH' : 'DA', ''));
+    else if (ANON_UIDS.has(key)) { const nu = anonUid(ctx, txt(E.off, E.len)); if (key === '00080018') sop = nu; put(E.g, E.e, enc(E.g, E.e, 'UI', nu)); }
+    else if (ctx.set && ctx.set.has(key)) put(E.g, E.e, ctx.set.get(key)(enc, encUS, E.g, E.e));
+    else { if (key === '00080016' && !sopClass) sopClass = txt(E.off, E.len); put(E.g, E.e, u8.slice(pos, end)); }
+    pos = end;
+  }
+  if (pixel < 0 && !tail) return null; // no image in it
+  if (!sop) { sop = anonUid(ctx, 'new:' + (ctx.n = (ctx.n || 0) + 1)); put(8, 0x18, enc(8, 0x18, 'UI', sop)); }
+  if (ctx.set) for (const [key, f] of ctx.set) if (!seen.has(key)) { const g = parseInt(key.slice(0, 4), 16), e = parseInt(key.slice(4), 16); put(g, e, f(enc, encUS, g, e)); }
+  put(0x12, 0x62, enc(0x12, 0x62, 'CS', 'YES'));
+  put(0x12, 0x63, enc(0x12, 0x63, 'LO', 'Sliceview: identity removed, UIDs replaced, private tags removed'));
+  out.sort((a, b) => a[0] - b[0]);
+  // the file meta, written afresh
+  const mv = new Uint8Array([2, 0, 1, 0, 79, 66, 0, 0, 2, 0, 0, 0, 0, 1]); // (0002,0001) OB 00 01
+  const explMeta = (e, vr, s) => { let v = new TextEncoder().encode(s); if (v.length % 2) { const w = new Uint8Array(v.length + 1); w.set(v); w[v.length] = vr === 'UI' ? 0 : 32; v = w; }
+    const b = new Uint8Array(8 + v.length), d = new DataView(b.buffer); d.setUint16(0, 2, true); d.setUint16(2, e, true); b[4] = vr.charCodeAt(0); b[5] = vr.charCodeAt(1); d.setUint16(6, v.length, true); b.set(v, 8); return b; };
+  const meta = [mv, explMeta(2, 'UI', sopClass || '1.2.840.10008.5.1.4.1.1.7'), explMeta(3, 'UI', sop), explMeta(0x10, 'UI', ts), explMeta(0x12, 'UI', ANON_IMPL), explMeta(0x13, 'SH', 'SLICEVIEW')];
+  const mlen = meta.reduce((a, b) => a + b.length, 0), gl = new Uint8Array(12), gd = new DataView(gl.buffer);
+  gd.setUint16(0, 2, true); gd.setUint16(2, 0, true); gl[4] = 85; gl[5] = 76; gd.setUint16(6, 4, true); gd.setUint32(8, mlen, true);
+  const pre = new Uint8Array(132); pre[128] = 68; pre[129] = 73; pre[130] = 67; pre[131] = 77;
+  const pixBytes = tail ? tail(expl) : u8.subarray(pixel);
+  const parts = [pre, gl, ...meta, ...out.map(x => x[1]), pixBytes];
+  const total = parts.reduce((a, b) => a + b.length, 0), res = new Uint8Array(total); let o = 0;
+  for (const p of parts) { res.set(p, o); o += p.length; }
+  return res;
+}
+async function anonOriginal(im) { // the original file of an image, when it can be read again
+  if (im.zsrc) { const s = im.zsrc, z = s.zbuf instanceof ArrayBuffer ? s.zbuf : s.zbuf.buffer; const off = s.zbuf instanceof ArrayBuffer ? 0 : s.zbuf.byteOffset;
+    let d = z.slice(off + s.start, off + s.start + s.csize);
+    if (s.method === 8) d = await new Response(new Response(d).body.pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+    return new Uint8Array(d); }
+  const m = im.src; if (!m || !m.blob) return null;
+  let start = m.start || 0, len = m.csize;
+  if (m.lho != null) { const lh = new DataView(await m.blob.slice(m.lho, m.lho + 30).arrayBuffer()); if (lh.getUint32(0, true) !== 0x04034B50) return null; start = m.lho + 30 + lh.getUint16(26, true) + lh.getUint16(28, true); }
+  let d = await m.blob.slice(start, len != null ? start + len : undefined).arrayBuffer();
+  if (m.method === 8) d = await new Response(new Response(d).body.pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+  return new Uint8Array(d);
+}
+function anonRebuildTail(frames) { // the pixel data element, from what is in memory
+  return expl => {
+    if (frames[0].frag) { // compressed: each frame as it was, encapsulated
+      const items = frames.map(im => { const f = im.frag instanceof Uint8Array ? im.frag : new Uint8Array(im.frag); const pad = f.length % 2; const b = new Uint8Array(8 + f.length + pad), d = new DataView(b.buffer); d.setUint16(0, 0xFFFE, true); d.setUint16(2, 0xE000, true); d.setUint32(4, f.length + pad, true); b.set(f, 8); return b; });
+      const hd = new Uint8Array(12 + 8), d = new DataView(hd.buffer); d.setUint16(0, 0x7FE0, true); d.setUint16(2, 0x10, true); hd[4] = 79; hd[5] = 66; d.setUint32(8, 0xFFFFFFFF, true); d.setUint16(12, 0xFFFE, true); d.setUint16(14, 0xE000, true); d.setUint32(16, 0, true);
+      const end = new Uint8Array(8), e = new DataView(end.buffer); e.setUint16(0, 0xFFFE, true); e.setUint16(2, 0xE0DD, true);
+      const all = [hd, ...items, end], n = all.reduce((a, b) => a + b.length, 0), r = new Uint8Array(n); let o = 0; for (const p of all) { r.set(p, o); o += p.length; } return r;
+    }
+    const px = frames.map(im => new Uint8Array(im.pixels.buffer, im.pixels.byteOffset, im.pixels.byteLength)), n = px.reduce((a, b) => a + b.length, 0), pad = n % 2;
+    const hl = expl ? 12 : 8, r = new Uint8Array(hl + n + pad), d = new DataView(r.buffer); d.setUint16(0, 0x7FE0, true); d.setUint16(2, 0x10, true);
+    if (expl) { const ow = frames[0].pixels.BYTES_PER_ELEMENT > 1; r[4] = 79; r[5] = ow ? 87 : 66; d.setUint32(8, n + pad, true); } else d.setUint32(4, n + pad, true);
+    let o = hl; for (const p of px) { r.set(p, o); o += p.length; } return r;
+  };
+}
+function anonPixelEnd(u8) { // where the pixel data element starts in a kept header (the header ends just after its tag and length)
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  for (let p = u8.length - 8; p >= Math.max(0, u8.length - 16); p--) if (dv.getUint16(p, true) === 0x7FE0 && dv.getUint16(p + 2, true) === 0x10) return p;
+  return -1;
+}
+const crcT = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = u => { let c = 0xFFFFFFFF; for (let i = 0; i < u.length; i++) c = crcT[(c ^ u[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+function zipMaker() { // a plain zip (stored, no compression), built file by file
+  const parts = [], dir = []; let off = 0;
+  return {
+    add(name, data) {
+      const nm = new TextEncoder().encode(name), crc = crc32(data), h = new Uint8Array(30 + nm.length), d = new DataView(h.buffer);
+      d.setUint32(0, 0x04034B50, true); d.setUint16(4, 20, true); d.setUint16(6, 0x800, true); d.setUint32(14, crc, true); d.setUint32(18, data.length, true); d.setUint32(22, data.length, true); d.setUint16(26, nm.length, true); h.set(nm, 30);
+      parts.push(h, new Blob([data])); dir.push({ nm, crc, size: data.length, off }); off += h.length + data.length;
+    },
+    blob() {
+      const cd = []; let n = 0;
+      for (const f of dir) { const c = new Uint8Array(46 + f.nm.length), d = new DataView(c.buffer);
+        d.setUint32(0, 0x02014B50, true); d.setUint16(4, 20, true); d.setUint16(6, 20, true); d.setUint16(8, 0x800, true); d.setUint32(16, f.crc, true); d.setUint32(20, f.size, true); d.setUint32(24, f.size, true); d.setUint16(28, f.nm.length, true); d.setUint32(42, f.off, true); c.set(f.nm, 46); cd.push(c); n += c.length; }
+      const e = new Uint8Array(22), d = new DataView(e.buffer); d.setUint32(0, 0x06054B50, true); d.setUint16(8, dir.length, true); d.setUint16(10, dir.length, true); d.setUint32(12, n, true); d.setUint32(16, off, true);
+      return new Blob([...parts, ...cd, e], { type: 'application/zip' });
+    },
+    get size() { return off; }, get count() { return dir.length; },
+  };
+}
+function anonSeriesList(scope) { // the series to export: the one on screen (a fused view: its CT and PET), or every series of the study
+  const se = curSeries(); if (!se || se.uid === 'sample-phantom') return [];
+  const base = se.isFuse ? [se.fuseCT, se.fusePT] : [se];
+  if (scope !== 'study') return base.filter(s => s && !s.derived);
+  return S.series.filter(s => s.studyUid === se.studyUid && !s.derived && !s.isFuse && s.uid !== 'sample-phantom' && s.images.length);
+}
+const SC_CLASSES = /^1\.2\.840\.10008\.5\.1\.4\.1\.1\.(7(\.\d)*|88\.\d+|104\.1)$/; // screenshots, structured reports, PDFs: text that can name the patient
+async function anonExport(scope, onStep) {
+  const list = anonSeriesList(scope); if (!list.length) return null;
+  const ctx = { uids: new Map(), code: '' }, zip = zipMaker(), done = new Set(); let skipped = 0, shots = 0, k = 0;
+  const r = crypto.getRandomValues(new Uint32Array(1))[0];
+  ctx.code = 'ANON-' + r.toString(36).toUpperCase().slice(0, 6).padStart(6, '0');
+  const total = list.reduce((a, s) => a + s.images.length, 0), used = new Set();
+  for (const se of list) {
+    const folder = (String(se.number || '').padStart(3, '0') + '_' + (se.desc || 'series')).replace(/[^\w.\- ]+/g, '_').slice(0, 60).trim() || 'series';
+    let fold = folder, q = 2; while (used.has(fold)) fold = folder + '_' + q++; used.add(fold);
+    const h0 = se.images[0] && se.images[0].hdr, c0 = h0 ? dicomDump(h0).find(x => x.key === '00080016' || x.key === '00020002') : null;
+    if (c0 && SC_CLASSES.test(c0.value)) { shots += se.images.length; k += se.images.length; continue; } // screenshots, dose reports: left out
+    let i = 0;
+    for (const im of se.images) {
+      k++; if (onStep && k % 8 === 0) { onStep(k, total); await new Promise(res => setTimeout(res)); }
+      const id = im.zsrc ? im.zsrc : im.src ? im.src : im.hdr; // frames of one file share it: the file goes once
+      if (!id || done.has(id)) { if (!id) skipped++; continue; }
+      done.add(id);
+      let bytes = null;
+      try {
+        const orig = (im.zsrc || im.src) ? await anonOriginal(im) : null;
+        if (orig) bytes = orig;
+        let outB = bytes ? anonDicom(bytes, ctx, null) : null;
+        if (!outB && im.hdr) { // rebuilt from the header and the pixels in memory
+          const frames = S.series.flatMap(s => s.images).filter(x => x.hdr === im.hdr).sort((a, b) => a.srcFrame - b.srcFrame);
+          if (frames.every(f => f.frag) || frames.every(f => f.pixels)) {
+            const p = anonPixelEnd(im.hdr);
+            if (p > 0) {
+              const raw = !frames[0].frag, sub = Object.assign({}, ctx);
+              if (raw && im.codec) { // the original was compressed, only the decoded pixels are here: stored plainly
+                sub.ts = '1.2.840.10008.1.2.1'; sub.set = new Map([['00280004', (enc, encUS, g, e) => enc(g, e, 'CS', im.spp === 3 ? 'RGB' : im.mono1 ? 'MONOCHROME1' : 'MONOCHROME2')]]);
+                if (im.spp === 3) sub.set.set('00280006', (enc, encUS, g, e) => encUS(g, e, 0));
+              }
+              if (raw && im.palette) { sub.set = new Map([['00280004', (enc, encUS, g, e) => enc(g, e, 'CS', 'RGB')], ['00280002', (enc, encUS, g, e) => encUS(g, e, 3)], ['00280006', (enc, encUS, g, e) => encUS(g, e, 0)], ['00280100', (enc, encUS, g, e) => encUS(g, e, 8)], ['00280101', (enc, encUS, g, e) => encUS(g, e, 8)], ['00280102', (enc, encUS, g, e) => encUS(g, e, 7)]]);
+                sub.drop = new Set(['00281101', '00281102', '00281103', '00281199', '00281201', '00281202', '00281203']); }
+              outB = anonDicom(im.hdr.subarray(0, p), sub, anonRebuildTail(frames));
+            }
+          }
+        }
+        if (!outB) { skipped++; continue; }
+        zip.add(ctx.code + '/' + fold + '/IM' + String(++i).padStart(5, '0') + '.dcm', outB);
+      } catch (e) { skipped++; }
+    }
+  }
+  if (!zip.count) return { empty: true, skipped, shots };
+  return { blob: zip.blob(), name: ctx.code + '.zip', count: zip.count, skipped, shots, size: zip.size, code: ctx.code };
+}
+/* ---------- Colleagues: send a case straight to another phone and talk about it (a demonstration) ----------
+   Peer to peer: the two phones find each other through the free PeerJS introduction service (only connection details
+   pass through it), then the anonymised case and the chat go directly between them, encrypted (WebRTC).
+   Nothing is stored anywhere: a received case is open only while the conversation lasts, and End wipes it. */
+const CONS = { me: '', ws: null, online: false, peers: new Map(), hb: 0, open: null, cid: 0 };
+const consKey = n => 'sliceview-' + n.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const consLS = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } };
+const CONS_ICE = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' }] };
+function consSignalUrl(id) {
+  const base = consLS('svSignal') || 'wss://0.peerjs.com:443/peerjs?key=peerjs';
+  return base + '&id=' + encodeURIComponent(id) + '&token=' + Math.random().toString(36).slice(2) + '&version=1.5.4';
+}
+function consStatus(t) { const e = $('#consStatus'); if (e) e.textContent = t; }
+function consGoOnline(name) {
+  name = (name || '').trim(); if (consKey(name).length < 13) { consStatus('Choose a name of at least 3 letters'); return; }
+  consGoOffline(true); CONS.me = name; consLS('svName', name);
+  let ws; try { ws = new WebSocket(consSignalUrl(consKey(name))); } catch (e) { consStatus('Could not reach the introduction service'); return; }
+  CONS.ws = ws; consStatus('Connecting…');
+  ws.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } consSignal(m); };
+  ws.onclose = () => { if (CONS.ws !== ws) return; CONS.ws = null; CONS.online = false; clearInterval(CONS.hb); consStatus('Offline'); consUI(); };
+  ws.onerror = () => consStatus('Could not reach the introduction service (check the internet connection)');
+  CONS.hb = setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'HEARTBEAT' })); }, 5000);
+}
+function consGoOffline(quiet) {
+  clearInterval(CONS.hb); const ws = CONS.ws; CONS.ws = null; CONS.online = false;
+  if (ws) try { ws.close(); } catch (e) { }
+  if (!quiet) { consStatus('Offline'); consUI(); }
+}
+const consSend = (dst, type, payload) => { if (CONS.ws && CONS.ws.readyState === 1) CONS.ws.send(JSON.stringify({ type, payload, dst })); };
+function consSignal(m) {
+  if (m.type === 'OPEN') { CONS.online = true; consStatus('Online as ' + CONS.me + ': colleagues can reach you by this name'); consUI(); return; }
+  if (m.type === 'ID-TAKEN') { consGoOffline(true); consStatus('That name is in use by someone else now: choose another'); consUI(); return; }
+  if (m.type === 'ERROR' || m.type === 'INVALID-KEY') { consStatus('The introduction service said: ' + ((m.payload && m.payload.msg) || m.type)); return; }
+  if (m.type === 'EXPIRE') { const p = [...CONS.peers.values()].find(x => x.id === m.src); if (p && p.state !== 'open') { p.state = 'gone'; consStatus(p.name + ' is not online now'); consClose(p, true); } return; }
+  if (m.type === 'LEAVE') { const p = [...CONS.peers.values()].find(x => x.id === m.src); if (p) consClose(p, true, 'left'); return; }
+  const pl = m.payload || {};
+  if (m.type === 'OFFER') {
+    const name = String(pl.from || m.src.replace(/^sliceview-/, '')).slice(0, 40);
+    const old = CONS.peers.get(m.src); if (old) consClose(old, true);
+    const p = consPeer(m.src, name, false);
+    p.pc.setRemoteDescription(pl.sdp).then(() => p.pc.createAnswer()).then(a => p.pc.setLocalDescription(a)).then(() => consSend(m.src, 'ANSWER', { sdp: p.pc.localDescription, connectionId: pl.connectionId, from: CONS.me })).then(() => consFlush(p)).catch(() => consClose(p, true));
+    return;
+  }
+  const p = CONS.peers.get(m.src); if (!p) return;
+  if (m.type === 'ANSWER') p.pc.setRemoteDescription(pl.sdp).then(() => consFlush(p)).catch(() => consClose(p, true));
+  else if (m.type === 'CANDIDATE' && pl.candidate) { if (p.pc.remoteDescription) p.pc.addIceCandidate(pl.candidate).catch(() => { }); else p.cands.push(pl.candidate); }
+}
+function consFlush(p) { for (const c of p.cands.splice(0)) p.pc.addIceCandidate(c).catch(() => { }); }
+function consPeer(id, name, caller) {
+  const pc = new RTCPeerConnection(CONS_ICE), p = { id, name, pc, dc: null, cands: [], chat: [], state: 'connecting', unread: 0, inbox: null, sending: null, cases: [] };
+  CONS.peers.set(id, p);
+  pc.onicecandidate = e => { if (e.candidate) consSend(id, 'CANDIDATE', { candidate: e.candidate, connectionId: 'sv' }); };
+  pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') { consNote(p, 'The connection failed (some networks block direct connections; try the same Wi-Fi)'); consClose(p, true); } };
+  const wire = dc => { p.dc = dc; dc.binaryType = 'arraybuffer'; dc.bufferedAmountLowThreshold = 1 << 20;
+    dc.onopen = () => { p.state = 'open'; consNote(p, 'Connected with ' + p.name); consUI(); consChatOpen(p); };
+    dc.onclose = () => { if (p.state !== 'closed') consClose(p, true, 'left'); };
+    dc.onmessage = ev => consData(p, ev.data); };
+  if (caller) { wire(pc.createDataChannel('sv', { ordered: true }));
+    pc.createOffer().then(o => pc.setLocalDescription(o)).then(() => consSend(id, 'OFFER', { sdp: pc.localDescription, type: 'data', connectionId: 'sv', from: CONS.me })).catch(() => consClose(p, true)); }
+  else pc.ondatachannel = e => wire(e.channel);
+  return p;
+}
+function consCall(name) {
+  name = (name || '').trim(); if (!name) return;
+  if (!CONS.online) { consStatus('Go online first'); return; }
+  const id = consKey(name); if (id === consKey(CONS.me)) { consStatus('That is your own name'); return; }
+  const recent = (consLS('svRecent') || '').split('\n').filter(x => x && x.toLowerCase() !== name.toLowerCase()); recent.unshift(name); consLS('svRecent', recent.slice(0, 6).join('\n'));
+  const old = CONS.peers.get(id); if (old && old.state === 'open') { consChatOpen(old); return; } if (old) consClose(old, true);
+  consStatus('Calling ' + name + '…'); consPeer(id, name, true); consUI();
+}
+function consClose(p, quiet, why) {
+  if (p.state === 'closed') return; p.state = 'closed';
+  try { p.dc && p.dc.close(); } catch (e) { } try { p.pc.close(); } catch (e) { }
+  CONS.peers.delete(p.id);
+  consWipe(p); // the cases from this conversation go
+  if (CONS.open === p) { CONS.open = null; $('#consChat').hidden = true; }
+  if (why === 'left') say(p.name + ' ended the conversation; the shared case was closed', 3500);
+  consUI();
+}
+function consWipe(p) { const gone = S.series.filter(s => p.cases.includes(s.__consCase)); if (gone.length) closeSeries(gone); p.cases = []; }
+const consText = (p, o) => { if (p.dc && p.dc.readyState === 'open') p.dc.send(JSON.stringify(o)); };
+function consNote(p, text) { p.chat.push({ sys: true, text }); if (CONS.open === p) consChatDraw(); }
+function consData(p, d) {
+  if (typeof d !== 'string') { // a piece of a case
+    const r = p.inbox; if (!r || !r.on) return;
+    r.parts.push(d); r.got += d.byteLength; consProgress(p, r.got / r.size, 'Receiving'); return;
+  }
+  let m; try { m = JSON.parse(d); } catch (e) { return; }
+  if (m.t === 'chat') { p.chat.push({ from: p.name, text: String(m.text || '').slice(0, 2000) }); if (CONS.open !== p) p.unread++; consChatDraw(); consUI(); }
+  else if (m.t === 'case') { p.inbox = { id: m.id, size: +m.size || 0, count: +m.count || 0, desc: String(m.desc || ''), parts: [], got: 0, on: false, ask: true }; consChatOpen(p); consChatDraw(); }
+  else if (m.t === 'begin') { if (p.inbox && p.inbox.id === m.id) p.inbox.on = true; }
+  else if (m.t === 'end') { const r = p.inbox; if (!r || r.id !== m.id) return; p.inbox = null; consReceived(p, r); }
+  else if (m.t === 'accept') { if (p.sending && p.sending.id === m.id) consStream(p); }
+  else if (m.t === 'decline') { if (p.sending && p.sending.id === m.id) { p.sending = null; consNote(p, p.name + ' declined the case'); consProgress(p, -1); } }
+  else if (m.t === 'bye') consClose(p, true, 'left');
+}
+async function consReceived(p, r) {
+  consProgress(p, -1);
+  const id = 'c' + (++CONS.cid), f = new File(r.parts, 'case.zip', { type: 'application/zip' }); r.parts = null;
+  const before = new Set(S.series);
+  await addFiles([f], { noKeep: true });
+  const mine = S.series.filter(s => !before.has(s)); mine.forEach(s => { s.__consCase = id; }); p.cases.push(id);
+  consNote(p, 'Case opened (' + mine.reduce((a, s) => a + s.images.length, 0) + ' images). It closes when the conversation ends.');
+  consChatOpen(p, true);
+}
+async function consOffer(p, scope) {
+  if (p.sending) return; const btns = $('#consChat').querySelectorAll('.cons-send button'); btns.forEach(b => b.disabled = true);
+  consProgress(p, 0, 'Anonymising');
+  let r = null; try { r = await anonExport(scope, (k, n) => consProgress(p, k / n, 'Anonymising')); } catch (e) { r = null; }
+  btns.forEach(b => b.disabled = false);
+  if (!r || r.empty) { consProgress(p, -1); consNote(p, 'Nothing to send from this case'); return; }
+  const id = 'k' + Date.now().toString(36), se = curSeries();
+  p.sending = { id, blob: r.blob, size: r.blob.size };
+  consText(p, { t: 'case', id, size: r.blob.size, count: r.count, desc: (se && se.modality ? se.modality + ' ' : '') + (scope === 'study' ? 'study' : (se && se.desc) || 'series') });
+  consProgress(p, 0, 'Waiting for ' + p.name + ' to accept');
+}
+async function consStream(p) {
+  const s = p.sending, dc = p.dc, CH = 64 * 1024; consText(p, { t: 'begin', id: s.id });
+  for (let o = 0; o < s.size; o += CH) {
+    if (p.state !== 'open' || p.sending !== s) return;
+    if (dc.bufferedAmount > 8 * CH * 16) await new Promise(res => { const f = () => { dc.removeEventListener('bufferedamountlow', f); res(); }; dc.addEventListener('bufferedamountlow', f); });
+    dc.send(await s.blob.slice(o, Math.min(s.size, o + CH)).arrayBuffer());
+    if ((o / CH) % 16 === 0) consProgress(p, o / s.size, 'Sending');
+  }
+  consText(p, { t: 'end', id: s.id }); p.sending = null; consProgress(p, -1); consNote(p, 'Case sent to ' + p.name);
+}
+function consProgress(p, f, label) {
+  if (CONS.open !== p) return; const e = $('#consProg');
+  if (f < 0) { e.hidden = true; return; } e.hidden = false; e.querySelector('span').textContent = label + (f > 0 ? ' ' + Math.round(f * 100) + '%' : '…'); e.querySelector('i').style.width = Math.round(f * 100) + '%';
+}
+function consChatOpen(p, quiet) { CONS.open = p; p.unread = 0; $('#consChat').hidden = false; $('#consWho').textContent = p.name; consChatDraw(); consUI(); if (!quiet && innerWidth > 700) $('#consMsg').focus(); }
+function consChatDraw() {
+  const p = CONS.open; if (!p) return; const box = $('#consLog');
+  const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+  box.innerHTML = p.chat.map(m => m.sys ? '<div class="cm sys">' + esc(m.text) + '</div>' : '<div class="cm ' + (m.from === CONS.me ? 'me' : 'them') + '">' + esc(m.text) + '</div>').join('');
+  const r = p.inbox;
+  if (r && r.ask) box.insertAdjacentHTML('beforeend', '<div class="cm ask"><b>' + esc(p.name) + ' sent a case</b><br>' + esc(r.desc) + ' · ' + r.count + ' images · ' + (r.size / 1048576).toFixed(r.size < 1e7 ? 1 : 0) + ' MB<div class="ask-b"><button class="btn primary" data-a="open">Open</button><button class="btn" data-a="no">Decline</button></div></div>');
+  box.scrollTop = box.scrollHeight;
+  $('#consState').textContent = p.state === 'open' ? 'connected' : p.state === 'connecting' ? 'connecting…' : '';
+}
+function consUI() { // the chat button in the top bar, with unread messages
+  const b = $('#btnChat'); if (!b) return;
+  const n = [...CONS.peers.values()].reduce((a, p) => a + p.unread, 0), any = CONS.peers.size > 0;
+  b.hidden = !any; b.querySelector('b').textContent = n ? String(n) : ''; b.querySelector('b').hidden = !n;
+  const L = $('#consPeers'); if (L) L.innerHTML = [...CONS.peers.values()].map(p => '<button class="item" type="button" data-id="' + p.id + '">' + p.name.replace(/[&<>]/g, '') + ' · ' + (p.state === 'open' ? 'connected' : 'connecting…') + (p.unread ? ' (' + p.unread + ' new)' : '') + '</button>').join('');
+  const on = $('#consOnline'); if (on) { on.textContent = CONS.online ? 'Go offline' : 'Go online'; on.classList.toggle('primary', !CONS.online); }
+  const rc = $('#consRecent'); if (rc) rc.innerHTML = (consLS('svRecent') || '').split('\n').filter(Boolean).map(n => '<button class="chip" type="button">' + n.replace(/[&<>"]/g, '') + '</button>').join('');
+}
+function consSheet() {
+  $('#consName').value = CONS.me || consLS('svName') || ''; consUI();
+  if (!CONS.ws) consStatus(window.claude && window.claude.use ? 'This works in the Sliceview app (the GitHub version), not inside the Claude link: Claude blocks connections to other phones' : window.RTCPeerConnection ? 'Offline' : 'This browser cannot connect to other phones');
+  openSheet('#sheetCons');
+}
+$('#btnCons').addEventListener('click', () => { $('#sheetMore').hidden = true; consSheet(); });
+$('#consOnline').addEventListener('click', () => { if (CONS.online || CONS.ws) consGoOffline(); else consGoOnline($('#consName').value); });
+$('#consCall').addEventListener('click', () => { consCall($('#consTo').value); });
+$('#consTo').addEventListener('keydown', e => { if (e.key === 'Enter') consCall($('#consTo').value); });
+$('#consRecent').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { $('#consTo').value = b.textContent; consCall(b.textContent); } });
+$('#consPeers').addEventListener('click', e => { const b = e.target.closest('button'); const p = b && CONS.peers.get(b.dataset.id); if (p) { $('#sheetCons').hidden = true; consChatOpen(p); } });
+$('#btnChat').addEventListener('click', () => { const p = CONS.open || [...CONS.peers.values()].sort((a, b) => b.unread - a.unread)[0]; if (!p) return; if (!$('#consChat').hidden && CONS.open === p) { $('#consChat').hidden = true; return; } consChatOpen(p); });
+$('#consHide').addEventListener('click', () => { $('#consChat').hidden = true; });
+$('#consEnd').addEventListener('click', () => { const p = CONS.open; if (!p) return; consText(p, { t: 'bye' }); consSend(p.id, 'LEAVE', {}); consClose(p, true); });
+$('#consForm').addEventListener('submit', e => { e.preventDefault(); const p = CONS.open, i = $('#consMsg'), t = i.value.trim(); if (!p || !t || p.state !== 'open') return; consText(p, { t: 'chat', text: t }); p.chat.push({ from: CONS.me, text: t }); i.value = ''; consChatDraw(); });
+$('#consChat').querySelector('.cons-send').addEventListener('click', e => { const b = e.target.closest('button'); if (b && CONS.open && CONS.open.state === 'open') consOffer(CONS.open, b.dataset.s); });
+$('#consLog').addEventListener('click', e => { const b = e.target.closest('button[data-a]'); const p = CONS.open; if (!b || !p || !p.inbox) return;
+  p.inbox.ask = false; if (b.dataset.a === 'open') { consText(p, { t: 'accept', id: p.inbox.id }); consProgress(p, 0, 'Receiving'); } else { consText(p, { t: 'decline', id: p.inbox.id }); p.inbox = null; }
+  consChatDraw(); });
+addEventListener('pagehide', () => { for (const p of CONS.peers.values()) consText(p, { t: 'bye' }); });
+if (consLS('svName')) CONS.me = consLS('svName');
+/* ---------- reference lines (as in RadiAnt): in Compare, where the slice of each other view cuts this one ----------
+   Only between series of the same study in different orientations (an axial on a coronal or sagittal, a scout). */
+const geoIm = im => im && im.fuse ? im.fuse.ct : im;
+function refSeg(T, O) { // where O's slice plane crosses T's image, in T's pixels; null when (nearly) parallel
+  T = geoIm(T); O = geoIm(O);
+  if (!T || !O || T === O || !T.iop || !O.iop || !T.ipp || !O.ipp) return null;
+  const nrm = r => [r[1] * r[5] - r[2] * r[4], r[2] * r[3] - r[0] * r[5], r[0] * r[4] - r[1] * r[3]], a = nrm(T.iop), b = nrm(O.iop);
+  if (Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) > 0.966) return null; // within 15° of parallel: no line
+  const C = [[0, 0], [O.cols, 0], [O.cols, O.rows], [0, O.rows]].map(([x, y]) => worldToImg(T, imgToWorld(O, x - 0.5, y - 0.5)));
+  const pts = [];
+  for (let i = 0; i < 4; i++) { const p = C[i], q = C[(i + 1) % 4]; if (!p || !q) return null;
+    if ((p.off <= 0) !== (q.off <= 0)) { const t = p.off / (p.off - q.off); pts.push({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t }); } }
+  return pts.length >= 2 ? pts : null;
+}
+function refViews() { // the images on screen in Compare (axial Compare only: coronal/sagittal Compare has its own lines)
+  if (!S.cmps.length || S.rf) return [];
+  const out = [], m = cur(); if (m) out.push({ im: m, se: curSeries() });
+  for (const C of S.cmps) { const im = cmpImg(C); if (im) out.push({ im, se: C.se }); }
+  return out;
+}
+function drawRefLines(c2, toS, T, se) {
+  for (const o of refViews()) {
+    if (o.im === T || o.se.studyUid !== se.studyUid) continue;
+    const sg = refSeg(T, o.im); if (!sg) continue;
+    const a = toS(sg[0].x, sg[0].y), b = toS(sg[1].x, sg[1].y);
+    c2.save();
+    for (const [w, col] of [[3, 'rgba(0,0,0,.45)'], [1.2, 'rgba(95,211,198,.95)']]) { c2.lineWidth = w; c2.strokeStyle = col; c2.beginPath(); c2.moveTo(a.x, a.y); c2.lineTo(b.x, b.y); c2.stroke(); }
+    c2.restore();
+  }
+}
 function drawC3(c2, toS, im) { // a green cross with an open centre (the point itself stays visible); dashed when the point is off this slice
   const q = worldToImg(im, S.c3.w); if (!q) return;
-  const s = toS(q.x, q.y), on = Math.abs(q.off) <= Math.max(1.5, (im.thickness || 0) / 2 + 0.5), arm = 14, gap = 3;
+  c3Cross(c2, toS(q.x, q.y), Math.abs(q.off) <= Math.max(1.5, (im.thickness || 0) / 2 + 0.5));
+}
+function c3Cross(c2, s, on) {
+  const arm = 14, gap = 3;
   c2.save(); c2.setLineDash(on ? [] : [3, 3]);
   for (const [w, col] of [[4, 'rgba(0,0,0,.7)'], [1.8, on ? '#5be38a' : 'rgba(91,227,138,.75)']]) {
     c2.lineWidth = w; c2.strokeStyle = col; c2.beginPath();
@@ -4265,9 +4898,9 @@ function drawPaneMeas(C) { // the measurements of the slice in a pane, drawn as 
     } else if (m.type === 'text') { const q = at(m.p); if (live) drawPlus(c2, q, true); else drawNote(c2, q, m.text, sel);
     } else if (m.type === 'roi') {
       const a = at(m.a), b = at(m.b);
-      c2.beginPath(); c2.ellipse((a.x + b.x) / 2, (a.y + b.y) / 2, Math.abs(b.x - a.x) / 2 || 1, Math.abs(b.y - a.y) / 2 || 1, 0, 0, 7); c2.stroke(); c2.setLineDash([]);
+      roiPath(c2, m, at, live); c2.stroke(); c2.setLineDash([]);
       if (!live) measGrips(m).forEach(g => dotAt(at(g), 3));
-      const st = m.stats || (img.pixels ? roiStats(img, m.a, m.b) : null);
+      const st = m.stats || (img.pixels && !(live && m.shape === 'free') ? roiStats(img, m.a, m.b, m) : null);
       if (st) { const u = st.unit === 'px' ? '' : img.suv ? ' SUV' : (img.modality === 'CT' || img.fuse ? ' HU' : '');
         labels.push({ text: roiLabel(st, u, img.suv), x: Math.min(a.x, b.x), y: Math.max(a.y, b.y) + 8 }); }
     }
@@ -4334,6 +4967,7 @@ function drawPane(C) {
   v.info.classList.toggle('warn', other);
   v.info.textContent = lines.join('\n');
   if (show === im && (cmpList(C).length || C.draft)) drawPaneMeas(C);
+  if (show === im) drawRefLines(v.ctx, cmpToScreen(C), im, C.se);
   if (show === im && c3Here(C.se)) drawC3(v.ctx, cmpToScreen(C), im);
   if (v.loupe && src) drawLoupeRing(loupeGeom(v.loupe, v.W, v.H), v.ctx);
 }
@@ -4371,7 +5005,7 @@ function cmpInput(v) { // bound once per pane; acts on whichever series the pane
         if (tool === 'angle') { if (!midAngle) C.draft = { type: 'angle', pts: [] }; C.draft.pts.push(q); }
         else if (tool === 'hu') C.draft = { type: 'hu', p: toI(p.x, p.y - d.off) };
         else if (tool === 'text') C.draft = { type: 'text', p: q };
-        else C.draft = { type: tool, a: q, b: q };
+        else C.draft = ROI_TOOLS.has(tool) ? roiDraft(tool, q) : { type: tool, a: q, b: q };
         render(); return;
       }
       if (tool === 'pan' || tool === 'zoom' || tool === 'rotate') { // these move all the views together, so they stay matched
@@ -4395,7 +5029,7 @@ function cmpInput(v) { // bound once per pane; acts on whichever series the pane
       if (d.loupe) { v.loupe = { x: p.x, y: p.y }; render(); return; } // the magnifier follows the finger
       d.last = p; if (Math.hypot(p.x - d.x0, p.y - d.y0) > 6) d.moved = true;
       if (S.rf) { d.p = p; rfInput(v, C, e, 'move', d); return; }
-      if (d.measure && C.draft) { const toI = cmpMap(C), q = toI(p.x, p.y); if (C.draft.type === 'angle') C.draft.pts[C.draft.pts.length - 1] = q; else if (C.draft.type === 'hu') C.draft.p = toI(p.x, p.y - (d.off || 0)); else if (C.draft.type === 'text') C.draft.p = q; else C.draft.b = q; render(); return; }
+      if (d.measure && C.draft) { const toI = cmpMap(C), q = toI(p.x, p.y); if (C.draft.type === 'angle') C.draft.pts[C.draft.pts.length - 1] = q; else if (C.draft.type === 'hu') C.draft.p = toI(p.x, p.y - (d.off || 0)); else if (C.draft.type === 'text') C.draft.p = q; else if (C.draft.type === 'roi') roiGrow(C.draft, q); else C.draft.b = q; render(); return; }
       if (d.edit) { moveEdit(d.edit, p); return; }
       if (d.tool === 'cursor3d') { const im = cmpImg(C), q = cmpMap(C)(p.x, p.y - (d.off || 0)), w = imgToWorld(im, q.x, q.y); if (w) place3D(w, C.se); return; }
       if (d.tool === 'pan') { S.ox = d.ox0 + p.x - d.x0; S.oy = d.oy0 + p.y - d.y0; S.fit = false; render(); return; }
@@ -4420,10 +5054,10 @@ function cmpInput(v) { // bound once per pane; acts on whichever series the pane
           const ok = e.type === 'pointerup' && m && (hu ? true : ang ? !keep : m.type === 'roi' ? Math.abs(sb.x - sa.x) > 6 && Math.abs(sb.y - sa.y) > 6 : Math.hypot(sb.x - sa.x, sb.y - sa.y) > 6);
           const keep2 = (key, mm) => { snap(S.meas, key); const l = S.meas.get(key) || []; l.push(mm); S.meas.set(key, l); render(); };
           if (ok && m.type === 'text') { const key = cmpKey(C); askText(t => keep2(key, Object.assign(m, { text: t }))); }
-          else if (ok) { const img = cmpImg(C); if (m.type === 'roi' && img.pixels) m.stats = roiStats(img, m.a, m.b); keep2(cmpKey(C), m); }
+          else if (ok) { const img = cmpImg(C); if (m.type === 'roi' && img.pixels) m.stats = roiStats(img, m.a, m.b, m); keep2(cmpKey(C), m); }
           if (!keep || e.type !== 'pointerup') C.draft = null;
         } else if (d.edit) {
-          const m = d.edit.m, img = cmpImg(C); if (m.type === 'roi' && img.pixels) m.stats = roiStats(img, m.a, m.b);
+          const m = d.edit.m, img = cmpImg(C); if (m.type === 'roi' && img.pixels) m.stats = roiStats(img, m.a, m.b, m);
           if (d.moved) { snap(S.meas, d.edit.key, d.edit.prev); S.sel = { m, map: S.meas, key: d.edit.key, kind: 'cmp' + C.slot }; }
           else selToggle(m, S.meas, d.edit.key, 'cmp' + C.slot);
         } else if (d.tool === 'rotate' && d.moved) snapAngle();
@@ -4447,8 +5081,8 @@ function cmpPane(slot) { // the pane element and its renderer, made once per slo
   const v = { box, cv: box.querySelector('.mcv'), glc: box.querySelector('.mgl'), info: box.querySelector('.cmp-info'), W: 0, H: 0 };
   v.ctx = v.cv.getContext('2d'); v.gl = slot === 'M' || slot < 3 ? makeGL(v.glc) : null; if (!v.gl) v.glc.hidden = true; // views 5-8: 2D drawing (phones allow only a few GPU contexts)
   new ResizeObserver(() => { const r = box.getBoundingClientRect(); v.W = r.width; v.H = r.height; box.classList.toggle('narrow', v.W > 0 && v.W < 170); v.cv.width = v.glc.width = Math.round(v.W * S.dpr); v.cv.height = v.glc.height = Math.round(v.H * S.dpr); render(); }).observe(box);
-  box.querySelector('.cmpChange').addEventListener('click', () => cmpPicker(slot));
-  box.querySelector('.cmpRemove').addEventListener('click', () => cmpRemove(slot));
+  box.querySelector('.cmpChange').addEventListener('click', () => cmpPicker(slot === 'M' ? 'main' : slot)); // the main pane (coronal/sagittal): Change, as in axial
+  if (slot === 'M') box.querySelector('.cmpRemove').remove(); else box.querySelector('.cmpRemove').addEventListener('click', () => cmpRemove(slot));
   box.__v = v; return v;
 }
 function cmpMake(se, slot) {
@@ -4464,7 +5098,10 @@ function cmpMake(se, slot) {
 function cmpLayout() {
   const vw = $('#views'); // coronal/sagittal also with a single view (no compared series)
   const n = S.cmps.length, on = n > 0 || !!S.rf;
-  if (n > 0 && !S.cmpWas) { S.fit = true; S.ang = 0; requestAnimationFrame(() => { fit(); S.dirty = true; render(); }); } // compare starts fitted, whatever zoom there was before
+  if (n > 0 && !S.cmpWas) { // compare starts fitted, whatever zoom there was before: a CT (or fused PET-CT) to its body, as when it opens
+    S.fit = true; S.ang = 0;
+    requestAnimationFrame(() => { const se = curSeries(); if (se && (se.isFuse || ((se.images[0] && se.images[0].modality) || se.modality) === 'CT')) fitBody(); else fit(); S.dirty = true; render(); });
+  }
   S.cmpWas = n > 0;
   // GPU contexts: panes in use get one (a new one if theirs was given back or lost); panes not in use give theirs back
   { const used = new Set(S.cmps.map(C => String(C.slot))); if (S.rf) used.add('M');
@@ -4474,7 +5111,7 @@ function cmpLayout() {
   vw.classList.toggle('rf', !!S.rf); $('#mvCmpM').classList.toggle('on', !!S.rf);
   const pl = S.rf ? S.rf.plane : 'ax'; document.querySelectorAll('#cmpbar [data-plane]').forEach(b => b.setAttribute('aria-pressed', b.dataset.plane === pl));
   for (let s = 0; s < CMP_MAX; s++) $('#mvCmp' + s).classList.toggle('on', S.cmps.some(C => C.slot === s));
-  $('#btnCmp').setAttribute('aria-pressed', n > 0); planeBarUI(); $('#mainCmpBar').hidden = !n || !!S.rf;
+  $('#btnCmp').setAttribute('aria-pressed', n > 0); planeBarUI(); $('#mainCmpBar').hidden = !n || !!S.rf; { const mb = $('#mvCmpM .cmp-bar'); if (mb) mb.hidden = !(n && S.rf); }
   $('#cmpAdd').hidden = n >= CMP_MAX; cmpSyncUI();
   S.cmps.forEach(C => cmpMatch(C)); render(); pump();
 }
@@ -4707,18 +5344,18 @@ function fuseVal(t, q) {
   return { hu, suv: t.fuse.pt && q ? petAt(t, q.x, q.y, true) : null };
 }
 function fuseText(t, q) { const v = fuseVal(t, q); return [v.hu != null ? Math.round(v.hu) + ' HU' : '', v.suv != null ? 'SUV ' + v.suv.toFixed(1) : ''].filter(Boolean).join(' · ') || '…'; }
-function fuseRoi(t, a, b) { // inside the circle: SUVmax and mean of the PET, and mean, min, max HU of the CT
+function fuseRoi(t, a, b, m) { // inside the outline: SUVmax and mean of the PET, and mean, min, max HU of the CT
   const c = t.fuse.ct, C = fsrc(c); if (!C) return null;
-  const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2, rx = Math.abs(b.x - a.x) / 2, ry = Math.abs(b.y - a.y) / 2; if (!rx || !ry) return null;
+  const Rs = roiShape(m || {}, a, b); if (!Rs.area) return null;
   let n = 0, sum = 0, sum2 = 0, max = -Infinity, min = Infinity, pn = 0, psum = 0, pmax = -Infinity;
   const cs = c.slope || 1, ci = c.intercept || 0;
-  for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
-    const dx = (x + 0.5 - cx) / rx, dy = (y + 0.5 - cy) / ry; if (dx * dx + dy * dy > 1 || x < 0 || y < 0 || x >= c.cols || y >= c.rows) continue;
+  for (let y = Math.floor(Rs.y0); y <= Math.ceil(Rs.y1); y++) for (let x = Math.floor(Rs.x0); x <= Math.ceil(Rs.x1); x++) {
+    if (x < 0 || y < 0 || x >= c.cols || y >= c.rows || !Rs.inside(x + 0.5, y + 0.5)) continue;
     const h = C.data[Math.floor(y * C.h / c.rows) * C.w + Math.floor(x * C.w / c.cols)] * cs + ci; n++; sum += h; sum2 += h * h; if (h > max) max = h; if (h < min) min = h;
     if (t.fuse.pt) { const v = petAt(t, x, y, true); if (v != null) { pn++; psum += v; if (v > pmax) pmax = v; } }
   }
   if (!n) return null; const mean = sum / n, f = phys(t);
-  return { n, mean, sd: Math.sqrt(Math.max(0, sum2 / n - mean * mean)), area: Math.PI * rx * ry * f.x * f.y, unit: f.unit, max, min,
+  return { n, mean, sd: Math.sqrt(Math.max(0, sum2 / n - mean * mean)), area: Rs.area * f.x * f.y, unit: f.unit, max, min,
     suvMax: pn ? pmax : null, suvMean: pn ? psum / pn : null };
 }
 // The fused picture: RGB, full size or half size (quick, while scrolling fast)
@@ -4912,7 +5549,8 @@ async function shareMake() {
 async function shareOpen() {
   if (!cur()) return;
   S.sel = null; render(); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); // without the selection handles
-  $('#sharePhi').checked = false; await shareMake();
+  $('#sharePhi').checked = false; await shareMake(); anonReset();
+  $('#anonNote').textContent = 'DICOM files that open in Sliceview, RadiAnt or any viewer, with every slice. The name, ID, birth date, accession number, doctors, hospital and private tags are removed and the UIDs replaced. Screenshots and dose reports are left out, since their pictures can show the name.';
   const inC = !!(window.claude && window.claude.use), file = new File([SHARE.blob], SHARE.name, { type: 'image/png' });
   const canShare = !inC && navigator.canShare && navigator.canShare({ files: [file] });
   $('#shareGo').hidden = !canShare;
@@ -4936,6 +5574,39 @@ $('#shareSave').addEventListener('click', async () => {
   $('#sheetShare').hidden = true; say('Image saved to Downloads', 3000);
 });
 $('#actShare').addEventListener('click', shareOpen);
+let ANON = null;
+const anonReset = () => { ANON = null; $('#anonDone').hidden = true; $('#anonGo').hidden = false; $('#anonGo').disabled = false; $('#anonGo').textContent = 'Make anonymised zip'; };
+$('#anonScope').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; $('#anonScope').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); anonReset(); });
+$('#anonGo').addEventListener('click', async () => {
+  const scope = $('#anonScope [aria-pressed="true"]').dataset.s, go = $('#anonGo');
+  const list = anonSeriesList(scope); if (!list.length) { say('Nothing to export here', 3000); return; }
+  go.disabled = true; go.textContent = 'Preparing…';
+  let r = null;
+  try { r = await anonExport(scope, (k, n) => { go.textContent = 'Preparing ' + Math.round(100 * k / n) + '%'; }); } catch (e) { r = null; }
+  go.disabled = false; go.textContent = 'Make anonymised zip';
+  if (!r || r.empty) { say(r && r.shots ? 'Only screenshots or reports here: nothing to export' : 'These images could not be exported', 4000); return; }
+  ANON = r; go.hidden = true; $('#anonDone').hidden = false;
+  const inC = !!(window.claude && window.claude.use), f = new File([r.blob], r.name, { type: 'application/zip' });
+  $('#anonShare').hidden = inC || !(navigator.canShare && navigator.canShare({ files: [f] }));
+  const mb = r.size / 1048576;
+  $('#anonNote').textContent = r.count + ' file' + (r.count === 1 ? '' : 's') + ', ' + (mb < 10 ? mb.toFixed(1) : Math.round(mb)) + ' MB, as ' + r.code + '.' + (r.shots ? ' ' + r.shots + ' screenshot or report image' + (r.shots === 1 ? '' : 's') + ' left out.' : '') + (r.skipped ? ' ' + r.skipped + ' image' + (r.skipped === 1 ? '' : 's') + ' could not be exported.' : '') + ' Text burned into the pictures themselves is not removed.';
+});
+$('#anonShare').addEventListener('click', async () => {
+  if (!ANON) return; const f = new File([ANON.blob], ANON.name, { type: 'application/zip' });
+  try { await navigator.share({ files: [f], title: 'Sliceview' }); } catch (e) { if (!(e && e.name === 'AbortError')) say('Could not open the share menu here; use Save zip', 3500); }
+});
+$('#anonSave').addEventListener('click', async () => {
+  if (!ANON) return;
+  if (window.claude && window.claude.use) {
+    const dl = await window.claude.use('downloads').catch(() => null);
+    if (!dl) { say('Saving files is not available here', 3500); return; }
+    try { await dl.save({ filename: ANON.name, data: new Uint8Array(await ANON.blob.arrayBuffer()) }); say('Saved: ' + ANON.name, 3000); }
+    catch (err) { say(err && err.code === 'declined' ? 'Not saved' : 'Could not save it here', 3000); }
+    return;
+  }
+  const u = URL.createObjectURL(ANON.blob), a = document.createElement('a'); a.href = u; a.download = ANON.name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 60000);
+  say('Saved to Downloads: ' + ANON.name, 3000);
+});
 /* ---------- Thick slab (axial): MIP, MinIP or average of the slices within the slab, centred on each slice ---------- */
 S.slab = { mode: 'mip', t: 10 };
 const SLABKEEP = [];
@@ -5032,9 +5703,28 @@ function slabApply(mode, T) {
 $('#actSlab').addEventListener('click', () => { slabMarks(); openSheet('#sheetSlab'); });
 document.querySelectorAll('#slabMode [data-m]').forEach(b => b.addEventListener('click', () => { const se = curSeries(); slabApply(b.dataset.m, se && se.isSlab ? se.slabT : S.slab.t); }));
 document.querySelectorAll('#slabT [data-t]').forEach(b => b.addEventListener('click', () => { const se = curSeries(); slabApply(se && se.isSlab ? se.slabMode : S.slab.mode, +b.dataset.t); }));
+// Four views of a CT with phases: non-contrast top left (the main view), arterial top right, venous bottom left,
+// delayed bottom right; each phase as its series with the most slices
+const DELAY_RX = /delay|\blate\b|excret|urogra|\bdel\b|equilib|\b\d{1,2}\s?min/i, ARTER_RX = /arter|\bart\b|\bcta\b|angio|early|\bAP\b/i;
+function phasePlan(main) {
+  if (!main || main.isFuse) return null;
+  const same = S.series.filter(se => se.studyUid === main.studyUid && se.uid !== 'sample-phantom' && !se.isSub && !se.isSlab && se.images.length >= 5 && !cmpAux(se) && samePatient(se, main) && se.images[0].spp !== 3);
+  const kind = se => { const d = se.desc || ''; return PRE_RX.test(d) ? 0 : DELAY_RX.test(d) && !ARTER_RX.test(d) ? 3 : VENOUS_RX.test(d) ? 2 : ARTER_RX.test(d) ? 1 : -1; };
+  const ph = [[], [], [], []]; for (const se of same) { const k = kind(se); if (k >= 0) ph[k].push(se); }
+  if (!ph[0].length || ph.filter(l => l.length).length < 3) return null;
+  return ph.map(l => l.slice().sort((a, b) => b.images.length - a.images.length)[0] || null); // each phase: its series with the most slices
+}
 function cmpSetLayout(n) {
   const want = clamp(n, 1, CMP_MAX + 1) - 1;
   if (want > 0 && !cmpOn() && !proGate('Compare')) return;
+  if (want === 3 && S.cmps.length < 3) { const plan = phasePlan(curSeries()); if (plan && !needsReload(plan[0])) {
+    const old = curSeries(), keep = { s: S.s, ox: S.ox, oy: S.oy, fit: S.fit };
+    S.cmps = [];
+    if (plan[0] !== old) { selectSeries(S.series.indexOf(plan[0])); if (!keep.fit) Object.assign(S, keep); }
+    const rest = cmpFillOrder(cmpOthers().filter(se => !plan.includes(se) && samePatient(se, plan[0]) && se.images.length));
+    for (let k = 0; k < 3; k++) { const se = plan[k + 1] || rest.shift(); if (se) cmpAdd(se, k); }
+    cmpLayout(); return;
+  } }
   while (S.cmps.length > want) { const last = S.cmps[S.cmps.length - 1]; S.cmps = S.cmps.filter(C => C !== last); }
   if (S.cmps.length < want) {
     const shown = new Set(S.cmps.map(C => C.se)), main = curSeries();
@@ -5124,27 +5814,46 @@ document.body.appendChild($('#focusExit')); // out of the axial view, which is h
 $('#focusExit').addEventListener('click', () => focusToggle(false));
 
 /* ---------- toolbar ---------- */
-// One HU button: tap for the point (+); press and hold to switch it to the circle (HU area) and back.
+// One HU button: tap for the point (+); press and hold for the choice of shape (point, ellipse, rectangle, freehand),
+// which the button then shows
 const toolFace = (b, id) => { b.dataset.tool = id; b.innerHTML = '<svg viewBox="0 0 24 24">' + ICONS[id] + '</svg>' + TOOLS.find(x => x[0] === id)[1]; };
 TOOLS.forEach(([id]) => {
-  if (id === 'roi') return; // reached through the HU button
+  if (ROI_TOOLS.has(id)) return; // reached through the HU button
   const b = document.createElement('button'); b.className = 'tool'; b.type = 'button'; toolFace(b, id);
   if (id === 'hu') {
-    b.title = 'HU: tap for a point, press and hold for a circle (HU area)';
+    b.title = 'HU: tap for a point; press and hold for an ellipse, rectangle or freehand area';
     let hold = 0, held = false;
     b.addEventListener('pointerdown', () => { held = false; clearTimeout(hold); hold = setTimeout(() => {
-      held = true; toolFace(b, b.dataset.tool === 'hu' ? 'roi' : 'hu'); setTool(b.dataset.tool);
+      held = true; roiMenu(b);
       if (navigator.vibrate) try { navigator.vibrate(15); } catch (e) { }
     }, 450); });
     for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => clearTimeout(hold));
-    b.addEventListener('contextmenu', e => e.preventDefault());
+    b.addEventListener('contextmenu', e => { e.preventDefault(); held = true; roiMenu(b); });
     b.addEventListener('click', () => { if (held) { held = false; return; } setTool(b.dataset.tool); });
   } else b.addEventListener('click', () => setTool(id));
   const letter = Object.keys(KEY_TOOLS).find(x => KEY_TOOLS[x] === id); if (letter && !b.title) b.title = TOOLS.find(x => x[0] === id)[1] + ' (' + letter.toUpperCase() + ')';
   $('#tools').append(b);
 });
+function roiMenu(b) { // the shapes, in a small menu above the HU button
+  let m = $('#roiMenu');
+  if (!m) {
+    m = document.createElement('div'); m.id = 'roiMenu'; m.className = 'roi-menu'; m.setAttribute('role', 'menu');
+    for (const id of ['hu', 'roi', 'rect', 'free']) {
+      const x = document.createElement('button'); x.type = 'button'; x.dataset.tool = id; x.setAttribute('role', 'menuitem');
+      x.innerHTML = '<svg viewBox="0 0 24 24">' + ICONS[id] + '</svg>' + (id === 'hu' ? 'Point' : TOOLS.find(t => t[0] === id)[1]);
+      x.addEventListener('click', () => { m.hidden = true; const hb = document.querySelector('#tools .tool[data-tool=hu],#tools .tool[data-tool=roi],#tools .tool[data-tool=rect],#tools .tool[data-tool=free]'); if (hb) toolFace(hb, id); setTool(id); });
+      m.append(x);
+    }
+    document.body.append(m);
+    document.addEventListener('pointerdown', e => { if (!m.hidden && !m.contains(e.target)) m.hidden = true; }, true);
+  }
+  m.querySelectorAll('button').forEach(x => x.setAttribute('aria-current', x.dataset.tool === b.dataset.tool));
+  m.hidden = false; const r = b.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
+  m.style.left = clamp(r.left + r.width / 2 - w / 2, 8, innerWidth - w - 8) + 'px'; m.style.top = Math.max(8, r.top - h - 8) + 'px';
+}
 $('#actInvert').addEventListener('click', toggleInvert);
 $('#btnKeys').addEventListener('click', () => { $('#sheetMore').hidden = true; openSheet('#sheetKeys'); });
+$('#btnTags').addEventListener('click', () => { $('#sheetMore').hidden = true; tagsOpen(); });
 $('#actReset').addEventListener('click', () => {
   const se = curSeries(); if (!se) return;
   S.invert = false; $('#actInvert').setAttribute('aria-pressed', 'false'); S.ang = 0; S.fh = 1; S.fv = 1; S.draft = null;
@@ -5336,6 +6045,7 @@ function decoded(img, d, kind) {
     else { img.pixels = signFix(d, img); img.mm = null; DEC.bytes += img.pixels.byteLength; if (S.vol || S.vr) volPut(img, img.pixels, img.cols, img.rows); evict(); }
   }
   if (img === cur()) { S.dirty = true; render(); } else if (S.cmps.length || (curSeries() && curSeries().derived)) { S.dirty = true; render(); pump(); }
+  else if (S.bodyFit) render(); // the body fit is waiting for the slices it measures
 }
 function evict() {
   if (DEC.bytes <= BUDGET) return;
@@ -5371,6 +6081,10 @@ function pump() {
     submit({ buf: im.frag, z: im.zsrc ? zjob(im.zsrc) : null, codec: im.codec, rows: im.rows, cols: im.cols, ba: im.ba, spp: im.spp || 1, ybr: im.ybr, palette: im.palette, reduce: kind === 'p' ? (rd == null ? red : rd) : kind === 'v' ? (rd == null ? S.vol.k : rd) : 0, finish(r) { const ms = performance.now() - this.t0; if (kind === 'p') DEC.pms = 0.8 * (DEC.pms || 30) + 0.2 * ms; else DEC.fms = 0.8 * (DEC.fms || 150) + 0.2 * ms; decoded(im, r, kind); } });
     return --cap > 0;
   };
+  if (S.bodyFit && !se.derived) for (const f of [0.25, 0.5, 0.75]) { // the body fit waits for these: their quick previews first
+    const im = ims[Math.floor(n * f)]; if (!im) continue;
+    if (needP(im)) { if (!go(im, 'p')) return; } else if (red === 0 && needF(im)) { if (!go(im, 'f')) return; }
+  }
   if (S.rf) { rfPump(go); return; } // coronal/sagittal compare: only the volumes are needed
   { // subtracted series: decode the two source slices of each subtracted slice near the one on screen
     const subs = (se.derived ? [[ims, idx]] : []).concat(S.cmps.filter(C => C.se.derived).map(C => [C.se.images, C.idx]));
@@ -5539,6 +6253,7 @@ function addBuffer(buf, name, lazy) {
       frag: info.codec ? (lazy ? (lazy.frames ? lazy.frames[f] : null) : DICOM.encodedFrame(buf, info, f)) : null,
       zsrc: lazy && lazy.z ? Object.assign({ frame: f, frames: info.frames }, lazy.z) : null,
       src: lazy && lazy.src ? lazy.src : null, srcFrame: f, // where its pixels can be read again (zip entry or file)
+      hdr: info.hdr || null, // the file's header (DICOM tags)
       bitsStored: info.bitsStored, pixelRep: info.pixelRep, rows: info.rows, cols: info.cols, spp: info.spp, codec: info.codec, ba: info.bitsAllocated, ybr: info.ybr, palette: info.palette,
       mono1: info.photometric === 'MONOCHROME1', slope: (v('slope', info.slope) || 1) * (suvK || 1), intercept: (v('intercept', info.intercept) || 0) * (suvK || 1), suv: !!suvK, modality: info.modality,
       wc: Array.isArray(wc) ? (wc.length ? wc[0] : null) : wc, ww: Array.isArray(ww) ? (ww.length ? ww[0] : null) : ww,
@@ -5616,7 +6331,8 @@ function showLoading(st) {
 }
 async function progress(st) {
   const now = Date.now();
-  if (now - st.last > 80) { st.last = now; showLoading(st); await tick(); }
+  // once the study is on screen the rest comes in quietly: the loading screen does not come back over it
+  if (now - st.last > 80) { st.last = now; if (!st.opened) showLoading(st); await tick(); }
 }
 // Compressed images inside a zip: read only the header now. The image data stays packed in the zip
 // and is unpacked by a worker right before it is decoded. Returns false to fall back to a full read.
@@ -5641,13 +6357,18 @@ async function ingest(r, name, st, depth) {
     st.total += list.length - 1;
     // Reading the whole zip once is far faster than thousands of small reads.
     if (!r.view && r.size <= 600e6) r = Zip.fromBuffer(await r.read(0, r.size));
-    await pool(list, CONC, async en => {
+    const one = async en => {
       const nm = name + '/' + en.name;
       try {
         if (r.buf && !(en.flags & 1) && (en.method === 0 || en.method === 8) && addLazy(r, en, nm, st)) { await progress(st); return; }
         await ingest(Zip.fromBuffer(await Zip.read(r, en)), nm, st, depth + 1);
       } catch (err) { st.bad.push(nm + ': ' + err.message); st.n++; }
-    });
+    };
+    const first = depth === 0 && st.early && r.buf && list.length > 50 ? zipFirstSeries(r, list) : null;
+    if (first) { // the series to read first is shown as soon as it is in; the others follow behind it
+      await pool(first, CONC, one); st.early();
+      await pool(list.filter(en => !first.includes(en)), CONC, one);
+    } else await pool(list, CONC, one);
     return;
   }
   st.n++;
@@ -5786,6 +6507,25 @@ async function ctFirst(gs) {
   const rank = m => m === 'CT' ? 0 : m === 'PT' || m === 'NM' ? 2 : 1;
   return gs.map((g, i) => [g, rank(mods[i])]).sort((a, b) => (a[1] - b[1]) || (b[0].length - a[0].length)).map(x => x[0]);
 }
+// A zip already in memory, its files all in one folder: each file's header (a few KB, unpacked here) says which
+// series it belongs to. The series to show first: the CT of a PET-CT, else the venous phase with the most slices,
+// else the series with the most slices. Returns its zip entries, or null (one series only, or nothing readable).
+function zipFirstSeries(r, list) {
+  const by = new Map();
+  for (const en of list) {
+    if ((en.flags & 1) || (en.method !== 0 && en.method !== 8)) continue;
+    let h = null;
+    try { h = DICOM.parse(Zip.head(r, Zip.locate(r, en), 16384), { headerOnly: true }); } catch (err) { continue; }
+    if (!h || !h.seriesUid) continue;
+    if (!by.has(h.seriesUid)) by.set(h.seriesUid, { ens: [], desc: String(h.seriesDesc || ''), mod: String(h.modality || '').trim().toUpperCase() });
+    by.get(h.seriesUid).ens.push(en);
+  }
+  const gs = [...by.values()].filter(g => g.ens.length >= 16); if (by.size < 2 || !gs.length) return null;
+  const big = l => l.sort((a, b) => b.ens.length - a.ens.length)[0];
+  const petct = gs.some(g => g.mod === 'CT') && gs.some(g => g.mod === 'PT' || g.mod === 'NM');
+  const pick = petct ? big(gs.filter(g => g.mod === 'CT')) : big(gs.filter(g => VENOUS_RX.test(g.desc) && !PRE_RX.test(g.desc))) || big(gs.slice());
+  return pick ? pick.ens : null;
+}
 async function rdZip(r, name, st, depth) {
   if (depth >= 3) { st.n++; st.bad.push(name + ': archive nested too deep'); return; }
   let list;
@@ -5915,7 +6655,7 @@ async function addFiles(files, opts) {
   else say(st.bad.length ? st.bad[0] : 'No DICOM images found', 9000);
   if (st.bad.length) console.warn(st.bad.join('\n'));
   st.done = true; fuseUI(); // the study is all in: Fuse can show
-  if (st.seen.size && !(opts && opts.restore)) keepStudy(list);
+  if (st.seen.size && !(opts && (opts.restore || opts.noKeep))) keepStudy(list); // a case from a colleague is not kept
 }
 $('#inFiles').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; if (f.length) addFiles(f); });
 $('#inFolder').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; if (f.length) addFiles(f); });
@@ -7094,7 +7834,7 @@ async function volCacheLoad(V) {
 }
 
 keepRestore(false); // the app starts empty: the last study comes back only when asked for (the Reopen card)
-window.__sliceview = { selectSeries, memUsed, memLimit, composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice }, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen } };
+window.__sliceview = { selectSeries, memUsed, memLimit, composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice, refSeg }, anon: { anonExport, dicomDump }, cons: CONS, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen } };
 })();
 </script>
 
