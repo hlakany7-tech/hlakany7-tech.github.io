@@ -671,7 +671,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1853</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1825</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -4820,8 +4820,7 @@ function consRtc(c, dial) { // a fresh connection for a conversation (first, or 
     pc.createOffer().then(o => pc.setLocalDescription(o)).then(() => { if (CONS.online) offer(); }).catch(() => { });
     c.again = setInterval(() => { // repeated until answered: they may open Sliceview a moment later
       if (c.pc !== pc || c.state === 'open' || c.state === 'closed') { clearInterval(c.again); return; }
-      c.tries = (c.tries || 0) + 1;
-      if (!c.answered && CONS.online && pc.localDescription && (c.tries < 12 || c.tries % 3 === 0)) offer(); // after a minute: every 15 s
+      if (!c.answered && CONS.online && pc.localDescription) offer();
       if (c.answered && Date.now() - c.tAns > 20000 && pc.connectionState !== 'connected') consRtc(c, true); // answered but no route came up: try again
     }, 5000);
   } else pc.ondatachannel = e => wire(e.channel);
@@ -4861,7 +4860,7 @@ function consDrop(c, pc, dead) { // the connection went (another app, the screen
   clearInterval(c.alive); if (dead) { try { c.dc && c.dc.close(); } catch (e) { } }
   const was = c.state; c.state = c.ever ? 'reconnecting' : 'calling'; c.dc = null;
   if (c.out) c.out.wake && c.out.wake(); // a send waiting on this connection stops; it resumes when the other phone asks
-  if (was === 'open') consNote(c, 'Connection lost: reconnecting…'); c.tries = 0;
+  if (was === 'open') consNote(c, 'Connection lost: reconnecting…');
   if (c.inbox) c.inbox.cur = null; // a file half-received comes again
   for (const m of c.chat) if (m.file && !m.file.url && !m.file.failed) m.file.failed = true; // an attachment half-way: sent again by hand
   consUI(); consChatDraw();
@@ -6837,7 +6836,7 @@ async function rdAll(list, st, chunked, tight) {
         st.bad.push(e.name + ': ' + err.message); st.n++;
       }
     }
-    if (memUsed() > memLimit()) makeRoom(0, memKeep(st), !!st.total); // a big study: series already in are put aside as it comes in
+    if (memUsed() > memLimit()) makeRoom(0, memKeep(st)); // a big study: series already in are put aside as it comes in
     const now = Date.now(); if (!st.opened && now - st.last > 80) { st.last = now; showLoading(st); }
   });
 }
@@ -6888,8 +6887,8 @@ async function rdZip(r, name, st, depth) {
   let list;
   try { list = await Zip.entries(r); } catch (err) { st.n++; st.bad.push(name + ': ' + err.message); return; }
   // a small study: one read of the whole zip is quicker than reading entry by entry
-  if (r.size <= 150e6 && list.reduce((s, en) => s + (en.usize || 0), 0) <= 120e6) { if (depth === 0) makeRoom(list.reduce((s, en) => s + (en.usize || 0), 0), st.seen, true); return ingest(r.buf ? r : Zip.fromBuffer(await r.read(0, r.size)), name, st, depth); }
-  if (depth === 0) makeRoom(list.reduce((s, en) => s + (en.usize || 0), 0), st.seen, true);
+  if (r.size <= 150e6 && list.reduce((s, en) => s + (en.usize || 0), 0) <= 120e6) { if (depth === 0) makeRoom(list.reduce((s, en) => s + (en.usize || 0), 0), st.seen); return ingest(r.buf ? r : Zip.fromBuffer(await r.read(0, r.size)), name, st, depth); }
+  if (depth === 0) makeRoom(list.reduce((s, en) => s + (en.usize || 0), 0), st.seen);
   st.total += list.length - 1;
   const fast = [], slow = [];
   for (const en of list) {
@@ -6923,19 +6922,13 @@ const memUsed = () => S.series.reduce((a, s) => a + seBytes(s), 0);
 const memKeep = st => { const k = new Set([curSeries()].filter(Boolean)); if (st && st.seen && st.seen.size) k.add([...st.seen].sort((a, b) => b.images.length - a.images.length)[0]); return k; };
 function memTight() { MEM_CAP = Math.min(MEM_CAP, memUsed() * 0.75); makeRoom(0, memKeep(LIVE_ST)); }
 const outOfMemory = m => /allocation failed|out of memory/i.test(String(m || ''));
-const seBytes = se => se.images.reduce((a, im) => a + (im.pixels && !coded(im) ? im.pixels.byteLength : im.rawFile ? im.rawFile.byteLength : 0), 0);
+const seBytes = se => se.images.reduce((a, im) => a + (im.pixels && !coded(im) ? im.pixels.byteLength : 0), 0);
 const needsReload = se => !!(se && se.images.some(im => im.dropped));
-function makeRoom(bytes, keep, opening) { // opening: a study being opened now (only then may a received case give way)
+function makeRoom(bytes, keep) {
   let used = S.series.reduce((a, s) => a + seBytes(s), 0);
   if (used + bytes <= memLimit()) return;
   const cand = S.series.filter(s => !keep.has(s) && s.images.some(im => im.src && im.pixels && !coded(im))).sort((a, b) => (a.used || 0) - (b.used || 0));
   for (const s of cand) { if (used + bytes <= memLimit()) break; used -= seBytes(s); dropSeries(s); }
-  if (opening && used + bytes > memLimit() && typeof CONS !== 'undefined') { // still short: a received case not on screen goes (it cannot be put aside and read again)
-    const arriving = new Set([...CONS.peers.values()].map(c => c.inbox && c.inbox.caseId).filter(Boolean)); // never one still arriving
-    const rc = S.series.filter(s => s.__consCase && !arriving.has(s.__consCase) && !keep.has(s) && !(s === curSeries()));
-    if (rc.length) { const ids = new Set(rc.map(s => s.__consCase)); closeSeries(rc);
-      for (const c of CONS.peers.values()) if (c.cases.some(id => ids.has(id))) { c.cases = c.cases.filter(id => !ids.has(id)); consNote(c, 'The received case was closed to make room for the study you opened'); } }
-  }
 }
 function dropSeries(se) {
   if (S.vol && S.vol.se === volSe(se)) mprToggle(false);
@@ -6978,7 +6971,7 @@ async function addFiles(files, opts) {
     const zips = list.filter(f => /\.zip$/i.test(f.name) && f.size > 22), rest = list.filter(f => !zips.includes(f));
     for (const f of zips) { try { await rdZip(Zip.fromBlob(f), f.name, st, 0); } catch (err) { st.bad.push(f.name + ': ' + err.message); } }
     if (rest.length) {
-      makeRoom(rest.length * rest[0].size, st.seen, true);
+      makeRoom(rest.length * rest[0].size, st.seen);
       const ents = rest.map(f => ({ blob: f, start: 0, method: 0, name: f.name, depth: 0 }));
       // a folder (a CD or PACS export) usually keeps each series in a subfolder of its own: the biggest subfolder is
       // read first and its series opens, complete, as soon as it is in; the others follow behind it
@@ -6997,7 +6990,7 @@ async function addFiles(files, opts) {
       memTight(); // room made: this file once more
       try { await ingest(Zip.fromBlob(f), f.name, st, 0); } catch (e2) { st.bad.push(f.name + ': ' + e2.message); }
     }
-    if (++st.memN % 16 === 0 && memUsed() > memLimit()) makeRoom(0, memKeep(st), true);
+    if (++st.memN % 16 === 0 && memUsed() > memLimit()) makeRoom(0, memKeep(st));
   });
   if (st.opened) { // the other series came in behind: the slice on screen stays where it is
     const keep = cur(), touched = finishLoad(), se = curSeries();
