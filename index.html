@@ -663,7 +663,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1714</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1731</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -4705,14 +4705,11 @@ function consKeepAwake(on) {
     if (!CONS.awake) {
       const n = 8000, b = new ArrayBuffer(44 + n * 2), d = new DataView(b), w = (o, s) => { for (let i = 0; i < s.length; i++) d.setUint8(o + i, s.charCodeAt(i)); };
       w(0, 'RIFF'); d.setUint32(4, 36 + n * 2, true); w(8, 'WAVEfmt '); d.setUint32(16, 16, true); d.setUint16(20, 1, true); d.setUint16(22, 1, true); d.setUint32(24, 8000, true); d.setUint32(28, 16000, true); d.setUint16(32, 2, true); d.setUint16(34, 16, true); w(36, 'data'); d.setUint32(40, n * 2, true);
-      // a 15 Hz hum, below what ears hear and what phone speakers can play, yet loud enough for the browser to count it as
-      // sound (a near-silent track is treated as silence, and the app is paused in the background as before)
-      for (let i = 0; i < n; i++) d.setInt16(44 + i * 2, Math.round(330 * Math.sin(2 * Math.PI * 15 * i / 8000)), true);
-      const a = new Audio(URL.createObjectURL(new Blob([b], { type: 'audio/wav' }))); a.loop = true; a.volume = 1; CONS.awake = a;
-      a.addEventListener('pause', () => { if (CONS.want && !document.hidden) setTimeout(() => { if (CONS.want) a.play().catch(() => { }); }, 1000); }); // stopped by another app's sound: on again
+      for (let i = 0; i < n; i++) d.setInt16(44 + i * 2, (i & 1) ? 1 : -1, true); // far below hearing
+      const a = new Audio(URL.createObjectURL(new Blob([b], { type: 'audio/wav' }))); a.loop = true; a.volume = 0.05; CONS.awake = a;
     }
     CONS.awake.play().catch(() => { });
-    if ('mediaSession' in navigator) { navigator.mediaSession.metadata = new MediaMetadata({ title: 'Sliceview', artist: 'Online for colleagues as ' + CONS.me }); navigator.mediaSession.playbackState = 'playing'; }
+    if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title: 'Sliceview', artist: 'Online for colleagues as ' + CONS.me });
   } catch (e) { }
 }
 function consGoOnline(name) {
@@ -4804,10 +4801,10 @@ function consRtc(c, dial) { // a fresh connection for a conversation (first, or 
 function consOpen(c, dc) {
   c.lastIn = Date.now(); clearInterval(c.alive);
   c.alive = setInterval(() => { // a connection can die silently (the other phone paused, a network change): a small ping both ways every
-    // 4 s, and when nothing has come for 25 s the connection is taken as lost and made again
+    // 4 s, and when nothing has come for 15 s the connection is taken as lost and made again
     if (c.dc !== dc || c.state !== 'open') { clearInterval(c.alive); return; }
     consText(c, { t: 'ping' });
-    if (Date.now() - c.lastIn > 25000) { consLog(c.name + ': silent for 25 s'); consDrop(c, c.pc, true); }
+    if (Date.now() - c.lastIn > 15000) { consLog(c.name + ': silent for 15 s'); consDrop(c, c.pc, true); }
   }, 4000);
   const again = c.ever; c.state = 'open'; c.ever = true; c.away = false; clearInterval(c.again); clearTimeout(c.timer);
   consNote(c, again ? 'Reconnected' : 'Connected with ' + c.name); consUI(); if (!again) consChatOpen(c, true); else consChatDraw();
@@ -4909,13 +4906,14 @@ function consOrder(plan) { // the files in sending order: series by series, each
   return out;
 }
 function consWant(o, m) { // the other phone is looking here: the slices around it that have not gone yet go next
-  if (!o.order || o.next >= o.order.length || m.z == null) return;
+  const from = Math.max(o.next, o.hi || 0); // never a place already sent once: after a resume the same file must go there again
+  if (!o.order || from >= o.order.length || m.z == null) return;
   const sid = String(m.series || '').split('#')[0], se = o.plan.series.find(s => o.plan.ctx.uids.get(String(s.uid).split('#')[0]) === sid); if (!se) return;
-  const dir = m.dir < 0 ? -1 : 1, rest = o.order.slice(o.next);
+  const dir = m.dir < 0 ? -1 : 1, rest = o.order.slice(from);
   const score = i => { const it = o.plan.items[i]; if (it.se !== se || it.im.location == null) return Infinity; const d = (it.im.location - m.z) * dir; return Math.abs(d) - (d > 0 ? 0.5 : 0); }; // a little ahead in the scroll direction first
   const near = rest.filter(i => score(i) < Infinity).sort((a, b) => score(a) - score(b)).slice(0, 24);
   if (!near.length) return; const set = new Set(near);
-  o.order = o.order.slice(0, o.next).concat(near, rest.filter(i => !set.has(i)));
+  o.order = o.order.slice(0, from).concat(near, rest.filter(i => !set.has(i)));
 }
 async function consOffer(c, scope) {
   if (c.out || c.state !== 'open') return;
@@ -4933,12 +4931,12 @@ async function consPump(c) { // sends the files, a few ahead of the confirmation
     while (c.out === o && o.go && o.next < o.plan.items.length) {
       if (c.state !== 'open' || !c.dc) break;
       if (o.next - o.acked >= 6) { await new Promise(res => { o.wake = res; setTimeout(res, 3000); }); continue; }
-      const n = o.next, item = o.plan.items[o.order[n]];
+      const n = o.next, idx = o.order[n], item = o.plan.items[idx];
       let pk = null; try { const b = await anonOne(item, o.plan.ctx); if (b) { o.raw += b.length; pk = await consPack(b); } } catch (e) { pk = null; }
-      if (c.out !== o || c.state !== 'open' || o.next !== n) continue; // the connection changed meanwhile
+      if (c.out !== o || c.state !== 'open' || o.next !== n || o.order[n] !== idx) continue; // the connection or the order changed meanwhile
       const dc = c.dc;
       if (!pk) { consText(c, { t: 'skip', id: o.id, n }); o.next++; continue; }
-      consText(c, { t: 'f', id: o.id, n, len: pk.data.length, m: pk.m });
+      consText(c, { t: 'f', id: o.id, n, i: idx, len: pk.data.length, m: pk.m }); o.hi = Math.max(o.hi || 0, n + 1);
       const CH = 64 * 1024;
       for (let p = 0; p < pk.data.length; p += CH) {
         if (dc.readyState !== 'open' || c.dc !== dc) break;
@@ -4965,7 +4963,7 @@ async function consData(c, d) {
   else if (m.t === 'case') { if (r && r.id === m.id) return; c.inbox = { id: m.id, expect: 0, count: +m.count || 0, desc: String(m.desc || ''), got: 0, cur: null, ask: true, q: Promise.resolve(), caseId: 'c' + (++CONS.cid), first: true, t0: 0 }; consChatOpen(c, true); consChatDraw(); }
   else if (m.t === 'f') {
     if (!r || r.id !== m.id || r.ask) return;
-    if (m.n === r.expect) { r.gap = false; r.cur = { n: m.n, len: +m.len, m: m.m, parts: [], recv: 0 }; }
+    if (m.n === r.expect) { r.gap = false; r.cur = { n: m.n, i: m.i, len: +m.len, m: m.m, parts: [], recv: 0 }; }
     else { r.cur = null; if (m.n < r.got) consText(c, { t: 'ack', id: r.id, n: m.n }); else if (m.n > r.expect && !r.gap) { r.gap = true; consText(c, { t: 'resume', id: r.id, have: r.expect }); } } // a file again (already here), or one missed
   }
   else if (m.t === 'skip') { if (r && r.id === m.id && m.n === r.expect) r.expect++, r.q = r.q.then(() => { r.got++; consText(c, { t: 'ack', id: r.id, n: m.n }); consRecvDone(c, r); }); }
@@ -4981,7 +4979,8 @@ async function consIngestFile(c, r, f, data) {
   if (c.inbox !== r || f.n !== r.got) return;
   let b = null; try { b = await consUnpack(f.m, data); } catch (e) { b = null; }
   if (c.inbox !== r || c.state === 'closed') return; // ended meanwhile: dropped
-  try {
+  const dup = f.i != null && (r.have || (r.have = new Set())).has(f.i); if (f.i != null) r.have.add(f.i); // never the same slice twice
+  if (!dup) try {
     if (b) { const res = addBuffer(b.buffer.byteLength === b.length ? b.buffer : b.slice().buffer, 'case-' + f.n); if (res) for (const s of res.all) { s.__consCase = r.caseId; } }
   } catch (e) { }
   if (!c.cases.includes(r.caseId)) c.cases.push(r.caseId);
@@ -5015,6 +5014,7 @@ function consRecvDone(c, r) { // the case grows on screen as it arrives: the fir
     render();
   }
   consProgress(c, r.got / Math.max(1, r.count), 'Receiving ' + r.got + ' / ' + r.count);
+  if (r.got >= r.count && r.have && r.have.size < r.count) consNote(c, (r.count - r.have.size) + ' slice' + (r.count - r.have.size === 1 ? '' : 's') + ' did not arrive: ask for the case again');
   if (r.got >= r.count) { clearInterval(r.wantT); c.inbox = null; consProgress(c, -1); consNote(c, 'Case received: ' + r.got + ' images. It closes when the conversation ends.'); if (typeof fuseUI === 'function') fuseUI(); }
 }
 function consProgress(c, f, label) {
@@ -8074,7 +8074,7 @@ async function volCacheLoad(V) {
 }
 
 keepRestore(false); // the app starts empty: the last study comes back only when asked for (the Reopen card)
-window.__sliceview = { selectSeries, memUsed, memLimit, composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice, refSeg }, anon: { anonExport, dicomDump }, cons: CONS, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen } };
+window.__sliceview = { selectSeries, memUsed, memLimit, composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice, refSeg }, anon: { anonExport, dicomDump, anonPlan, anonOne }, cons: CONS, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen } };
 })();
 </script>
 
