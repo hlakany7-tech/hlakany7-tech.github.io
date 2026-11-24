@@ -663,7 +663,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1731</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1742</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -4222,6 +4222,7 @@ function mvZoomAt(v, x, y, s) {
 // Its three GPU contexts are given back (phones allow only a few) and made again when it reopens.
 function mprToggle(on) {
   const want = on == null ? !S.vol : on;
+  if (want && typeof consHold === 'function' && consHold(() => mprToggle(true), 'MPR')) return;
   if (want && S.rf) { S.rf = null; cmpLayout(); } // MPR replaces the coronal/sagittal view
   if (!want) { if (S.vol) S.keepVol = S.vol; S.vol = null; planeModeOff(); for (const k of MVK) { const v = MV[k]; if (v && v.gl) { v.gl.release(); v.gl = null; } } $('#mvAx').hidden = true; $('#planesReset').hidden = true; $('#views').classList.remove('mpr'); $('#vswitch').hidden = true; delete $('#views').dataset.main; delete $('#views').dataset.layout; $('#btnMPR').setAttribute('aria-pressed', 'false'); render(); return; }
   const se0 = curSeries(); if (!se0) return; const se = volSe(se0);
@@ -4301,6 +4302,7 @@ function planeRail(v) {
 }
 function planeModeOff() { if (!S.planeMode) return; S.planeMode = false; S.pslab = null; if (S.planeXh != null) { S.xhair = S.planeXh; $('#xhairBtn').setAttribute('aria-pressed', S.xhair); S.planeXh = null; } }
 function planeOpen(plane) {
+  if (plane !== 'ax' && typeof consHold === 'function' && consHold(() => planeOpen(plane), plane === 'cor' ? 'Coronal' : 'Sagittal')) return;
   if (S.cmps.length) { if (plane === 'ax') rfStop(); else rfStart(plane); return; }
   if (plane === 'ax') { if (S.rf) rfStop(); if (S.vol && S.planeMode) { const sl = S.pslab; mprToggle(false); if (sl) slabApply(sl.mode, sl.t); } planeBarUI(); return; } // a slab carries over to the axial
   if (!(S.vol && S.planeMode)) {
@@ -4622,7 +4624,9 @@ function anonSeriesList(scope) { // the series to export: the one on screen (a f
 const SC_CLASSES = /^1\.2\.840\.10008\.5\.1\.4\.1\.1\.(7(\.\d)*|88\.\d+|104\.1)$/; // screenshots, structured reports, PDFs: text that can name the patient
 function anonPlan(scope) { // what an export or a send holds: one entry per file, in order (the series on screen first)
   const list = anonSeriesList(scope); if (!list.length) return null;
-  const on = curSeries(); list.sort((a, b) => (b === on || (on && on.isFuse && (b === on.fuseCT))) - (a === on || (on && on.isFuse && (a === on.fuseCT))));
+  const on = curSeries();
+  if (scope === 'study') list.sort((a, b) => (petLike(a) - petLike(b)) || ((isVenous(b) && b.images.length >= 16) - (isVenous(a) && a.images.length >= 16)) || (b.images.length - a.images.length)); // as a study opens here: the venous phase first (a PET-CT: its CT)
+  else list.sort((a, b) => (b === on || (on && on.isFuse && (b === on.fuseCT))) - (a === on || (on && on.isFuse && (a === on.fuseCT))));
   const ctx = { uids: new Map(), code: 'ANON-' + crypto.getRandomValues(new Uint32Array(1))[0].toString(36).toUpperCase().slice(0, 6).padStart(6, '0') };
   const items = [], done = new Set(), used = new Set(); let shots = 0, skipped = 0;
   for (const se of list) {
@@ -4920,9 +4924,10 @@ async function consOffer(c, scope) {
   const plan = anonPlan(scope); if (!plan || !plan.items.length) { consNote(c, 'Nothing to send from this case'); return; }
   const se = curSeries(), id = 'k' + Date.now().toString(36);
   for (const s of plan.series) anonUid(plan.ctx, String(s.uid).split('#')[0]); // each series' new UID, known from the start (where they look is said by it)
+  const sizes = {}; for (const it of plan.items) { const u = plan.ctx.uids.get(String(it.se.uid).split('#')[0]); sizes[u] = (sizes[u] || 0) + Math.max(1, it.se.images.filter(x => x.hdr === it.im.hdr).length); } // how many images each series will have
   c.out = { id, plan, order: consOrder(plan), next: 0, acked: 0, bytes: 0, raw: 0, t0: 0, go: false };
-  c.out.offer = { t: 'case', id, count: plan.items.length, desc: (se && se.modality ? se.modality + ' ' : '') + (scope === 'study' ? 'study, ' + plan.series.length + ' series' : (se && se.desc) || 'series') };
-  consText(c, { t: 'case', id, count: plan.items.length, desc: (se && se.modality ? se.modality + ' ' : '') + (scope === 'study' ? 'study, ' + plan.series.length + ' series' : (se && se.desc) || 'series') });
+  c.out.offer = { t: 'case', id, sizes, count: plan.items.length, desc: (se && se.modality ? se.modality + ' ' : '') + (scope === 'study' ? 'study, ' + plan.series.length + ' series' : (se && se.desc) || 'series') };
+  consText(c, { t: 'case', id, sizes, count: plan.items.length, desc: (se && se.modality ? se.modality + ' ' : '') + (scope === 'study' ? 'study, ' + plan.series.length + ' series' : (se && se.desc) || 'series') });
   consProgress(c, 0, 'Waiting for ' + c.name + ' to accept');
 }
 async function consPump(c) { // sends the files, a few ahead of the confirmations
@@ -4960,7 +4965,7 @@ async function consData(c, d) {
   let m; try { m = JSON.parse(d); } catch (e) { return; }
   if (m.t === 'ping') return;
   if (m.t === 'chat') { c.chat.push({ from: c.name, text: String(m.text || '').slice(0, 2000) }); if (CONS.open !== c || $('#consChat').hidden) c.unread++; consChatDraw(); consUI(); }
-  else if (m.t === 'case') { if (r && r.id === m.id) return; c.inbox = { id: m.id, expect: 0, count: +m.count || 0, desc: String(m.desc || ''), got: 0, cur: null, ask: true, q: Promise.resolve(), caseId: 'c' + (++CONS.cid), first: true, t0: 0 }; consChatOpen(c, true); consChatDraw(); }
+  else if (m.t === 'case') { if (r && r.id === m.id) return; c.inbox = { id: m.id, expect: 0, sizes: m.sizes || null, count: +m.count || 0, desc: String(m.desc || ''), got: 0, cur: null, ask: true, q: Promise.resolve(), caseId: 'c' + (++CONS.cid), first: true, t0: 0 }; consChatOpen(c, true); consChatDraw(); }
   else if (m.t === 'f') {
     if (!r || r.id !== m.id || r.ask) return;
     if (m.n === r.expect) { r.gap = false; r.cur = { n: m.n, i: m.i, len: +m.len, m: m.m, parts: [], recv: 0 }; }
@@ -4987,12 +4992,20 @@ async function consIngestFile(c, r, f, data) {
   r.got++; consText(c, { t: 'ack', id: r.id, n: f.n });
   consRecvDone(c, r);
 }
-function consVolRefresh() { // the case grew: MPR, or the coronal/sagittal view, built again over all that has arrived
-  if (!S.vol) return; const main = $('#views').dataset.main, pm = S.planeMode && main && main !== 'ax';
-  mprToggle(false); S.keepVol = null;
-  if (pm) planeOpen(main); else mprToggle(true);
+function consArriving(se) { // a series of a case still arriving: how many of its images are here, of how many
+  if (!se || !se.__consCase) return null;
+  for (const c of CONS.peers.values()) { const r = c.inbox; if (!r || r.caseId !== se.__consCase || !r.sizes) continue;
+    const base = String(se.uid).split('#')[0], need = r.sizes[base]; if (!need) return null;
+    const got = S.series.filter(s => s.__consCase === r.caseId && String(s.uid).split('#')[0] === base).reduce((a, s) => a + s.images.length, 0);
+    return got < need ? { got, need, r } : null; }
+  return null;
 }
-function consRecvDone(c, r) { // the case grows on screen as it arrives: the first images show at once
+function consHold(fn, what) { // MPR, coronal, sagittal and 3D need the whole series: asked while it arrives, they open by themselves when it is in
+  const a = consArriving(curSeries()); if (!a) return false;
+  a.r.pending = fn; say(what + ' opens as soon as this series has arrived (' + a.got + ' / ' + a.need + ')', 3500); return true;
+}
+function consRecvDone(c, r) {
+  if (r.pending && !consArriving(curSeries())) { const f = r.pending; r.pending = null; setTimeout(f, 50); } // the case grows on screen as it arrives: the first images show at once
   const now = performance.now(), mine = () => S.series.filter(s => s.__consCase === r.caseId);
   if (r.first && mine().length) {
     r.first = false; finishLoad();
@@ -5009,8 +5022,7 @@ function consRecvDone(c, r) { // the case grows on screen as it arrives: the fir
   } else if (now - (r.tUI || 0) > 700 || r.got >= r.count) {
     r.tUI = now; const keep = cur(), touched = finishLoad(), se = curSeries();
     if (keep && se && touched.includes(se)) { const i = se.images.indexOf(keep); if (i >= 0) S.idx = i; }
-    for (const t of touched) { if (S.keepVol && S.keepVol.se === t) S.keepVol = null; if (S.rfVols) S.rfVols.delete(t); if (S.vol && S.vol.se === t) r.volDirty = true; } // views built on the part that had arrived: built again
-    if (r.volDirty && (now - (r.tVol || 0) > 5000 || r.got >= r.count)) { r.tVol = now; r.volDirty = false; consVolRefresh(); }
+    for (const t of touched) { if (S.keepVol && S.keepVol.se === t) S.keepVol = null; if (S.rfVols) S.rfVols.delete(t); }
     render();
   }
   consProgress(c, r.got / Math.max(1, r.count), 'Receiving ' + r.got + ' / ' + r.count);
@@ -7542,6 +7554,7 @@ function vrInput(el) {
 
 // ---- open, close, the bars ----
 function vrOpen() {
+  if (typeof consHold === 'function' && consHold(vrOpen, '3D')) return;
   const se = curSeries(); if (!se) return;
   if (!vrGL()) { say('3D needs WebGL 2, which this browser does not have', 4000); return; }
   const K = S.vol && S.vol.se === se ? S.vol : S.keepVol && S.keepVol.se === se ? S.keepVol : null;
