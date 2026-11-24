@@ -663,7 +663,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1624</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1637</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -4810,7 +4810,7 @@ function consOpen(c, dc) {
   consNote(c, again ? 'Reconnected' : 'Connected with ' + c.name); consUI(); if (!again) consChatOpen(c, true); else consChatDraw();
   consRoute(c);
   if (c.out && !c.out.go && c.out.offer) consText(c, c.out.offer); // a case offered but not yet answered: offered again
-  const r = c.inbox; if (r && !r.ask && r.got < r.count) { r.cur = null; r.q.then(() => consText(c, { t: 'resume', id: r.id, have: r.got })); } // a case arriving: on from where it stopped
+  const r = c.inbox; if (r && !r.ask && r.got < r.count) { r.cur = null; r.q.then(() => { r.expect = r.got; r.gap = false; consText(c, { t: 'resume', id: r.id, have: r.got }); }); } // a case arriving: on from where it stopped
 }
 async function consRoute(c) { // direct, or through the relay: said once per connection (it decides the speed)
   const pc = c.pc; if (!pc) return; await new Promise(r => setTimeout(r, 600));
@@ -4843,13 +4843,14 @@ function consCall(name) {
 function consEnd(c, quiet) { // End: the conversation and its case go, on both phones
   if (c.state === 'closed') return; c.state = 'closed'; clearTimeout(c.timer); clearInterval(c.again); clearInterval(c.alive);
   const pc = c.pc; c.pc = null; c.dc = null; try { pc && pc.close(); } catch (e) { }
-  CONS.peers.delete(c.id); c.out = null;
+  CONS.peers.delete(c.id); c.out = null; c.inbox = null; // nothing more is taken in
   consWipe(c);
   if (CONS.open === c) { CONS.open = null; $('#consChat').hidden = true; }
   if (!quiet) say(c.name + ' ended the conversation; the shared case was closed', 3500);
   consUI();
 }
 function consWipe(c) { const gone = S.series.filter(s => c.cases.includes(s.__consCase)); if (gone.length) closeSeries(gone); c.cases = []; }
+const consPhase = (k, N, verb) => k < N ? verb + ' quick view ' + k + ' / ' + N : verb + ' full quality ' + (k - N) + ' / ' + N;
 const consRate = o => { const sec = (performance.now() - o.t0) / 1000; return sec > 2 && o.bytes ? ' · ' + (o.bytes / 1048576 / sec).toFixed(o.bytes / sec > 1048576 ? 1 : 2) + ' MB/s' : ''; };
 const consText = (c, o) => { if (c.dc && c.dc.readyState === 'open') { c.dc.send(JSON.stringify(o)); return true; } return false; };
 function consNote(c, text) { c.chat.push({ sys: true, text }); if (CONS.open === c) consChatDraw(); }
@@ -4894,27 +4895,70 @@ async function consUnpack(m, data) {
   if (m.p) { const N = m.r * m.c * m.f; b.set(consPredict(b.subarray(m.off, m.off + 2 * N), m.r, m.c, m.f, !!m.s, true), m.off); }
   return b;
 }
+/* Quick view first: every slice goes first at half size (each 2x2 block averaged: a quarter of the pixels, and smoother,
+   so it packs far smaller, typically 4 to 5 times smaller than the JPEG 2000 original), so the whole case is there in
+   seconds; then each slice again at full quality, replacing its quick copy. */
+function consDecode(im, reduce) { // a compressed image decoded by the readers, for sending (null if it cannot be)
+  return new Promise(res => {
+    const go = () => {
+      decInit();
+      if (DEC.mode === 'workers' ? !DEC.free.length : DEC.mainBusy) { setTimeout(go, 20); return; }
+      submit({ buf: im.frag, z: im.zsrc ? zjob(im.zsrc) : null, codec: im.codec, rows: im.rows, cols: im.cols, ba: im.ba, spp: im.spp || 1, ybr: im.ybr, palette: im.palette, reduce,
+        finish(d) { res(d && !d.err && d.data ? { w: d.w, h: d.h, data: signFix(d, im) } : null); } });
+    };
+    go();
+  });
+}
+async function consPreview(item, ctx) { // the quick copy of one slice (null when it has none: colour, several frames, 8-bit)
+  const im = item.im;
+  if (!im.hdr || (im.spp || 1) !== 1 || im.ba !== 16 || im.palette || item.se.images.filter(x => x.hdr === im.hdr).length > 1) return null;
+  let w, h, data;
+  if (im.preview && im.preview.w === im.cols >> 1 && im.preview.h === im.rows >> 1) { w = im.preview.w; h = im.preview.h; data = im.preview.data; } // the quick copy already made for scrolling
+  else if (im.pixels) { // in memory at full size: 2x2 averaged here
+    const W = im.cols, H = im.rows; w = W >> 1; h = H >> 1; const src = im.pixels; data = src instanceof Int16Array ? new Int16Array(w * h) : new Uint16Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = 2 * y * W + 2 * x; data[y * w + x] = Math.round((src[i] + src[i + 1] + src[i + W] + src[i + W + 1]) / 4); }
+  } else if (coded(im)) { const d = await consDecode(im, 1); if (!d || d.w < 16) return null; w = d.w; h = d.h; data = d.data; }
+  else return null;
+  if (!(data instanceof Int16Array || data instanceof Uint16Array)) data = im.pixelRep === 1 ? Int16Array.from(data) : Uint16Array.from(data);
+  const p = anonPixelEnd(im.hdr); if (p <= 0) return null;
+  const sp = im.spacing, fx = im.cols / w, fy = im.rows / h, sub = Object.assign({}, ctx, { ts: '1.2.840.10008.1.2.1' });
+  sub.set = new Map([['00280010', (enc, encUS, g, e) => encUS(g, e, h)], ['00280011', (enc, encUS, g, e) => encUS(g, e, w)],
+    ['00280004', (enc, encUS, g, e) => enc(g, e, 'CS', im.mono1 ? 'MONOCHROME1' : 'MONOCHROME2')],
+    ['00282110', (enc, encUS, g, e) => enc(g, e, 'CS', '01')], ['00282114', (enc, encUS, g, e) => enc(g, e, 'CS', 'SLICEVIEW_QUICK')]]);
+  if (sp) sub.set.set('00280030', (enc, encUS, g, e) => enc(g, e, 'DS', +(sp[0] * fy).toFixed(6) + '\\' + +(sp[1] * fx).toFixed(6)));
+  sub.drop = new Set(['00280006', '00281101', '00281102', '00281103', '00281201', '00281202', '00281203', '00280008']);
+  return anonDicom(im.hdr.subarray(0, p), sub, anonRebuildTail([{ pixels: data }]));
+}
 async function consOffer(c, scope) {
   if (c.out || c.state !== 'open') return;
   const plan = anonPlan(scope); if (!plan || !plan.items.length) { consNote(c, 'Nothing to send from this case'); return; }
   const se = curSeries(), id = 'k' + Date.now().toString(36);
   c.out = { id, plan, next: 0, acked: 0, bytes: 0, raw: 0, t0: 0, go: false };
-  c.out.offer = { t: 'case', id, count: plan.items.length, desc: (se && se.modality ? se.modality + ' ' : '') + (scope === 'study' ? 'study, ' + plan.series.length + ' series' : (se && se.desc) || 'series') };
-  consText(c, { t: 'case', id, count: plan.items.length, desc: (se && se.modality ? se.modality + ' ' : '') + (scope === 'study' ? 'study, ' + plan.series.length + ' series' : (se && se.desc) || 'series') });
+  c.out.offer = { t: 'case', id, count: 2 * plan.items.length, images: plan.items.length, desc: (se && se.modality ? se.modality + ' ' : '') + (scope === 'study' ? 'study, ' + plan.series.length + ' series' : (se && se.desc) || 'series') };
+  consText(c, { t: 'case', id, count: 2 * plan.items.length, images: plan.items.length, desc: (se && se.modality ? se.modality + ' ' : '') + (scope === 'study' ? 'study, ' + plan.series.length + ' series' : (se && se.desc) || 'series') });
   consProgress(c, 0, 'Waiting for ' + c.name + ' to accept');
 }
+function consPrep(o, s) { // file s of the sending (quick copies first, then full quality), packed; prepared a few ahead
+  if (!o.prep.has(s)) {
+    const N = o.plan.items.length, item = o.plan.items[s % N];
+    o.prep.set(s, (async () => { try { const b = s < N ? await consPreview(item, o.plan.ctx) : await anonOne(item, o.plan.ctx); if (!b) return null; const pk = await consPack(b); if (s >= N) pk.raw = b.length; return pk; } catch (e) { return null; } })());
+  }
+  return o.prep.get(s);
+}
 async function consPump(c) { // sends the files, a few ahead of the confirmations
-  const o = c.out; if (!o || o.pumping) return; o.pumping = true;
+  const o = c.out; if (!o || o.pumping) return; o.pumping = true; o.prep = o.prep || new Map();
+  const total = 2 * o.plan.items.length;
   try {
-    while (c.out === o && o.go && o.next < o.plan.items.length) {
+    while (c.out === o && o.go && o.next < total) {
       if (c.state !== 'open' || !c.dc) break;
-      if (o.next - o.acked >= 6) { await new Promise(res => { o.wake = res; setTimeout(res, 3000); }); continue; }
-      const n = o.next, item = o.plan.items[n];
-      let pk = null; try { const b = await anonOne(item, o.plan.ctx); if (b) { o.raw += b.length; pk = await consPack(b); } } catch (e) { pk = null; }
+      if (o.next - o.acked >= 8) { await new Promise(res => { o.wake = res; setTimeout(res, 3000); }); continue; }
+      const n = o.next;
+      for (let k = n; k < Math.min(total, n + Math.max(4, Math.min(8, navigator.hardwareConcurrency || 4))); k++) consPrep(o, k); // prepared ahead, using every reader
+      let pk = await consPrep(o, n); o.prep.delete(n);
       if (c.out !== o || c.state !== 'open' || o.next !== n) continue; // the connection changed meanwhile
       const dc = c.dc;
       if (!pk) { consText(c, { t: 'skip', id: o.id, n }); o.next++; continue; }
-      consText(c, { t: 'f', id: o.id, n, len: pk.data.length, m: pk.m });
+      consText(c, { t: 'f', id: o.id, n, len: pk.data.length, m: pk.m, q: n < o.plan.items.length ? 1 : 0 });
       const CH = 64 * 1024;
       for (let p = 0; p < pk.data.length; p += CH) {
         if (dc.readyState !== 'open' || c.dc !== dc) break;
@@ -4922,8 +4966,8 @@ async function consPump(c) { // sends the files, a few ahead of the confirmation
         try { dc.send(pk.data.subarray(p, Math.min(pk.data.length, p + CH))); } catch (e) { break; }
       }
       if (c.dc !== dc || dc.readyState !== 'open') break;
-      o.bytes += pk.data.length; o.next++;
-      consProgress(c, o.acked / o.plan.items.length, 'Sending ' + o.acked + ' / ' + o.plan.items.length + consRate(o));
+      o.bytes += pk.data.length; o.raw += pk.raw || 0; o.next++;
+      consProgress(c, o.acked / total, consPhase(o.acked, o.plan.items.length, 'Sending') + consRate(o));
     }
   } finally { o.pumping = false; }
 }
@@ -4932,32 +4976,43 @@ async function consData(c, d) {
   if (typeof d !== 'string') { // a piece of a file
     const f = r && r.cur; if (!f) return;
     f.parts.push(new Uint8Array(d)); f.recv += d.byteLength;
-    if (f.recv >= f.len) { r.cur = null; r.busy = true; const all = new Uint8Array(f.len); let p = 0; for (const x of f.parts) { all.set(x, p); p += x.length; } r.q = r.q.then(() => consIngestFile(c, r, f, all)); }
+    if (f.recv >= f.len) { r.cur = null; r.expect = f.n + 1; const all = new Uint8Array(f.len); let p = 0; for (const x of f.parts) { all.set(x, p); p += x.length; } r.q = r.q.then(() => consIngestFile(c, r, f, all)); }
     return;
   }
   let m; try { m = JSON.parse(d); } catch (e) { return; }
   if (m.t === 'ping') return;
   if (m.t === 'chat') { c.chat.push({ from: c.name, text: String(m.text || '').slice(0, 2000) }); if (CONS.open !== c || $('#consChat').hidden) c.unread++; consChatDraw(); consUI(); }
-  else if (m.t === 'case') { if (r && r.id === m.id) return; c.inbox = { id: m.id, count: +m.count || 0, desc: String(m.desc || ''), got: 0, cur: null, ask: true, q: Promise.resolve(), caseId: 'c' + (++CONS.cid), first: true, t0: 0 }; consChatOpen(c, true); consChatDraw(); }
+  else if (m.t === 'case') { if (r && r.id === m.id) return; c.inbox = { id: m.id, count: +m.count || 0, images: +m.images || Math.round((+m.count || 0) / 2), pre: [], repl: new Map(), expect: 0, desc: String(m.desc || ''), got: 0, cur: null, ask: true, q: Promise.resolve(), caseId: 'c' + (++CONS.cid), first: true, t0: 0 }; consChatOpen(c, true); consChatDraw(); }
   else if (m.t === 'f') {
     if (!r || r.id !== m.id || r.ask) return;
-    if (m.n === r.got && !r.busy) r.cur = { n: m.n, len: +m.len, m: m.m, parts: [], recv: 0 };
-    else { r.cur = null; if (m.n < r.got) consText(c, { t: 'ack', id: r.id, n: m.n }); else if (m.n > r.got && !r.busy) consText(c, { t: 'resume', id: r.id, have: r.got }); } // a file again (already here), or one missed
+    if (m.n === r.expect) r.gap = false, r.cur = { n: m.n, len: +m.len, m: m.m, parts: [], recv: 0 };
+    else { r.cur = null; if (m.n < r.got) consText(c, { t: 'ack', id: r.id, n: m.n }); else if (m.n > r.expect && !r.gap) { r.gap = true; consText(c, { t: 'resume', id: r.id, have: r.expect }); } } // a file again (already here), or one missed
   }
-  else if (m.t === 'skip') { if (r && r.id === m.id && m.n === r.got) r.q = r.q.then(() => { r.got++; consText(c, { t: 'ack', id: r.id, n: m.n }); consRecvDone(c, r); }); }
-  else if (m.t === 'ack') { const o = c.out; if (o && o.id === m.id) { o.acked = Math.max(o.acked, m.n + 1); o.wake && o.wake(); consProgress(c, o.acked / o.plan.items.length, 'Sending ' + o.acked + ' / ' + o.plan.items.length + consRate(o));
-      if (o.acked >= o.plan.items.length) { const sec = (performance.now() - o.t0) / 1000; consNote(c, 'Case sent: ' + o.acked + ' images, ' + (o.bytes / 1048576).toFixed(0) + ' MB (packed from ' + (o.raw / 1048576).toFixed(0) + ' MB) in ' + Math.round(sec) + ' s (' + (o.bytes / 1048576 / Math.max(0.1, sec)).toFixed(2) + ' MB/s' + (c.route ? ', ' + c.route : '') + ')'); c.out = null; consProgress(c, -1); } } }
+  else if (m.t === 'skip') { if (r && r.id === m.id && m.n === r.expect) r.expect++, r.q = r.q.then(() => { r.got++; consText(c, { t: 'ack', id: r.id, n: m.n }); consRecvDone(c, r); }); }
+  else if (m.t === 'ack') { const o = c.out; if (o && o.id === m.id) { o.acked = Math.max(o.acked, m.n + 1); o.wake && o.wake(); const N = o.plan.items.length; consProgress(c, o.acked / (2 * N), consPhase(o.acked, N, 'Sending') + consRate(o));
+      if (o.acked === N && !o.quickSaid) { o.quickSaid = true; consNote(c, 'Quick view delivered in ' + Math.round((performance.now() - o.t0) / 1000) + ' s; full quality following'); }
+      if (o.acked >= 2 * N) { const sec = (performance.now() - o.t0) / 1000; consNote(c, 'Case sent: ' + N + ' images, ' + (o.bytes / 1048576).toFixed(0) + ' MB (packed from ' + (o.raw / 1048576).toFixed(0) + ' MB) in ' + Math.round(sec) + ' s (' + (o.bytes / 1048576 / Math.max(0.1, sec)).toFixed(2) + ' MB/s' + (c.route ? ', ' + c.route : '') + ')'); c.out = null; consProgress(c, -1); } } }
   else if (m.t === 'accept') { const o = c.out; if (o && o.id === m.id) { o.go = true; o.t0 = performance.now(); consPump(c); } }
   else if (m.t === 'resume') { const o = c.out; if (o && o.id === m.id) { o.next = o.acked = Math.max(0, +m.have || 0); o.go = true; consPump(c); } }
   else if (m.t === 'decline') { if (c.out && c.out.id === m.id) { c.out = null; consNote(c, c.name + ' declined the case'); consProgress(c, -1); } }
   else if (m.t === 'bye') consEnd(c);
 }
 async function consIngestFile(c, r, f, data) {
-  r.busy = false;
   if (c.inbox !== r || f.n !== r.got) return;
   let b = null; try { b = await consUnpack(f.m, data); } catch (e) { b = null; }
+  if (c.inbox !== r || c.state === 'closed') return; // ended meanwhile: dropped
   try {
-    if (b) { const res = addBuffer(b.buffer.byteLength === b.length ? b.buffer : b.slice().buffer, 'case-' + f.n); if (res) for (const s of res.all) { s.__consCase = r.caseId; } }
+    if (b) {
+      const N = r.images, k = f.n % N;
+      const res = addBuffer(b.buffer.byteLength === b.length ? b.buffer : b.slice().buffer, 'case-' + f.n);
+      if (res) { for (const s of res.all) s.__consCase = r.caseId; const fresh = res.se.images[res.se.images.length - 1];
+        if (f.n < N) r.pre[k] = fresh; // a quick copy
+        else if (r.pre[k]) { // full quality: it takes the place of its quick copy
+          const old = r.pre[k]; r.pre[k] = null;
+          for (const s of S.series) { const i = s.images.indexOf(old); if (i >= 0) { s.images.splice(i, 1); s.dirty = true; S.rfVols && S.rfVols.delete(s); if (S.keepVol && S.keepVol.se === s) S.keepVol = null; break; } }
+          r.repl.set(old, fresh);
+        } }
+    }
   } catch (e) { }
   if (!c.cases.includes(r.caseId)) c.cases.push(r.caseId);
   r.got++; consText(c, { t: 'ack', id: r.id, n: f.n });
@@ -4972,12 +5027,13 @@ function consRecvDone(c, r) { // the case grows on screen as it arrives: the fir
     selectSeries(S.series.indexOf(main)); const ph = S.series.find(s => s.uid === 'sample-phantom'); if (ph) closeSeries([ph]);
     r.tUI = now; render();
   } else if (now - (r.tUI || 0) > 700 || r.got >= r.count) {
-    r.tUI = now; const keep = cur(), touched = finishLoad(), se = curSeries();
+    r.tUI = now; let keep = cur(); if (r.repl.has(keep)) keep = r.repl.get(keep); r.repl.clear(); const touched = finishLoad(), se = curSeries();
     if (keep && se && touched.includes(se)) { const i = se.images.indexOf(keep); if (i >= 0) S.idx = i; }
     render();
   }
-  consProgress(c, r.got / Math.max(1, r.count), 'Receiving ' + r.got + ' / ' + r.count);
-  if (r.got >= r.count) { c.inbox = null; consProgress(c, -1); consNote(c, 'Case received: ' + r.got + ' images. It closes when the conversation ends.'); if (typeof fuseUI === 'function') fuseUI(); }
+  consProgress(c, r.got / Math.max(1, r.count), consPhase(r.got, r.images, 'Receiving'));
+  if (r.got === r.images && !r.quickSaid) { r.quickSaid = true; consNote(c, 'Quick view here (half size); full quality arriving'); }
+  if (r.got >= r.count) { c.inbox = null; consProgress(c, -1); consNote(c, 'Case received in full quality: ' + r.images + ' images. It closes when the conversation ends.'); if (typeof fuseUI === 'function') fuseUI(); }
 }
 function consProgress(c, f, label) {
   c.prog = f < 0 ? null : { f, label }; if (CONS.open !== c) return; const e = $('#consProg');
@@ -4989,7 +5045,7 @@ function consChatDraw() {
   const esc = s => String(s).replace(/[&<>]/g, x => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[x]);
   box.innerHTML = c.chat.map(m => m.sys ? '<div class="cm sys">' + esc(m.text) + '</div>' : '<div class="cm ' + (m.from === CONS.me ? 'me' : 'them') + '">' + esc(m.text) + '</div>').join('');
   const r = c.inbox;
-  if (r && r.ask) box.insertAdjacentHTML('beforeend', '<div class="cm ask"><b>' + esc(c.name) + ' sent a case</b><br>' + esc(r.desc) + ' · ' + r.count + ' images<div class="ask-b"><button class="btn primary" data-a="open">Open</button><button class="btn" data-a="no">Decline</button></div></div>');
+  if (r && r.ask) box.insertAdjacentHTML('beforeend', '<div class="cm ask"><b>' + esc(c.name) + ' sent a case</b><br>' + esc(r.desc) + ' · ' + r.images + ' images<div class="ask-b"><button class="btn primary" data-a="open">Open</button><button class="btn" data-a="no">Decline</button></div></div>');
   box.scrollTop = box.scrollHeight;
   $('#consState').textContent = c.state === 'open' ? 'connected' : c.state === 'reconnecting' ? 'reconnecting…' : c.state === 'calling' ? 'calling…' : '';
 }
@@ -5021,7 +5077,7 @@ $('#consForm').addEventListener('submit', e => { e.preventDefault(); const c = C
 $('#consChat').querySelector('.cons-send').addEventListener('click', e => { const b = e.target.closest('button'); if (b && CONS.open && CONS.open.state === 'open') consOffer(CONS.open, b.dataset.s); });
 $('#consLog').addEventListener('click', e => { const b = e.target.closest('button[data-a]'); const c = CONS.open; if (!b || !c || !c.inbox) return;
   const r = c.inbox; r.ask = false;
-  if (b.dataset.a === 'open') { consText(c, { t: 'accept', id: r.id }); consProgress(c, 0, 'Receiving 0 / ' + r.count); consNote(c, 'Opening as it arrives…'); } else { consText(c, { t: 'decline', id: r.id }); c.inbox = null; }
+  if (b.dataset.a === 'open') { consText(c, { t: 'accept', id: r.id }); consProgress(c, 0, consPhase(0, r.images, 'Receiving')); consNote(c, 'Opening as it arrives: quick view first, then full quality'); } else { consText(c, { t: 'decline', id: r.id }); c.inbox = null; }
   consChatDraw(); });
 addEventListener('pagehide', e => { if (!e.persisted) for (const c of CONS.peers.values()) consText(c, { t: 'bye' }); });
 document.addEventListener('visibilitychange', () => { // back in Sliceview (after WhatsApp, the lock screen...): online again at once, conversations restored
@@ -8036,7 +8092,7 @@ async function volCacheLoad(V) {
 }
 
 keepRestore(false); // the app starts empty: the last study comes back only when asked for (the Reopen card)
-window.__sliceview = { selectSeries, memUsed, memLimit, composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice, refSeg }, anon: { anonExport, dicomDump }, cons: CONS, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen } };
+window.__sliceview = { selectSeries, memUsed, memLimit, composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice, refSeg }, anon: { anonExport, dicomDump, anonPlan, anonOne }, cons: CONS, consPreview, consPack, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen } };
 })();
 </script>
 
