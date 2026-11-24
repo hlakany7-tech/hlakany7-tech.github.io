@@ -671,7 +671,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1810</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1825</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -4626,15 +4626,17 @@ const crc32 = u => { let c = 0xFFFFFFFF; for (let i = 0; i < u.length; i++) c = 
 function zipMaker() { // a plain zip (stored, no compression), built file by file
   const parts = [], dir = []; let off = 0;
   return {
-    add(name, data) {
+    async add(name, data) { // squeezed (deflate) when that helps: less memory while it is built, a smaller file
       const nm = new TextEncoder().encode(name), crc = crc32(data), h = new Uint8Array(30 + nm.length), d = new DataView(h.buffer);
-      d.setUint32(0, 0x04034B50, true); d.setUint16(4, 20, true); d.setUint16(6, 0x800, true); d.setUint32(14, crc, true); d.setUint32(18, data.length, true); d.setUint32(22, data.length, true); d.setUint16(26, nm.length, true); h.set(nm, 30);
-      parts.push(h, new Blob([data])); dir.push({ nm, crc, size: data.length, off }); off += h.length + data.length;
+      let body = data, method = 0;
+      if (RAW_DEFLATE && data.length > 1024) { try { const z = await consDeflate(data); if (z.length < data.length * 0.95) { body = z; method = 8; } } catch (e) { } }
+      d.setUint32(0, 0x04034B50, true); d.setUint16(4, 20, true); d.setUint16(6, 0x800, true); d.setUint16(8, method, true); d.setUint32(14, crc, true); d.setUint32(18, body.length, true); d.setUint32(22, data.length, true); d.setUint16(26, nm.length, true); h.set(nm, 30);
+      parts.push(h, new Blob([body])); dir.push({ nm, crc, size: data.length, csize: body.length, method, off }); off += h.length + body.length;
     },
     blob() {
       const cd = []; let n = 0;
       for (const f of dir) { const c = new Uint8Array(46 + f.nm.length), d = new DataView(c.buffer);
-        d.setUint32(0, 0x02014B50, true); d.setUint16(4, 20, true); d.setUint16(6, 20, true); d.setUint16(8, 0x800, true); d.setUint32(16, f.crc, true); d.setUint32(20, f.size, true); d.setUint32(24, f.size, true); d.setUint16(28, f.nm.length, true); d.setUint32(42, f.off, true); c.set(f.nm, 46); cd.push(c); n += c.length; }
+        d.setUint32(0, 0x02014B50, true); d.setUint16(4, 20, true); d.setUint16(6, 20, true); d.setUint16(8, 0x800, true); d.setUint16(10, f.method, true); d.setUint32(16, f.crc, true); d.setUint32(20, f.csize, true); d.setUint32(24, f.size, true); d.setUint16(28, f.nm.length, true); d.setUint32(42, f.off, true); c.set(f.nm, 46); cd.push(c); n += c.length; }
       const e = new Uint8Array(22), d = new DataView(e.buffer); d.setUint32(0, 0x06054B50, true); d.setUint16(8, dir.length, true); d.setUint16(10, dir.length, true); d.setUint32(12, n, true); d.setUint32(16, off, true);
       return new Blob([...parts, ...cd, e], { type: 'application/zip' });
     },
@@ -4672,7 +4674,7 @@ function anonPlan(scope) { // what an export or a send holds: one entry per file
 }
 async function anonOne(item, ctx) { // one file, anonymised (null when it cannot be)
   const im = item.im;
-  const bytes = (im.zsrc || im.src) ? await anonOriginal(im) : null;
+  const bytes = (im.zsrc || im.src) ? await anonOriginal(im) : im.rawFile ? new Uint8Array(im.rawFile) : null; // rawFile: a received file, as it came
   let outB = bytes ? anonDicom(bytes, ctx, null) : null;
   if (!outB && im.hdr) { // rebuilt from the header and the pixels in memory
     const frames = S.series.flatMap(s => s.images).filter(x => x.hdr === im.hdr).sort((a, b) => a.srcFrame - b.srcFrame);
@@ -4696,10 +4698,11 @@ async function anonExport(scope, onStep) {
   const plan = anonPlan(scope); if (!plan) return null;
   const { ctx, items } = plan, zip = zipMaker(); let skipped = plan.skipped;
   for (let k = 0; k < items.length; k++) {
-    if (onStep && k % 8 === 0) { onStep(k, items.length); await new Promise(res => setTimeout(res)); }
+    if (onStep && k % 4 === 0) onStep(k, items.length);
+    await new Promise(res => setTimeout(res)); // a breath between files: memory of the last one is let go before the next
     let b = null; try { b = await anonOne(items[k], ctx); } catch (e) { b = null; }
     if (!b) { skipped++; continue; }
-    zip.add(ctx.code + '/' + items[k].name, b);
+    await zip.add(ctx.code + '/' + items[k].name, b); b = null;
   }
   if (!zip.count) return { empty: true, skipped, shots: plan.shots };
   return { blob: zip.blob(), name: ctx.code + '.zip', count: zip.count, skipped, shots: plan.shots, size: zip.size, code: ctx.code };
@@ -5055,7 +5058,9 @@ async function consIngestFile(c, r, f, data) {
   if (c.inbox !== r || c.state === 'closed') return; // ended meanwhile: dropped
   const dup = f.i != null && (r.have || (r.have = new Set())).has(f.i); if (f.i != null) r.have.add(f.i); // never the same slice twice
   if (!dup) try {
-    if (b) { const res = addBuffer(b.buffer.byteLength === b.length ? b.buffer : b.slice().buffer, 'case-' + f.n); if (res) for (const s of res.all) { s.__consCase = r.caseId; r.lastBase = String(s.uid).split('#')[0]; } }
+    if (b) { const ab = b.buffer.byteLength === b.length ? b.buffer : b.slice().buffer, had = new Map(S.series.map(s => [s, s.images.length]));
+      const res = addBuffer(ab, 'case-' + f.n);
+      if (res) for (const s of res.all) { s.__consCase = r.caseId; r.lastBase = String(s.uid).split('#')[0]; for (let k = had.get(s) || 0; k < s.images.length; k++) if (!s.images[k].rawFile) s.images[k].rawFile = ab; } } // kept as it came: saving the case reuses it
   } catch (e) { }
   if (!c.cases.includes(r.caseId)) c.cases.push(r.caseId);
   r.got++; consText(c, { t: 'ack', id: r.id, n: f.n });
@@ -5157,7 +5162,7 @@ $('#consLog').addEventListener('click', async e => {
     await addFiles([new File([f.blob], f.name, { type: f.type })], { noKeep: true });
     S.series.filter(s => !before.has(s)).forEach(s => { s.__consCase = id; }); c.cases.push(id); return; }
   if (sv) { const list = S.series.filter(s => s.__consCase === sv.dataset.save); if (!list.length) return; sv.disabled = true; sv.textContent = 'Preparing…';
-    let r = null; try { r = await anonExport(list); } catch (err) { r = null; } sv.disabled = false; sv.textContent = 'Save the case (anonymised zip)';
+    let r = null; try { r = await anonExport(list, (k, n) => { sv.textContent = 'Preparing ' + Math.round(100 * k / n) + '%'; }); } catch (err) { r = null; } sv.disabled = false; sv.textContent = 'Save the case (anonymised zip)';
     if (r && r.blob) saveBlobAs(r.blob, r.name); else say('The case could not be saved', 3000); return; }
   const b = t.closest('button[data-a]'); if (!b || !c.inbox) return;
   const r = c.inbox; r.ask = false;
