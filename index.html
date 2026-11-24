@@ -663,7 +663,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1710</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1714</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -4705,11 +4705,14 @@ function consKeepAwake(on) {
     if (!CONS.awake) {
       const n = 8000, b = new ArrayBuffer(44 + n * 2), d = new DataView(b), w = (o, s) => { for (let i = 0; i < s.length; i++) d.setUint8(o + i, s.charCodeAt(i)); };
       w(0, 'RIFF'); d.setUint32(4, 36 + n * 2, true); w(8, 'WAVEfmt '); d.setUint32(16, 16, true); d.setUint16(20, 1, true); d.setUint16(22, 1, true); d.setUint32(24, 8000, true); d.setUint32(28, 16000, true); d.setUint16(32, 2, true); d.setUint16(34, 16, true); w(36, 'data'); d.setUint32(40, n * 2, true);
-      for (let i = 0; i < n; i++) d.setInt16(44 + i * 2, (i & 1) ? 1 : -1, true); // far below hearing
-      const a = new Audio(URL.createObjectURL(new Blob([b], { type: 'audio/wav' }))); a.loop = true; a.volume = 0.05; CONS.awake = a;
+      // a 15 Hz hum, below what ears hear and what phone speakers can play, yet loud enough for the browser to count it as
+      // sound (a near-silent track is treated as silence, and the app is paused in the background as before)
+      for (let i = 0; i < n; i++) d.setInt16(44 + i * 2, Math.round(330 * Math.sin(2 * Math.PI * 15 * i / 8000)), true);
+      const a = new Audio(URL.createObjectURL(new Blob([b], { type: 'audio/wav' }))); a.loop = true; a.volume = 1; CONS.awake = a;
+      a.addEventListener('pause', () => { if (CONS.want && !document.hidden) setTimeout(() => { if (CONS.want) a.play().catch(() => { }); }, 1000); }); // stopped by another app's sound: on again
     }
     CONS.awake.play().catch(() => { });
-    if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title: 'Sliceview', artist: 'Online for colleagues as ' + CONS.me });
+    if ('mediaSession' in navigator) { navigator.mediaSession.metadata = new MediaMetadata({ title: 'Sliceview', artist: 'Online for colleagues as ' + CONS.me }); navigator.mediaSession.playbackState = 'playing'; }
   } catch (e) { }
 }
 function consGoOnline(name) {
@@ -4801,10 +4804,10 @@ function consRtc(c, dial) { // a fresh connection for a conversation (first, or 
 function consOpen(c, dc) {
   c.lastIn = Date.now(); clearInterval(c.alive);
   c.alive = setInterval(() => { // a connection can die silently (the other phone paused, a network change): a small ping both ways every
-    // 4 s, and when nothing has come for 15 s the connection is taken as lost and made again
+    // 4 s, and when nothing has come for 25 s the connection is taken as lost and made again
     if (c.dc !== dc || c.state !== 'open') { clearInterval(c.alive); return; }
     consText(c, { t: 'ping' });
-    if (Date.now() - c.lastIn > 15000) { consLog(c.name + ': silent for 15 s'); consDrop(c, c.pc, true); }
+    if (Date.now() - c.lastIn > 25000) { consLog(c.name + ': silent for 25 s'); consDrop(c, c.pc, true); }
   }, 4000);
   const again = c.ever; c.state = 'open'; c.ever = true; c.away = false; clearInterval(c.again); clearTimeout(c.timer);
   consNote(c, again ? 'Reconnected' : 'Connected with ' + c.name); consUI(); if (!again) consChatOpen(c, true); else consChatDraw();
