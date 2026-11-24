@@ -671,7 +671,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1909</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1853</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -4623,14 +4623,13 @@ function anonPixelEnd(u8) { // where the pixel data element starts in a kept hea
 }
 const crcT = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
 const crc32 = u => { let c = 0xFFFFFFFF; for (let i = 0; i < u.length; i++) c = crcT[(c ^ u[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
-const ZIP_SQUEEZE = false; // saved zips are stored as they are: they open as fast as any (squeezed ones are unpacked file by file, slowly on some tablets)
 function zipMaker() { // a plain zip (stored, no compression), built file by file
   const parts = [], dir = []; let off = 0;
   return {
     async add(name, data) { // squeezed (deflate) when that helps: less memory while it is built, a smaller file
       const nm = new TextEncoder().encode(name), crc = crc32(data), h = new Uint8Array(30 + nm.length), d = new DataView(h.buffer);
       let body = data, method = 0;
-      if (ZIP_SQUEEZE && RAW_DEFLATE && data.length > 1024) { try { const z = await consDeflate(data); if (z.length < data.length * 0.95) { body = z; method = 8; } } catch (e) { } }
+      if (RAW_DEFLATE && data.length > 1024) { try { const z = await consDeflate(data); if (z.length < data.length * 0.95) { body = z; method = 8; } } catch (e) { } }
       d.setUint32(0, 0x04034B50, true); d.setUint16(4, 20, true); d.setUint16(6, 0x800, true); d.setUint16(8, method, true); d.setUint32(14, crc, true); d.setUint32(18, body.length, true); d.setUint32(22, data.length, true); d.setUint16(26, nm.length, true); h.set(nm, 30);
       parts.push(h, new Blob([body])); dir.push({ nm, crc, size: data.length, csize: body.length, method, off }); off += h.length + body.length;
     },
@@ -6889,7 +6888,7 @@ async function rdZip(r, name, st, depth) {
   let list;
   try { list = await Zip.entries(r); } catch (err) { st.n++; st.bad.push(name + ': ' + err.message); return; }
   // a small study: one read of the whole zip is quicker than reading entry by entry
-  if (r.size <= 150e6 && list.reduce((s, en) => s + (en.usize || 0), 0) <= 120e6 && list.filter(en => en.method === 8).length < 16) { /* squeezed entries go to the readers, off the screen's thread */ if (depth === 0) makeRoom(list.reduce((s, en) => s + (en.usize || 0), 0), st.seen, true); return ingest(r.buf ? r : Zip.fromBuffer(await r.read(0, r.size)), name, st, depth); }
+  if (r.size <= 150e6 && list.reduce((s, en) => s + (en.usize || 0), 0) <= 120e6) { if (depth === 0) makeRoom(list.reduce((s, en) => s + (en.usize || 0), 0), st.seen, true); return ingest(r.buf ? r : Zip.fromBuffer(await r.read(0, r.size)), name, st, depth); }
   if (depth === 0) makeRoom(list.reduce((s, en) => s + (en.usize || 0), 0), st.seen, true);
   st.total += list.length - 1;
   const fast = [], slow = [];
