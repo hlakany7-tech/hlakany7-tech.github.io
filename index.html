@@ -149,6 +149,12 @@ body.vr #vswitch, body.vr #cmpbar, body.vr #planesReset, body.vr #presets, body.
 .cbadge { position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: #e5484d; color: #fff; font: 700 10px/16px var(--font-ui); }
 .cons-dbg { margin: 0; font: 11px/1.4 var(--font-mono); color: var(--muted); white-space: pre-wrap; }
 .cons-dbg:empty { display: none; }
+.cons-shareto { display: flex; flex-direction: column; gap: 6px; } .cons-shareto .btn { justify-content: center; }
+.cm.file { display: flex; flex-direction: column; gap: 6px; } .cm.file img { max-width: 220px; max-height: 220px; border-radius: 8px; display: block; cursor: zoom-in; background: #000; }
+.cm.file .fn { font-weight: 600; overflow-wrap: anywhere; } .cm.file .fs { font-size: 12px; opacity: .8; } .cm .fb { display: flex; gap: 6px; flex-wrap: wrap; } .cm .fb .btn { min-height: 32px; padding: 0 10px; font-size: 13px; }
+.cons-form label.btn { min-width: 40px; justify-content: center; padding: 0; cursor: pointer; } .cons-form label.btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+#consView { position: fixed; inset: 0; z-index: 70; background: rgba(0,0,0,.92); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 16px; }
+#consView[hidden] { display: none; } #consView img { max-width: 100%; max-height: calc(100% - 70px); object-fit: contain; } #consView .fb { display: flex; gap: 8px; }
 .cons-recent { display: flex; flex-wrap: wrap; gap: 6px; }
 .cons-chat { position: fixed; z-index: 55; right: max(12px, env(safe-area-inset-right, 0px)); bottom: max(12px, env(safe-area-inset-bottom, 0px)); width: min(380px, calc(100vw - 24px)); height: min(460px, 62vh); display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 14px 40px rgba(0,0,0,.55); }
 .cons-head { display: flex; align-items: center; gap: 8px; } .cons-head b { font: 600 15px var(--font-ui); } .cons-head span { flex: 1; color: var(--muted); font-size: 12px; } .cons-head .btn { min-height: 34px; padding: 0 12px; }
@@ -639,7 +645,9 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
   <div class="cons-send"><button class="btn" type="button" data-s="series">Send this series</button><button class="btn" type="button" data-s="study">Send the whole study</button></div>
   <div id="consProg" class="cons-prog" hidden><span></span><i></i></div>
   <div id="consLog" class="cons-log"></div>
-  <form id="consForm" class="cons-form"><input id="consMsg" type="text" autocomplete="off" placeholder="Message" enterkeyhint="send"><button class="btn primary" type="submit">Send</button></form>
+  <form id="consForm" class="cons-form"><label class="btn" for="consFile" title="Attach images, files or DICOM" aria-label="Attach"><svg viewBox="0 0 24 24"><path d="M20 11.5l-7.8 7.8a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8"/></svg></label><input id="consFile" type="file" multiple hidden><input id="consMsg" type="text" autocomplete="off" placeholder="Message" enterkeyhint="send"><button class="btn primary" type="submit">Send</button></form>
+</div>
+<div id="consView" hidden><img alt="Shared image"><div class="fb"><button class="btn" type="button" data-a="save">Save</button><button class="btn primary" type="button" data-a="close">Close</button></div>
 </div>
 <div class="sheet" id="sheetTags" hidden>
   <div class="card tagcard" role="dialog" aria-label="DICOM tags">
@@ -663,7 +671,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1751</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1810</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -687,6 +695,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
     <div class="cmpgroup">Send the scans, anonymised</div>
     <div class="seg" id="anonScope"><button type="button" data-s="series" aria-pressed="true">This series</button><button type="button" data-s="study">Whole study</button></div>
     <button class="btn" id="anonGo" style="justify-content:center">Make anonymised zip</button>
+    <div id="shareTo" class="cons-shareto" hidden></div>
     <div id="anonDone" style="display:flex;gap:8px" hidden><button class="btn primary" id="anonShare" style="flex:1;justify-content:center">Share zip…</button><button class="btn" id="anonSave" style="flex:1;justify-content:center">Save zip</button></div>
     <p class="note" id="anonNote">DICOM files that open in Sliceview, RadiAnt or any viewer, with every slice. The name, ID, birth date, accession number, doctors, hospital and private tags are removed and the UIDs replaced. Screenshots and dose reports are left out, since their pictures can show the name.</p>
   </div>
@@ -2415,6 +2424,11 @@ const DICOM = dicomModule();
 
 </script>
 <script>
+// older browsers (Chrome before 99, some tablets' built-in browsers) have no roundRect: the labels drew it, and failed
+for (const C of [window.CanvasRenderingContext2D, window.OffscreenCanvasRenderingContext2D]) if (C && !C.prototype.roundRect) C.prototype.roundRect = function (x, y, w, h, r) {
+  r = Math.max(0, Math.min(Array.isArray(r) ? (r[0] || 0) : (+r || 0), Math.abs(w) / 2, Math.abs(h) / 2));
+  this.moveTo(x + r, y); this.arcTo(x + w, y, x + w, y + h, r); this.arcTo(x + w, y + h, x, y + h, r); this.arcTo(x, y + h, x, y, r); this.arcTo(x, y, x + w, y, r); this.closePath();
+};
 (() => {
 'use strict';
 const $ = s => document.querySelector(s);
@@ -3562,6 +3576,13 @@ const VOL_BUDGET = 300e6;
 const MV = {}; // the two MPR views: cor, sag
 // The series MPR builds its volume from: a fused PET-CT uses its CT (the PET is laid over each plane in colour)
 const volSe = se => se && se.isFuse ? se.fuseCT : se;
+function volPlanSafe(se) { // a volume that fits in memory: when the full-size one cannot be had, at half size, then a quarter
+  for (let k = 0; k <= 3; k++) {
+    try { const p = volPlan(se, k); if (k && typeof p !== 'string') say('Not enough memory on this device for full-size MPR: shown at ' + (k === 1 ? 'half' : '1/' + 2 ** k) + ' resolution', 4000); return p; }
+    catch (e) { if (!outOfMemory(e && e.message)) return 'MPR could not be built: ' + ((e && e.message) || e); memTight(); }
+  }
+  return 'Not enough memory on this device for MPR of this series';
+}
 function volPlan(se, minK = 0) {
   const im = se.images, n = im.length, a = im[0];
   if (n < 16) return 'MPR needs a series of at least 16 slices';
@@ -4226,9 +4247,9 @@ function mprToggle(on) {
   if (want && S.rf) { S.rf = null; cmpLayout(); } // MPR replaces the coronal/sagittal view
   if (!want) { if (S.vol) S.keepVol = S.vol; S.vol = null; planeModeOff(); for (const k of MVK) { const v = MV[k]; if (v && v.gl) { v.gl.release(); v.gl = null; } } $('#mvAx').hidden = true; $('#planesReset').hidden = true; $('#views').classList.remove('mpr'); $('#vswitch').hidden = true; delete $('#views').dataset.main; delete $('#views').dataset.layout; $('#btnMPR').setAttribute('aria-pressed', 'false'); render(); return; }
   const se0 = curSeries(); if (!se0) return; const se = volSe(se0);
-  const K = S.keepVol, again = !!(K && K.se === se), plan = again ? Object.assign(K, { nCor: [0, 1, 0], nSag: [1, 0, 0], nAx: [0, 0, 1], order: null }) : volPlan(se);
+  const K = S.keepVol, again = !!(K && K.se === se), plan = again ? Object.assign(K, { nCor: [0, 1, 0], nSag: [1, 0, 0], nAx: [0, 0, 1], order: null }) : volPlanSafe(se);
   if (typeof plan === 'string') { say(plan, 5000); return; }
-  if (se0.isFuse && !(plan.pet && plan.pet.se === se0.fusePT)) { const pp = volPlan(se0.fusePT); plan.pet = typeof pp === 'string' ? null : pp; } // fused: the PET's own volume, for the colour on every plane
+  if (se0.isFuse && !(plan.pet && plan.pet.se === se0.fusePT)) { let pp; try { pp = volPlan(se0.fusePT); } catch (e) { pp = 'no memory'; } plan.pet = typeof pp === 'string' ? null : pp; } // fused: the PET's own volume, for the colour on every plane
   if (S.cmps.length) cmpStop();
   S.vol = plan;
   plan.P = [xOf(plan.cx), yOf(plan.cy), zOf(S.idx)];
@@ -4525,7 +4546,7 @@ function anonDicom(u8, ctx, tail) {
   };
   const encUS = (g, e, n) => { const b = new Uint8Array(10), d = new DataView(b.buffer); d.setUint16(0, g, true); d.setUint16(2, e, true); if (expl) { b[4] = 85; b[5] = 83; d.setUint16(6, 2, true); } else d.setUint32(4, 2, true); d.setUint16(8, n, true); return b; };
   const put = (g, e, b) => out.push([g * 65536 + e, b]);
-  let sop = null, pixel = -1; const seen = new Set();
+  let sop = null, pixel = -1, modality = ''; const seen = new Set();
   pos = ds;
   while (pos + 8 <= N) {
     const E = head(pos); if (E.g === 0xFFFE) return null;
@@ -4541,7 +4562,7 @@ function anonDicom(u8, ctx, tail) {
     else if (key === '00100030' || key === '00080050' || key === '00080090') put(E.g, E.e, enc(E.g, E.e, key === '00080090' ? 'PN' : key === '00080050' ? 'SH' : 'DA', ''));
     else if (ANON_UIDS.has(key)) { const nu = anonUid(ctx, txt(E.off, E.len)); if (key === '00080018') sop = nu; put(E.g, E.e, enc(E.g, E.e, 'UI', nu)); }
     else if (ctx.set && ctx.set.has(key)) put(E.g, E.e, ctx.set.get(key)(enc, encUS, E.g, E.e));
-    else { if (key === '00080016' && !sopClass) sopClass = txt(E.off, E.len); put(E.g, E.e, u8.slice(pos, end)); }
+    else { if (key === '00080016' && !sopClass) sopClass = txt(E.off, E.len); if (key === '00080060') modality = txt(E.off, E.len); put(E.g, E.e, u8.slice(pos, end)); }
     pos = end;
   }
   if (pixel < 0 && !tail) return null; // no image in it
@@ -4554,7 +4575,7 @@ function anonDicom(u8, ctx, tail) {
   const mv = new Uint8Array([2, 0, 1, 0, 79, 66, 0, 0, 2, 0, 0, 0, 0, 1]); // (0002,0001) OB 00 01
   const explMeta = (e, vr, s) => { let v = new TextEncoder().encode(s); if (v.length % 2) { const w = new Uint8Array(v.length + 1); w.set(v); w[v.length] = vr === 'UI' ? 0 : 32; v = w; }
     const b = new Uint8Array(8 + v.length), d = new DataView(b.buffer); d.setUint16(0, 2, true); d.setUint16(2, e, true); b[4] = vr.charCodeAt(0); b[5] = vr.charCodeAt(1); d.setUint16(6, v.length, true); b.set(v, 8); return b; };
-  const meta = [mv, explMeta(2, 'UI', sopClass || '1.2.840.10008.5.1.4.1.1.7'), explMeta(3, 'UI', sop), explMeta(0x10, 'UI', ts), explMeta(0x12, 'UI', ANON_IMPL), explMeta(0x13, 'SH', 'SLICEVIEW')];
+  const meta = [mv, explMeta(2, 'UI', sopClass || ({ CT: '1.2.840.10008.5.1.4.1.1.2', MR: '1.2.840.10008.5.1.4.1.1.4', PT: '1.2.840.10008.5.1.4.1.1.128', NM: '1.2.840.10008.5.1.4.1.1.20', CR: '1.2.840.10008.5.1.4.1.1.1', DX: '1.2.840.10008.5.1.4.1.1.1.1', US: '1.2.840.10008.5.1.4.1.1.6.1', MG: '1.2.840.10008.5.1.4.1.1.1.2' })[modality] || '1.2.840.10008.5.1.4.1.1.7'), explMeta(3, 'UI', sop), explMeta(0x10, 'UI', ts), explMeta(0x12, 'UI', ANON_IMPL), explMeta(0x13, 'SH', 'SLICEVIEW')];
   const mlen = meta.reduce((a, b) => a + b.length, 0), gl = new Uint8Array(12), gd = new DataView(gl.buffer);
   gd.setUint16(0, 2, true); gd.setUint16(2, 0, true); gl[4] = 85; gl[5] = 76; gd.setUint16(6, 4, true); gd.setUint32(8, mlen, true);
   const pre = new Uint8Array(132); pre[128] = 68; pre[129] = 73; pre[130] = 67; pre[131] = 77;
@@ -4564,16 +4585,21 @@ function anonDicom(u8, ctx, tail) {
   for (const p of parts) { res.set(p, o); o += p.length; }
   return res;
 }
+const RAW_DEFLATE = (() => { try { new DecompressionStream('deflate-raw'); new CompressionStream('deflate-raw'); return true; } catch (e) { return false; } })(); // older browsers (before Chrome 103) lack it
+async function inflateRawBuf(d) { // a raw deflate stream unpacked: the browser's own, else the one in Sliceview
+  if (RAW_DEFLATE) return await new Response(new Response(d).body.pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+  const u = Inflate.inflateRaw(new Uint8Array(d)); return u.byteOffset === 0 && u.length === u.buffer.byteLength ? u.buffer : u.slice().buffer;
+}
 async function anonOriginal(im) { // the original file of an image, when it can be read again
   if (im.zsrc) { const s = im.zsrc, z = s.zbuf instanceof ArrayBuffer ? s.zbuf : s.zbuf.buffer; const off = s.zbuf instanceof ArrayBuffer ? 0 : s.zbuf.byteOffset;
     let d = z.slice(off + s.start, off + s.start + s.csize);
-    if (s.method === 8) d = await new Response(new Response(d).body.pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+    if (s.method === 8) d = await inflateRawBuf(d);
     return new Uint8Array(d); }
   const m = im.src; if (!m || !m.blob) return null;
   let start = m.start || 0, len = m.csize;
   if (m.lho != null) { const lh = new DataView(await m.blob.slice(m.lho, m.lho + 30).arrayBuffer()); if (lh.getUint32(0, true) !== 0x04034B50) return null; start = m.lho + 30 + lh.getUint16(26, true) + lh.getUint16(28, true); }
   let d = await m.blob.slice(start, len != null ? start + len : undefined).arrayBuffer();
-  if (m.method === 8) d = await new Response(new Response(d).body.pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+  if (m.method === 8) d = await inflateRawBuf(d);
   return new Uint8Array(d);
 }
 function anonRebuildTail(frames) { // the pixel data element, from what is in memory
@@ -4616,6 +4642,7 @@ function zipMaker() { // a plain zip (stored, no compression), built file by fil
   };
 }
 function anonSeriesList(scope) { // the series to export: the one on screen (a fused view: its CT and PET), or every series of the study
+  if (Array.isArray(scope)) return scope.filter(s => s && !s.derived && s.images.length);
   const se = curSeries(); if (!se || se.uid === 'sample-phantom') return [];
   const base = se.isFuse ? [se.fuseCT, se.fusePT] : [se];
   if (scope !== 'study') return base.filter(s => s && !s.derived);
@@ -4832,6 +4859,7 @@ function consDrop(c, pc, dead) { // the connection went (another app, the screen
   if (c.out) c.out.wake && c.out.wake(); // a send waiting on this connection stops; it resumes when the other phone asks
   if (was === 'open') consNote(c, 'Connection lost: reconnecting…');
   if (c.inbox) c.inbox.cur = null; // a file half-received comes again
+  for (const m of c.chat) if (m.file && !m.file.url && !m.file.failed) m.file.failed = true; // an attachment half-way: sent again by hand
   consUI(); consChatDraw();
   if (consDialer(c) && CONS.online) setTimeout(() => { if (c.state === 'reconnecting' && c.pc === pc) consRtc(c, true); }, 800);
 }
@@ -4856,6 +4884,41 @@ function consEnd(c, quiet) { // End: the conversation and its case go, on both p
 function consWipe(c) { const gone = S.series.filter(s => c.cases.includes(s.__consCase)); if (gone.length) closeSeries(gone); c.cases = []; }
 const consRate = o => { const sec = (performance.now() - o.t0) / 1000; return sec > 2 && o.bytes ? ' · ' + (o.bytes / 1048576 / sec).toFixed(o.bytes / sec > 1048576 ? 1 : 2) + ' MB/s' : ''; };
 const consText = (c, o) => { if (c.dc && c.dc.readyState === 'open') { c.dc.send(JSON.stringify(o)); return true; } return false; };
+/* ---------- attachments: images, files, DICOM, zips, straight into the conversation ---------- */
+const consIsScan = f => /\.(dcm|dicom|zip)$/i.test(f.name) || !/\.[a-z0-9]{1,5}$/i.test(f.name) || f.type === 'application/dicom' || f.type === 'application/zip';
+function consAttach(c, file) { // sends one file (one at a time per conversation, alongside a case if one is going)
+  const fid = (CONS.fid = (CONS.fid || 0) + 1), entry = { from: CONS.me, file: { fid, name: file.name || 'file', type: file.type || '', size: file.size, got: 0 } };
+  c.chat.push(entry); consChatDraw();
+  c.attQ = (c.attQ || Promise.resolve()).then(async () => {
+    const dc = c.dc; if (!dc || dc.readyState !== 'open' || c.state !== 'open') { entry.file.failed = true; consChatDraw(); return; }
+    consText(c, { t: 'att', fid, name: entry.file.name, type: entry.file.type, size: file.size });
+    const CH = 64 * 1024;
+    for (let p = 0; p < file.size; p += CH) {
+      if (c.dc !== dc || dc.readyState !== 'open') { entry.file.failed = true; consChatDraw(); return; }
+      if (dc.bufferedAmount > 4 * 1024 * 1024) await new Promise(res => { const f = () => { dc.removeEventListener('bufferedamountlow', f); res(); }; dc.addEventListener('bufferedamountlow', f); setTimeout(f, 4000); });
+      const part = new Uint8Array(await file.slice(p, Math.min(file.size, p + CH)).arrayBuffer()), msg = new Uint8Array(part.length + 5);
+      msg[0] = 1; new DataView(msg.buffer).setUint32(1, fid, true); msg.set(part, 5);
+      try { dc.send(msg); } catch (e) { entry.file.failed = true; consChatDraw(); return; }
+      entry.file.got = p + part.length; if ((p / CH) % 16 === 0) consChatDraw();
+    }
+    consText(c, { t: 'attEnd', fid });
+    entry.file.got = file.size; entry.file.url = URL.createObjectURL(file); entry.file.blob = file; consChatDraw();
+  });
+}
+function consAttStart(c, m) {
+  c.atts = c.atts || new Map();
+  const entry = { from: c.name, file: { fid: m.fid, name: String(m.name || 'file').slice(0, 120), type: String(m.type || ''), size: +m.size || 0, got: 0, parts: [] } };
+  c.atts.set(m.fid, entry); c.chat.push(entry); if (CONS.open !== c || $('#consChat').hidden) c.unread++; consChatDraw(); consUI();
+}
+function consAttPiece(c, u) {
+  const fid = new DataView(u.buffer, u.byteOffset, u.byteLength).getUint32(1, true), e = c.atts && c.atts.get(fid); if (!e || e.file.url) return;
+  e.file.parts.push(u.subarray(5)); e.file.got += u.length - 5;
+  if (performance.now() - (e.t || 0) > 300) { e.t = performance.now(); consChatDraw(); }
+}
+function consAttEnd(c, m) {
+  const e = c.atts && c.atts.get(m.fid); if (!e) return;
+  const f = e.file; f.blob = new Blob(f.parts, { type: f.type }); f.parts = null; f.url = URL.createObjectURL(f.blob); f.got = f.size; consChatDraw();
+}
 function consNote(c, text) { c.chat.push({ sys: true, text }); if (CONS.open === c) consChatDraw(); }
 
 /* ---------- sending a case: file by file, compressed, each one confirmed ----------
@@ -4863,6 +4926,7 @@ function consNote(c, text) { c.chat.push({ sys: true, text }); if (CONS.open ===
    and only the small difference is kept, then squeezed (deflate). Typically two to three times smaller, exactly the same
    pixels at the other end. Images already compressed in the file (JPEG 2000, JPEG) go as they are. */
 async function consDeflate(u8, back) {
+  if (back && !RAW_DEFLATE) return new Uint8Array(await inflateRawBuf(u8.buffer.byteLength === u8.length ? u8.buffer : u8.slice().buffer));
   const s = new Blob([u8]).stream().pipeThrough(back ? new DecompressionStream('deflate-raw') : new CompressionStream('deflate-raw'));
   return new Uint8Array(await new Response(s).arrayBuffer());
 }
@@ -4882,6 +4946,7 @@ function consPredict(px, rows, cols, frames, signed, back) { // px: the pixel by
   const res = new Uint8Array(2 * N), d = new DataView(res.buffer); for (let i = 0; i < N; i++) d.setUint16(i * 2, v[i] & 0xFFFF, true); return res;
 }
 async function consPack(bytes) { // one anonymised file, packed: { m: how to unpack, data }
+  if (!RAW_DEFLATE) return { m: { z: 0 }, data: bytes }; // an older browser: sent as it is
   let info = null; try { info = DICOM.parse(bytes.buffer.byteLength === bytes.length ? bytes.buffer : bytes.slice().buffer); } catch (e) { info = null; }
   if (info && info.codec) return { m: { z: 0 }, data: bytes }; // already compressed
   if (info && !info.codec && info.bitsAllocated === 16 && (info.spp || 1) === 1 && info.pixelOffset > 0) {
@@ -4946,7 +5011,7 @@ async function consPump(c) { // sends the files, a few ahead of the confirmation
       for (let p = 0; p < pk.data.length; p += CH) {
         if (dc.readyState !== 'open' || c.dc !== dc) break;
         if (dc.bufferedAmount > 4 * 1024 * 1024) await new Promise(res => { const f = () => { dc.removeEventListener('bufferedamountlow', f); res(); }; dc.addEventListener('bufferedamountlow', f); setTimeout(f, 4000); });
-        try { dc.send(pk.data.subarray(p, Math.min(pk.data.length, p + CH))); } catch (e) { break; }
+        try { const part = pk.data.subarray(p, Math.min(pk.data.length, p + CH)), msg = new Uint8Array(part.length + 1); msg.set(part, 1); dc.send(msg); } catch (e) { break; } // tag 0: a piece of a case file
       }
       if (c.dc !== dc || dc.readyState !== 'open') break;
       o.bytes += pk.data.length; o.next++;
@@ -4956,14 +5021,18 @@ async function consPump(c) { // sends the files, a few ahead of the confirmation
 }
 async function consData(c, d) {
   const r = c.inbox;
-  if (typeof d !== 'string') { // a piece of a file
+  if (typeof d !== 'string') { // a piece of a file: tag 0 a case file, 1 an attachment
+    const u = new Uint8Array(d);
+    if (u[0] === 1) { consAttPiece(c, u); return; }
     const f = r && r.cur; if (!f) return;
-    f.parts.push(new Uint8Array(d)); f.recv += d.byteLength;
+    f.parts.push(u.subarray(1)); f.recv += u.length - 1;
     if (f.recv >= f.len) { r.cur = null; r.expect = f.n + 1; const all = new Uint8Array(f.len); let p = 0; for (const x of f.parts) { all.set(x, p); p += x.length; } r.q = r.q.then(() => consIngestFile(c, r, f, all)); }
     return;
   }
   let m; try { m = JSON.parse(d); } catch (e) { return; }
   if (m.t === 'ping') return;
+  if (m.t === 'att') { consAttStart(c, m); return; }
+  if (m.t === 'attEnd') { consAttEnd(c, m); return; }
   if (m.t === 'chat') { c.chat.push({ from: c.name, text: String(m.text || '').slice(0, 2000) }); if (CONS.open !== c || $('#consChat').hidden) c.unread++; consChatDraw(); consUI(); }
   else if (m.t === 'case') { if (r && r.id === m.id) return; c.inbox = { id: m.id, expect: 0, sizes: m.sizes || null, count: +m.count || 0, desc: String(m.desc || ''), got: 0, cur: null, ask: true, q: Promise.resolve(), caseId: 'c' + (++CONS.cid), first: true, t0: 0 }; consChatOpen(c, true); consChatDraw(); }
   else if (m.t === 'f') {
@@ -5029,7 +5098,7 @@ function consRecvDone(c, r) {
   }
   consProgress(c, r.got / Math.max(1, r.count), 'Receiving ' + r.got + ' / ' + r.count);
   if (r.got >= r.count && r.have && r.have.size < r.count) consNote(c, (r.count - r.have.size) + ' slice' + (r.count - r.have.size === 1 ? '' : 's') + ' did not arrive: ask for the case again');
-  if (r.got >= r.count) { clearInterval(r.wantT); c.inbox = null; consProgress(c, -1); consNote(c, 'Case received: ' + r.got + ' images. It closes when the conversation ends.'); if (typeof fuseUI === 'function') fuseUI(); }
+  if (r.got >= r.count) { clearInterval(r.wantT); c.inbox = null; consProgress(c, -1); c.chat.push({ sys: true, text: 'Case received: ' + r.got + ' images. It closes when the conversation ends.', save: r.caseId }); consChatDraw(); if (typeof fuseUI === 'function') fuseUI(); }
 }
 function consProgress(c, f, label) {
   c.prog = f < 0 ? null : { f, label }; if (CONS.open !== c) return; const e = $('#consProg');
@@ -5039,7 +5108,12 @@ function consChatOpen(c, quiet) { CONS.open = c; c.unread = 0; $('#consChat').hi
 function consChatDraw() {
   const c = CONS.open; if (!c) return; const box = $('#consLog');
   const esc = s => String(s).replace(/[&<>]/g, x => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[x]);
-  box.innerHTML = c.chat.map(m => m.sys ? '<div class="cm sys">' + esc(m.text) + '</div>' : '<div class="cm ' + (m.from === CONS.me ? 'me' : 'them') + '">' + esc(m.text) + '</div>').join('');
+  const kb = n => n < 1048576 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
+  box.innerHTML = c.chat.map((m, i) => m.sys ? '<div class="cm sys">' + esc(m.text) + (m.save ? '<div class="fb" style="justify-content:center;margin-top:4px"><button class="btn" type="button" data-save="' + m.save + '">Save the case (anonymised zip)</button></div>' : '') + '</div>'
+    : m.file ? '<div class="cm file ' + (m.from === CONS.me ? 'me' : 'them') + '">' + (m.file.url && /^image\//.test(m.file.type) ? '<img src="' + m.file.url + '" data-i="' + i + '" alt="">' : '<span class="fn">📄 ' + esc(m.file.name) + '</span>') +
+      '<span class="fs">' + (m.file.url ? kb(m.file.size) : m.file.failed ? 'did not arrive' : (m.from === CONS.me ? 'sending ' : 'receiving ') + Math.round(100 * (m.file.got || 0) / Math.max(1, m.file.size)) + '%') + '</span>' +
+      (m.file.url ? '<span class="fb">' + (consIsScan(m.file) ? '<button class="btn" type="button" data-open="' + i + '">Open</button>' : '') + '<button class="btn" type="button" data-get="' + i + '">Save</button></span>' : '') + '</div>'
+    : '<div class="cm ' + (m.from === CONS.me ? 'me' : 'them') + '">' + esc(m.text) + '</div>').join('');
   const r = c.inbox;
   if (r && r.ask) box.insertAdjacentHTML('beforeend', '<div class="cm ask"><b>' + esc(c.name) + ' sent a case</b><br>' + esc(r.desc) + ' · ' + r.count + ' images<div class="ask-b"><button class="btn primary" data-a="open">Open</button><button class="btn" data-a="no">Decline</button></div></div>');
   box.scrollTop = box.scrollHeight;
@@ -5068,10 +5142,24 @@ $('#consRecent').addEventListener('click', e => { const b = e.target.closest('bu
 $('#consPeers').addEventListener('click', e => { const b = e.target.closest('button'); const c = b && CONS.peers.get(b.dataset.id); if (c) { $('#sheetCons').hidden = true; consChatOpen(c); } });
 $('#btnChat').addEventListener('click', () => { const c = CONS.open || [...CONS.peers.values()].sort((a, b) => b.unread - a.unread)[0]; if (!c) return; if (!$('#consChat').hidden && CONS.open === c) { $('#consChat').hidden = true; return; } consChatOpen(c); });
 $('#consHide').addEventListener('click', () => { $('#consChat').hidden = true; });
+$('#consFile').addEventListener('change', e => { const c = CONS.open, fs = [...e.target.files]; e.target.value = ''; if (!c) return; if (c.state !== 'open') { consNote(c, 'Not sent: reconnecting, try again in a moment'); return; } for (const f of fs) consAttach(c, f); });
+$('#consView').addEventListener('click', e => { const v = $('#consView'), b = e.target.closest('button'); if (!b) return; if (b.dataset.a === 'save') { const c = CONS.open, f = c && c.chat[+v.dataset.i] && c.chat[+v.dataset.i].file; if (f && f.blob) saveBlobAs(f.blob, f.name); } else v.hidden = true; });
 $('#consEnd').addEventListener('click', () => { const c = CONS.open; if (!c) return; consText(c, { t: 'bye' }); consEnd(c, true); });
 $('#consForm').addEventListener('submit', e => { e.preventDefault(); const c = CONS.open, i = $('#consMsg'), t = i.value.trim(); if (!c || !t) return; if (!consText(c, { t: 'chat', text: t })) { consNote(c, 'Not sent: reconnecting, try again in a moment'); return; } c.chat.push({ from: CONS.me, text: t }); i.value = ''; consChatDraw(); });
 $('#consChat').querySelector('.cons-send').addEventListener('click', e => { const b = e.target.closest('button'); if (b && CONS.open && CONS.open.state === 'open') consOffer(CONS.open, b.dataset.s); });
-$('#consLog').addEventListener('click', e => { const b = e.target.closest('button[data-a]'); const c = CONS.open; if (!b || !c || !c.inbox) return;
+$('#consLog').addEventListener('click', async e => {
+  const c = CONS.open; if (!c) return;
+  const t = e.target, img = t.closest('img[data-i]'), op = t.closest('[data-open]'), get = t.closest('[data-get]'), sv = t.closest('[data-save]');
+  if (img) { const f = c.chat[+img.dataset.i].file, v = $('#consView'); v.querySelector('img').src = f.url; v.dataset.i = img.dataset.i; v.hidden = false; return; }
+  if (get) { const f = c.chat[+get.dataset.get].file; if (f && f.blob) saveBlobAs(f.blob, f.name); return; }
+  if (op) { const f = c.chat[+op.dataset.open].file; if (!f || !f.blob) return; // opened here, and closed with the conversation
+    const before = new Set(S.series), id = 'a' + (++CONS.cid); if (innerWidth < 700) $('#consChat').hidden = true;
+    await addFiles([new File([f.blob], f.name, { type: f.type })], { noKeep: true });
+    S.series.filter(s => !before.has(s)).forEach(s => { s.__consCase = id; }); c.cases.push(id); return; }
+  if (sv) { const list = S.series.filter(s => s.__consCase === sv.dataset.save); if (!list.length) return; sv.disabled = true; sv.textContent = 'Preparing…';
+    let r = null; try { r = await anonExport(list); } catch (err) { r = null; } sv.disabled = false; sv.textContent = 'Save the case (anonymised zip)';
+    if (r && r.blob) saveBlobAs(r.blob, r.name); else say('The case could not be saved', 3000); return; }
+  const b = t.closest('button[data-a]'); if (!b || !c.inbox) return;
   const r = c.inbox; r.ask = false;
   if (b.dataset.a === 'open') { consText(c, { t: 'accept', id: r.id }); consProgress(c, 0, 'Receiving 0 / ' + r.count); consNote(c, 'Opening as it arrives…'); } else { consText(c, { t: 'decline', id: r.id }); c.inbox = null; }
   consChatDraw(); });
@@ -5804,6 +5892,8 @@ async function shareOpen() {
   if (!cur()) return;
   S.sel = null; render(); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); // without the selection handles
   $('#sharePhi').checked = false; await shareMake(); anonReset();
+  { const box = $('#shareTo'), ps = typeof CONS !== 'undefined' ? [...CONS.peers.values()].filter(c => c.state === 'open') : []; box.hidden = !ps.length; // a conversation open: straight to the colleague
+    box.innerHTML = ps.map(c => '<button class="btn" type="button" data-id="' + c.id + '" data-w="img">Send this image to ' + c.name.replace(/[&<>"]/g, '') + '</button><button class="btn" type="button" data-id="' + c.id + '" data-w="scans">Send the scans to ' + c.name.replace(/[&<>"]/g, '') + '</button>').join(''); }
   $('#anonNote').textContent = 'DICOM files that open in Sliceview, RadiAnt or any viewer, with every slice. The name, ID, birth date, accession number, doctors, hospital and private tags are removed and the UIDs replaced. Screenshots and dose reports are left out, since their pictures can show the name.';
   const inC = !!(window.claude && window.claude.use), file = new File([SHARE.blob], SHARE.name, { type: 'image/png' });
   const canShare = !inC && navigator.canShare && navigator.canShare({ files: [file] });
@@ -5845,22 +5935,29 @@ $('#anonGo').addEventListener('click', async () => {
   const mb = r.size / 1048576;
   $('#anonNote').textContent = r.count + ' file' + (r.count === 1 ? '' : 's') + ', ' + (mb < 10 ? mb.toFixed(1) : Math.round(mb)) + ' MB, as ' + r.code + '.' + (r.shots ? ' ' + r.shots + ' screenshot or report image' + (r.shots === 1 ? '' : 's') + ' left out.' : '') + (r.skipped ? ' ' + r.skipped + ' image' + (r.skipped === 1 ? '' : 's') + ' could not be exported.' : '') + ' Text burned into the pictures themselves is not removed.';
 });
+$('#shareTo').addEventListener('click', e => {
+  const b = e.target.closest('button'); const c = b && CONS.peers.get(b.dataset.id); if (!c || c.state !== 'open') return;
+  $('#sheetShare').hidden = true;
+  if (b.dataset.w === 'img') consAttach(c, new File([SHARE.blob], SHARE.name, { type: 'image/png' }));
+  else consOffer(c, $('#anonScope [aria-pressed="true"]').dataset.s);
+  consChatOpen(c, true);
+});
 $('#anonShare').addEventListener('click', async () => {
   if (!ANON) return; const f = new File([ANON.blob], ANON.name, { type: 'application/zip' });
-  try { await navigator.share({ files: [f], title: 'Sliceview' }); } catch (e) { if (!(e && e.name === 'AbortError')) say('Could not open the share menu here; use Save zip', 3500); }
+  try { await navigator.share({ files: [f], title: 'Sliceview' }); } catch (e) { if (!(e && e.name === 'AbortError')) { $('#anonShare').hidden = true; say('This phone does not let apps share zip files: use Save zip, or send it to a colleague in Colleagues', 6000); } }
 });
-$('#anonSave').addEventListener('click', async () => {
-  if (!ANON) return;
+async function saveBlobAs(blob, name) { // a file saved to the device (Downloads)
   if (window.claude && window.claude.use) {
     const dl = await window.claude.use('downloads').catch(() => null);
     if (!dl) { say('Saving files is not available here', 3500); return; }
-    try { await dl.save({ filename: ANON.name, data: new Uint8Array(await ANON.blob.arrayBuffer()) }); say('Saved: ' + ANON.name, 3000); }
+    try { await dl.save({ filename: name, data: new Uint8Array(await blob.arrayBuffer()) }); say('Saved: ' + name, 3000); }
     catch (err) { say(err && err.code === 'declined' ? 'Not saved' : 'Could not save it here', 3000); }
     return;
   }
-  const u = URL.createObjectURL(ANON.blob), a = document.createElement('a'); a.href = u; a.download = ANON.name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 60000);
-  say('Saved to Downloads: ' + ANON.name, 3000);
-});
+  const u = URL.createObjectURL(blob), a = document.createElement('a'); a.href = u; a.download = name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 60000);
+  say('Saved to Downloads: ' + name, 3000);
+}
+$('#anonSave').addEventListener('click', () => { if (ANON) saveBlobAs(ANON.blob, ANON.name); });
 /* ---------- Thick slab (axial): MIP, MinIP or average of the slices within the slab, centred on each slice ---------- */
 S.slab = { mode: 'mip', t: 10 };
 const SLABKEEP = [];
@@ -7067,7 +7164,7 @@ loadSample();
 S.rfVols = new Map(); // series -> volume
 function rfVol(se) { // a volume the size of the previews: they fill it directly
   let V = S.rfVols.get(se);
-  if (!V) { const p = volPlan(se, previewLevel(se)); if (typeof p === 'string') return null; V = p; V.rf = true; { const za = zpos(se.images[0]), zb = zpos(se.images[se.images.length - 1]); if (za != null && zb != null) V.flip = zb > za; } S.rfVols.set(se, V); for (const im of se.images) {
+  if (!V) { let p; try { p = volPlan(se, previewLevel(se)); } catch (e) { try { p = volPlan(se, previewLevel(se) + 1); } catch (e2) { p = 'no memory'; } } if (typeof p === 'string') return null; V = p; V.rf = true; { const za = zpos(se.images[0]), zb = zpos(se.images[se.images.length - 1]); if (za != null && zb != null) V.flip = zb > za; } S.rfVols.set(se, V); for (const im of se.images) {
     if (im.preview && im.preview.w === V.w && im.preview.h === V.h) volPutV(V, im, im.preview.data, V.w, V.h); else if (im.pixels) volPutV(V, im, im.pixels, im.cols, im.rows); } }
   return V;
 }
@@ -7560,7 +7657,7 @@ function vrOpen() {
   const se = curSeries(); if (!se) return;
   if (!vrGL()) { say('3D needs WebGL 2, which this browser does not have', 4000); return; }
   const K = S.vol && S.vol.se === se ? S.vol : S.keepVol && S.keepVol.se === se ? S.keepVol : null;
-  const V = K || volPlan(se); if (typeof V === 'string') { say(V.replace(/^MPR/, '3D'), 4000); return; }
+  const V = K || volPlanSafe(se); if (typeof V === 'string') { say(V.replace(/^MPR/, '3D'), 4000); return; }
   if (S.vol) mprToggle(false); // MPR or the single coronal/sagittal gives way; its volume is kept (S.keepVol)
   if (cine) cineToggle();
   S.keepVol = V;
