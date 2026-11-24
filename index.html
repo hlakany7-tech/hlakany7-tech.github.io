@@ -663,7 +663,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1558</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1624</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -4779,7 +4779,7 @@ function consRtc(c, dial) { // a fresh connection for a conversation (first, or 
   const wire = dc => { if (c.pc !== pc) return; c.dc = dc; dc.binaryType = 'arraybuffer'; dc.bufferedAmountLowThreshold = 256 * 1024;
     dc.onopen = () => consOpen(c, dc);
     dc.onclose = () => { if (c.dc === dc) consDrop(c, pc); };
-    dc.onmessage = ev => { if (c.dc === dc) consData(c, ev.data); }; };
+    dc.onmessage = ev => { if (c.dc === dc) { c.lastIn = Date.now(); consData(c, ev.data); } }; };
   if (dial) {
     wire(pc.createDataChannel(c.cid, { ordered: true }));
     const offer = () => consSend(c.id, 'OFFER', { sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, type: 'data', connectionId: c.cid, label: c.cid, reliable: true, serialization: 'raw', metadata: { from: CONS.me }, browser: 'chrome' });
@@ -4799,9 +4799,17 @@ function consRtc(c, dial) { // a fresh connection for a conversation (first, or 
   c.tAns = Date.now();
 }
 function consOpen(c, dc) {
+  c.lastIn = Date.now(); clearInterval(c.alive);
+  c.alive = setInterval(() => { // a connection can die silently (the other phone paused, a network change): a small ping both ways every
+    // 4 s, and when nothing has come for 15 s the connection is taken as lost and made again
+    if (c.dc !== dc || c.state !== 'open') { clearInterval(c.alive); return; }
+    consText(c, { t: 'ping' });
+    if (Date.now() - c.lastIn > 15000) { consLog(c.name + ': silent for 15 s'); consDrop(c, c.pc, true); }
+  }, 4000);
   const again = c.ever; c.state = 'open'; c.ever = true; c.away = false; clearInterval(c.again); clearTimeout(c.timer);
   consNote(c, again ? 'Reconnected' : 'Connected with ' + c.name); consUI(); if (!again) consChatOpen(c, true); else consChatDraw();
   consRoute(c);
+  if (c.out && !c.out.go && c.out.offer) consText(c, c.out.offer); // a case offered but not yet answered: offered again
   const r = c.inbox; if (r && !r.ask && r.got < r.count) { r.cur = null; r.q.then(() => consText(c, { t: 'resume', id: r.id, have: r.got })); } // a case arriving: on from where it stopped
 }
 async function consRoute(c) { // direct, or through the relay: said once per connection (it decides the speed)
@@ -4813,8 +4821,9 @@ async function consRoute(c) { // direct, or through the relay: said once per con
     consNote(c, 'Route: ' + c.route + (pair.currentRoundTripTime ? ' · ' + Math.round(pair.currentRoundTripTime * 1000) + ' ms' : ''));
   } catch (e) { }
 }
-function consDrop(c, pc) { // the connection went (another app, the screen off, a network change): the conversation stays, and comes back
+function consDrop(c, pc, dead) { // the connection went (another app, the screen off, a network change): the conversation stays, and comes back
   if (c.pc !== pc || c.state === 'closed' || c.state === 'reconnecting') return;
+  clearInterval(c.alive); if (dead) { try { c.dc && c.dc.close(); } catch (e) { } }
   const was = c.state; c.state = c.ever ? 'reconnecting' : 'calling'; c.dc = null;
   if (c.out) c.out.wake && c.out.wake(); // a send waiting on this connection stops; it resumes when the other phone asks
   if (was === 'open') consNote(c, 'Connection lost: reconnecting…');
@@ -4832,7 +4841,7 @@ function consCall(name) {
   consStatus('Calling ' + name + '…'); consRtc(c, true); consUI();
 }
 function consEnd(c, quiet) { // End: the conversation and its case go, on both phones
-  if (c.state === 'closed') return; c.state = 'closed'; clearTimeout(c.timer); clearInterval(c.again);
+  if (c.state === 'closed') return; c.state = 'closed'; clearTimeout(c.timer); clearInterval(c.again); clearInterval(c.alive);
   const pc = c.pc; c.pc = null; c.dc = null; try { pc && pc.close(); } catch (e) { }
   CONS.peers.delete(c.id); c.out = null;
   consWipe(c);
@@ -4890,6 +4899,7 @@ async function consOffer(c, scope) {
   const plan = anonPlan(scope); if (!plan || !plan.items.length) { consNote(c, 'Nothing to send from this case'); return; }
   const se = curSeries(), id = 'k' + Date.now().toString(36);
   c.out = { id, plan, next: 0, acked: 0, bytes: 0, raw: 0, t0: 0, go: false };
+  c.out.offer = { t: 'case', id, count: plan.items.length, desc: (se && se.modality ? se.modality + ' ' : '') + (scope === 'study' ? 'study, ' + plan.series.length + ' series' : (se && se.desc) || 'series') };
   consText(c, { t: 'case', id, count: plan.items.length, desc: (se && se.modality ? se.modality + ' ' : '') + (scope === 'study' ? 'study, ' + plan.series.length + ' series' : (se && se.desc) || 'series') });
   consProgress(c, 0, 'Waiting for ' + c.name + ' to accept');
 }
@@ -4926,6 +4936,7 @@ async function consData(c, d) {
     return;
   }
   let m; try { m = JSON.parse(d); } catch (e) { return; }
+  if (m.t === 'ping') return;
   if (m.t === 'chat') { c.chat.push({ from: c.name, text: String(m.text || '').slice(0, 2000) }); if (CONS.open !== c || $('#consChat').hidden) c.unread++; consChatDraw(); consUI(); }
   else if (m.t === 'case') { if (r && r.id === m.id) return; c.inbox = { id: m.id, count: +m.count || 0, desc: String(m.desc || ''), got: 0, cur: null, ask: true, q: Promise.resolve(), caseId: 'c' + (++CONS.cid), first: true, t0: 0 }; consChatOpen(c, true); consChatDraw(); }
   else if (m.t === 'f') {
