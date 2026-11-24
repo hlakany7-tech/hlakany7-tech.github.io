@@ -628,7 +628,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
     <button class="btn" id="consCall" style="justify-content:center">Connect</button>
     <div id="consRecent" class="cons-recent"></div>
     <div class="list" id="consPeers"></div>
-    <p class="note">Both phones need Sliceview open and online. The case goes straight from one phone to the other, anonymised, and is not stored anywhere: it closes when the conversation ends.</p>
+    <p class="note">Both phones need Sliceview open on screen and online (switching to another app can take you offline for a moment; it reconnects when you come back). The case goes straight from one phone to the other, anonymised, and is not stored anywhere: it closes when the conversation ends.</p>
   </div>
 </div>
 <div id="consChat" class="cons-chat" hidden>
@@ -660,7 +660,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1452</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1517</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -4707,15 +4707,16 @@ function consSignal(m) {
     return; }
   if (m.type === 'ID-TAKEN') { consGoOffline(true); consStatus('That name is in use by someone else now: choose another'); consUI(); return; }
   if (m.type === 'ERROR' || m.type === 'INVALID-KEY') { consStatus('The introduction service said: ' + ((m.payload && m.payload.msg) || m.type)); return; }
-  if (m.type === 'EXPIRE') { const p = [...CONS.peers.values()].find(x => x.id === m.src); if (p && p.state !== 'open') { consStatus(p.name + ' is not online now (check the name is exactly the one shown on their phone)'); consClose(p, true); } return; }
+  if (m.type === 'EXPIRE') { const p = [...CONS.peers.values()].find(x => x.id === m.src); if (p && p.state !== 'open') { p.away = true; consStatus(p.name + ' is not online yet: still calling (Sliceview must be open on their phone, online with exactly that name)'); consUI(); } return; }
   if (m.type === 'LEAVE') { const p = [...CONS.peers.values()].find(x => x.id === m.src); if (p) consClose(p, true, 'left'); return; }
   const pl = m.payload || {};
   if (m.type === 'OFFER') {
     const name = String(pl.from || m.src.replace(/^sliceview-/, '')).slice(0, 40);
     const old = CONS.peers.get(m.src);
     if (old && old.caller && old.state === 'connecting' && consKey(CONS.me) < m.src) return; // both called at once: one call is kept (the other phone answers ours)
+    if (old && !old.caller && old.offer === pl.sdp.sdp && old.state !== 'closed') return; // the same call again (it is repeated until answered)
     if (old) consClose(old, true);
-    const p = consPeer(m.src, name, false);
+    const p = consPeer(m.src, name, false); p.offer = pl.sdp.sdp;
     p.pc.setRemoteDescription(pl.sdp).then(() => p.pc.createAnswer()).then(a => p.pc.setLocalDescription(a)).then(() => consSend(m.src, 'ANSWER', { sdp: p.pc.localDescription, connectionId: pl.connectionId, from: CONS.me })).then(() => consFlush(p)).catch(() => consClose(p, true));
     return;
   }
@@ -4733,7 +4734,7 @@ function consPeer(id, name, caller) {
     const ice = pc.iceConnectionState;
     consStatus(!CONS.online ? 'Could not connect to ' + name + ': the introduction service was lost' : !p.answered ? name + ' did not answer: is Sliceview open and online on their phone, with exactly that name?' : 'Could not connect to ' + name + ': no direct route between the phones (' + ice + '). Try both phones on the same Wi-Fi, or both on mobile data');
     consClose(p, true);
-  }, 30000);
+  }, caller ? 90000 : 30000);
   pc.oniceconnectionstatechange = () => consUI();
   pc.onicecandidate = e => { if (e.candidate) consSend(id, 'CANDIDATE', { candidate: e.candidate, connectionId: 'sv' }); };
   pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') { consNote(p, 'The connection failed (some networks block direct connections; try the same Wi-Fi)'); consClose(p, true); } };
@@ -4742,7 +4743,9 @@ function consPeer(id, name, caller) {
     dc.onclose = () => { if (p.state !== 'closed') consClose(p, true, 'left'); };
     dc.onmessage = ev => consData(p, ev.data); };
   if (caller) { wire(pc.createDataChannel('sv', { ordered: true }));
-    pc.createOffer().then(o => pc.setLocalDescription(o)).then(() => consSend(id, 'OFFER', { sdp: pc.localDescription, type: 'data', connectionId: 'sv', from: CONS.me })).catch(() => consClose(p, true)); }
+    const offer = () => consSend(id, 'OFFER', { sdp: pc.localDescription, type: 'data', connectionId: 'sv', from: CONS.me });
+    pc.createOffer().then(o => pc.setLocalDescription(o)).then(offer).catch(() => consClose(p, true));
+    p.again = setInterval(() => { if (p.answered || p.state !== 'connecting') { clearInterval(p.again); return; } if (CONS.online && pc.localDescription) offer(); }, 5000); } // repeated until answered: they may open Sliceview a moment later
   else pc.ondatachannel = e => wire(e.channel);
   return p;
 }
@@ -4755,7 +4758,7 @@ function consCall(name) {
   consStatus('Calling ' + name + '…'); consPeer(id, name, true); consUI();
 }
 function consClose(p, quiet, why) {
-  if (p.state === 'closed') return; p.state = 'closed'; clearTimeout(p.timer);
+  if (p.state === 'closed') return; p.state = 'closed'; clearTimeout(p.timer); clearInterval(p.again);
   try { p.dc && p.dc.close(); } catch (e) { } try { p.pc.close(); } catch (e) { }
   CONS.peers.delete(p.id);
   consWipe(p); // the cases from this conversation go
@@ -4828,7 +4831,7 @@ function consUI() { // the chat button in the top bar, with unread messages
   const b = $('#btnChat'); if (!b) return;
   const n = [...CONS.peers.values()].reduce((a, p) => a + p.unread, 0), any = CONS.peers.size > 0;
   b.hidden = !any; b.querySelector('b').textContent = n ? String(n) : ''; b.querySelector('b').hidden = !n;
-  const L = $('#consPeers'); if (L) L.innerHTML = [...CONS.peers.values()].map(p => '<button class="item" type="button" data-id="' + p.id + '">' + p.name.replace(/[&<>]/g, '') + ' · ' + (p.state === 'open' ? 'connected' : !p.answered ? 'calling…' : 'connecting (' + p.pc.iceConnectionState + ')…') + (p.unread ? ' (' + p.unread + ' new)' : '') + '</button>').join('');
+  const L = $('#consPeers'); if (L) L.innerHTML = [...CONS.peers.values()].map(p => '<button class="item" type="button" data-id="' + p.id + '">' + p.name.replace(/[&<>]/g, '') + ' · ' + (p.state === 'open' ? 'connected' : !p.answered ? (p.away ? 'calling… (not online yet)' : 'calling…') : 'connecting (' + p.pc.iceConnectionState + ')…') + (p.unread ? ' (' + p.unread + ' new)' : '') + '</button>').join('');
   const on = $('#consOnline'); if (on) { on.textContent = CONS.online ? 'Go offline' : 'Go online'; on.classList.toggle('primary', !CONS.online); }
   const rc = $('#consRecent'); if (rc) rc.innerHTML = (consLS('svRecent') || '').split('\n').filter(Boolean).map(n => '<button class="chip" type="button">' + n.replace(/[&<>"]/g, '') + '</button>').join('');
 }
@@ -4852,6 +4855,9 @@ $('#consLog').addEventListener('click', e => { const b = e.target.closest('butto
   p.inbox.ask = false; if (b.dataset.a === 'open') { consText(p, { t: 'accept', id: p.inbox.id }); consProgress(p, 0, 'Receiving'); } else { consText(p, { t: 'decline', id: p.inbox.id }); p.inbox = null; }
   consChatDraw(); });
 addEventListener('pagehide', () => { for (const p of CONS.peers.values()) consText(p, { t: 'bye' }); });
+document.addEventListener('visibilitychange', () => { // back in Sliceview (after WhatsApp, the lock screen...): online again at once
+  if (document.visibilityState === 'visible' && CONS.want && (!CONS.ws || CONS.ws.readyState > 1)) { clearTimeout(CONS.rt); CONS.ws = null; consGoOnline(CONS.me); }
+});
 if (consLS('svName')) CONS.me = consLS('svName');
 /* ---------- reference lines (as in RadiAnt): in Compare, where the slice of each other view cuts this one ----------
    Only between series of the same study in different orientations (an axial on a coronal or sagittal, a scout). */
