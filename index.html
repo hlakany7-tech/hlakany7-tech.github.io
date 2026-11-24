@@ -663,7 +663,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1656</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1710</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -4985,6 +4985,11 @@ async function consIngestFile(c, r, f, data) {
   r.got++; consText(c, { t: 'ack', id: r.id, n: f.n });
   consRecvDone(c, r);
 }
+function consVolRefresh() { // the case grew: MPR, or the coronal/sagittal view, built again over all that has arrived
+  if (!S.vol) return; const main = $('#views').dataset.main, pm = S.planeMode && main && main !== 'ax';
+  mprToggle(false); S.keepVol = null;
+  if (pm) planeOpen(main); else mprToggle(true);
+}
 function consRecvDone(c, r) { // the case grows on screen as it arrives: the first images show at once
   const now = performance.now(), mine = () => S.series.filter(s => s.__consCase === r.caseId);
   if (r.first && mine().length) {
@@ -5002,6 +5007,8 @@ function consRecvDone(c, r) { // the case grows on screen as it arrives: the fir
   } else if (now - (r.tUI || 0) > 700 || r.got >= r.count) {
     r.tUI = now; const keep = cur(), touched = finishLoad(), se = curSeries();
     if (keep && se && touched.includes(se)) { const i = se.images.indexOf(keep); if (i >= 0) S.idx = i; }
+    for (const t of touched) { if (S.keepVol && S.keepVol.se === t) S.keepVol = null; if (S.rfVols) S.rfVols.delete(t); if (S.vol && S.vol.se === t) r.volDirty = true; } // views built on the part that had arrived: built again
+    if (r.volDirty && (now - (r.tVol || 0) > 5000 || r.got >= r.count)) { r.tVol = now; r.volDirty = false; consVolRefresh(); }
     render();
   }
   consProgress(c, r.got / Math.max(1, r.count), 'Receiving ' + r.got + ' / ' + r.count);
