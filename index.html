@@ -663,7 +663,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1530</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1558</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -4620,57 +4620,66 @@ function anonSeriesList(scope) { // the series to export: the one on screen (a f
   return S.series.filter(s => s.studyUid === se.studyUid && !s.derived && !s.isFuse && s.uid !== 'sample-phantom' && s.images.length);
 }
 const SC_CLASSES = /^1\.2\.840\.10008\.5\.1\.4\.1\.1\.(7(\.\d)*|88\.\d+|104\.1)$/; // screenshots, structured reports, PDFs: text that can name the patient
-async function anonExport(scope, onStep) {
+function anonPlan(scope) { // what an export or a send holds: one entry per file, in order (the series on screen first)
   const list = anonSeriesList(scope); if (!list.length) return null;
-  const ctx = { uids: new Map(), code: '' }, zip = zipMaker(), done = new Set(); let skipped = 0, shots = 0, k = 0;
-  const r = crypto.getRandomValues(new Uint32Array(1))[0];
-  ctx.code = 'ANON-' + r.toString(36).toUpperCase().slice(0, 6).padStart(6, '0');
-  const total = list.reduce((a, s) => a + s.images.length, 0), used = new Set();
+  const on = curSeries(); list.sort((a, b) => (b === on || (on && on.isFuse && (b === on.fuseCT))) - (a === on || (on && on.isFuse && (a === on.fuseCT))));
+  const ctx = { uids: new Map(), code: 'ANON-' + crypto.getRandomValues(new Uint32Array(1))[0].toString(36).toUpperCase().slice(0, 6).padStart(6, '0') };
+  const items = [], done = new Set(), used = new Set(); let shots = 0, skipped = 0;
   for (const se of list) {
+    const h0 = se.images[0] && se.images[0].hdr, c0 = h0 ? dicomDump(h0).find(x => x.key === '00080016' || x.key === '00020002') : null;
+    if (c0 && SC_CLASSES.test(c0.value)) { shots += se.images.length; continue; } // screenshots, dose reports: left out
     const folder = (String(se.number || '').padStart(3, '0') + '_' + (se.desc || 'series')).replace(/[^\w.\- ]+/g, '_').slice(0, 60).trim() || 'series';
     let fold = folder, q = 2; while (used.has(fold)) fold = folder + '_' + q++; used.add(fold);
-    const h0 = se.images[0] && se.images[0].hdr, c0 = h0 ? dicomDump(h0).find(x => x.key === '00080016' || x.key === '00020002') : null;
-    if (c0 && SC_CLASSES.test(c0.value)) { shots += se.images.length; k += se.images.length; continue; } // screenshots, dose reports: left out
     let i = 0;
     for (const im of se.images) {
-      k++; if (onStep && k % 8 === 0) { onStep(k, total); await new Promise(res => setTimeout(res)); }
       const id = im.zsrc ? im.zsrc : im.src ? im.src : im.hdr; // frames of one file share it: the file goes once
-      if (!id || done.has(id)) { if (!id) skipped++; continue; }
-      done.add(id);
-      let bytes = null;
-      try {
-        const orig = (im.zsrc || im.src) ? await anonOriginal(im) : null;
-        if (orig) bytes = orig;
-        let outB = bytes ? anonDicom(bytes, ctx, null) : null;
-        if (!outB && im.hdr) { // rebuilt from the header and the pixels in memory
-          const frames = S.series.flatMap(s => s.images).filter(x => x.hdr === im.hdr).sort((a, b) => a.srcFrame - b.srcFrame);
-          if (frames.every(f => f.frag) || frames.every(f => f.pixels)) {
-            const p = anonPixelEnd(im.hdr);
-            if (p > 0) {
-              const raw = !frames[0].frag, sub = Object.assign({}, ctx);
-              if (raw && im.codec) { // the original was compressed, only the decoded pixels are here: stored plainly
-                sub.ts = '1.2.840.10008.1.2.1'; sub.set = new Map([['00280004', (enc, encUS, g, e) => enc(g, e, 'CS', im.spp === 3 ? 'RGB' : im.mono1 ? 'MONOCHROME1' : 'MONOCHROME2')]]);
-                if (im.spp === 3) sub.set.set('00280006', (enc, encUS, g, e) => encUS(g, e, 0));
-              }
-              if (raw && im.palette) { sub.set = new Map([['00280004', (enc, encUS, g, e) => enc(g, e, 'CS', 'RGB')], ['00280002', (enc, encUS, g, e) => encUS(g, e, 3)], ['00280006', (enc, encUS, g, e) => encUS(g, e, 0)], ['00280100', (enc, encUS, g, e) => encUS(g, e, 8)], ['00280101', (enc, encUS, g, e) => encUS(g, e, 8)], ['00280102', (enc, encUS, g, e) => encUS(g, e, 7)]]);
-                sub.drop = new Set(['00281101', '00281102', '00281103', '00281199', '00281201', '00281202', '00281203']); }
-              outB = anonDicom(im.hdr.subarray(0, p), sub, anonRebuildTail(frames));
-            }
-          }
-        }
-        if (!outB) { skipped++; continue; }
-        zip.add(ctx.code + '/' + fold + '/IM' + String(++i).padStart(5, '0') + '.dcm', outB);
-      } catch (e) { skipped++; }
+      if (!id) { skipped++; continue; } if (done.has(id)) continue; done.add(id);
+      items.push({ se, im, name: fold + '/IM' + String(++i).padStart(5, '0') + '.dcm' });
     }
   }
-  if (!zip.count) return { empty: true, skipped, shots };
-  return { blob: zip.blob(), name: ctx.code + '.zip', count: zip.count, skipped, shots, size: zip.size, code: ctx.code };
+  return { ctx, items, shots, skipped, series: list };
 }
-/* ---------- Colleagues: send a case straight to another phone and talk about it (a demonstration) ----------
+async function anonOne(item, ctx) { // one file, anonymised (null when it cannot be)
+  const im = item.im;
+  const bytes = (im.zsrc || im.src) ? await anonOriginal(im) : null;
+  let outB = bytes ? anonDicom(bytes, ctx, null) : null;
+  if (!outB && im.hdr) { // rebuilt from the header and the pixels in memory
+    const frames = S.series.flatMap(s => s.images).filter(x => x.hdr === im.hdr).sort((a, b) => a.srcFrame - b.srcFrame);
+    if (frames.every(f => f.frag) || frames.every(f => f.pixels)) {
+      const p = anonPixelEnd(im.hdr);
+      if (p > 0) {
+        const raw = !frames[0].frag, sub = Object.assign({}, ctx);
+        if (raw && im.codec) {
+          sub.ts = '1.2.840.10008.1.2.1'; sub.set = new Map([['00280004', (enc, encUS, g, e) => enc(g, e, 'CS', im.spp === 3 ? 'RGB' : im.mono1 ? 'MONOCHROME1' : 'MONOCHROME2')]]);
+          if (im.spp === 3) sub.set.set('00280006', (enc, encUS, g, e) => encUS(g, e, 0));
+        }
+        if (raw && im.palette) { sub.set = new Map([['00280004', (enc, encUS, g, e) => enc(g, e, 'CS', 'RGB')], ['00280002', (enc, encUS, g, e) => encUS(g, e, 3)], ['00280006', (enc, encUS, g, e) => encUS(g, e, 0)], ['00280100', (enc, encUS, g, e) => encUS(g, e, 8)], ['00280101', (enc, encUS, g, e) => encUS(g, e, 8)], ['00280102', (enc, encUS, g, e) => encUS(g, e, 7)]]);
+          sub.drop = new Set(['00281101', '00281102', '00281103', '00281199', '00281201', '00281202', '00281203']); }
+        outB = anonDicom(im.hdr.subarray(0, p), sub, anonRebuildTail(frames));
+      }
+    }
+  }
+  return outB;
+}
+async function anonExport(scope, onStep) {
+  const plan = anonPlan(scope); if (!plan) return null;
+  const { ctx, items } = plan, zip = zipMaker(); let skipped = plan.skipped;
+  for (let k = 0; k < items.length; k++) {
+    if (onStep && k % 8 === 0) { onStep(k, items.length); await new Promise(res => setTimeout(res)); }
+    let b = null; try { b = await anonOne(items[k], ctx); } catch (e) { b = null; }
+    if (!b) { skipped++; continue; }
+    zip.add(ctx.code + '/' + items[k].name, b);
+  }
+  if (!zip.count) return { empty: true, skipped, shots: plan.shots };
+  return { blob: zip.blob(), name: ctx.code + '.zip', count: zip.count, skipped, shots: plan.shots, size: zip.size, code: ctx.code };
+}
+/* ---------- Colleagues: send a case straight to another phone and talk about it ----------
    Peer to peer: the two phones find each other through the free PeerJS introduction service (only connection details
-   pass through it), then the anonymised case and the chat go directly between them, encrypted (WebRTC).
-   Nothing is stored anywhere: a received case is open only while the conversation lasts, and End wipes it. */
-const CONS = { me: '', ws: null, online: false, want: false, retry: 0, rt: 0, peers: new Map(), hb: 0, open: null, cid: 0 };
+   pass through it), then the case and the chat go between them, encrypted (WebRTC): directly when they can reach each
+   other, else through the relay. Nothing is stored anywhere: a received case is open only while the conversation lasts.
+   A conversation lasts until one of you presses End: when the connection drops (another app, the screen off, a network
+   change) it comes back by itself, and a case being sent goes on from where it stopped. */
+const CONS = { me: '', ws: null, online: false, want: false, retry: 0, rt: 0, hb: 0, peers: new Map(), open: null, cid: 0, log: [] };
 const consKey = n => 'sliceview-' + n.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const consLS = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } };
 // the relay (Metered, free 20 GB a month): used only when the phones cannot reach each other directly (mobile data);
@@ -4680,195 +4689,340 @@ const CONS_ICE = { iceServers: [{ urls: 'stun:stun.relay.metered.ca:80' }, { url
   Object.assign({ urls: ['turn:standard.relay.metered.ca:80', 'turn:standard.relay.metered.ca:80?transport=tcp', 'turn:standard.relay.metered.ca:443', 'turns:standard.relay.metered.ca:443?transport=tcp'] }, CONS_TURN)] };
 function consSignalUrl(id) {
   const base = consLS('svSignal') || 'wss://0.peerjs.com:443/peerjs?key=peerjs';
-  return base + '&id=' + encodeURIComponent(id) + '&token=' + Math.random().toString(36).slice(2) + '&version=1.5.4';
+  if (!CONS.token) CONS.token = Math.random().toString(36).slice(2); // the same token on every reconnection: the name stays ours
+  return base + '&id=' + encodeURIComponent(id) + '&token=' + CONS.token + '&version=1.5.4';
 }
 function consStatus(t) { const e = $('#consStatus'); if (e) e.textContent = t; }
 function consLog(t) { // the last few steps, shown small under the status: what to send when it does not connect
-  const d = new Date(), z = n => String(n).padStart(2, '0'); (CONS.log = CONS.log || []).push(z(d.getMinutes()) + ':' + z(d.getSeconds()) + ' ' + t);
+  const d = new Date(), z = n => String(n).padStart(2, '0'); CONS.log.push(z(d.getMinutes()) + ':' + z(d.getSeconds()) + ' ' + t);
   if (CONS.log.length > 8) CONS.log.shift(); const e = $('#consLogTxt'); if (e) e.textContent = CONS.log.join('\n');
+}
+/* staying alive in the background: Android pauses a page that is out of sight, unless it is playing sound. While you are
+   online Sliceview plays an inaudible sound (a "Sliceview" card shows in the notifications), so it stays reachable. */
+function consKeepAwake(on) {
+  try {
+    if (!on) { if (CONS.awake) { CONS.awake.pause(); } return; }
+    if (!CONS.awake) {
+      const n = 8000, b = new ArrayBuffer(44 + n * 2), d = new DataView(b), w = (o, s) => { for (let i = 0; i < s.length; i++) d.setUint8(o + i, s.charCodeAt(i)); };
+      w(0, 'RIFF'); d.setUint32(4, 36 + n * 2, true); w(8, 'WAVEfmt '); d.setUint32(16, 16, true); d.setUint16(20, 1, true); d.setUint16(22, 1, true); d.setUint32(24, 8000, true); d.setUint32(28, 16000, true); d.setUint16(32, 2, true); d.setUint16(34, 16, true); w(36, 'data'); d.setUint32(40, n * 2, true);
+      for (let i = 0; i < n; i++) d.setInt16(44 + i * 2, (i & 1) ? 1 : -1, true); // far below hearing
+      const a = new Audio(URL.createObjectURL(new Blob([b], { type: 'audio/wav' }))); a.loop = true; a.volume = 0.05; CONS.awake = a;
+    }
+    CONS.awake.play().catch(() => { });
+    if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title: 'Sliceview', artist: 'Online for colleagues as ' + CONS.me });
+  } catch (e) { }
 }
 function consGoOnline(name) {
   name = (name || '').trim(); if (consKey(name).length < 13) { consStatus('Choose a name of at least 3 letters'); return; }
-  consGoOffline(true); CONS.me = name; consLS('svName', name); CONS.want = true;
+  if (name !== CONS.me) CONS.token = null;
+  consGoOffline(true); CONS.me = name; consLS('svName', name); CONS.want = true; consLS('svOnline', '1');
   let ws; try { ws = new WebSocket(consSignalUrl(consKey(name))); } catch (e) { consStatus('Could not reach the introduction service'); return; }
   CONS.ws = ws; consStatus(CONS.retry ? 'Reconnecting…' : 'Connecting…'); consLog('connect as ' + consKey(name));
   ws.onopen = () => consLog('socket open');
-  ws.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } if (m.type !== 'HEARTBEAT') consLog('got ' + m.type + (m.src ? ' from ' + m.src.replace(/^sliceview-/, '') : '') + (m.payload && m.payload.msg ? ': ' + m.payload.msg : '')); consSignal(m); };
+  ws.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } if (m.type !== 'HEARTBEAT' && m.type !== 'CANDIDATE') consLog('got ' + m.type + (m.src ? ' from ' + m.src.replace(/^sliceview-/, '') : '') + (m.payload && m.payload.msg ? ': ' + m.payload.msg : '')); consSignal(m); };
   ws.onclose = ev => { // dropped (a network change, the phone sleeping): back again by itself while you want to be online
     if (CONS.ws !== ws) return; CONS.ws = null; CONS.online = false; clearInterval(CONS.hb); consUI(); consLog('closed ' + ev.code + (ev.reason ? ' ' + ev.reason : ''));
-    if (CONS.err) { consStatus(CONS.err); CONS.err = ''; if (!CONS.want) return; }
+    if (CONS.err) { consStatus(CONS.err); CONS.err = ''; }
     if (!CONS.want) { consStatus('Offline'); return; }
-    const wait = Math.min(30, 2 ** Math.min(CONS.retry++, 5)); consStatus('Lost the introduction service (' + (ev.code || '?') + '); trying again in ' + wait + ' s…');
+    const wait = Math.min(30, 2 ** Math.min(CONS.retry++, 5)); consStatus('Reconnecting to the introduction service in ' + wait + ' s…');
     clearTimeout(CONS.rt); CONS.rt = setTimeout(() => { if (CONS.want && !CONS.ws) consGoOnline(CONS.me); }, wait * 1000);
   };
   ws.onerror = () => { if (!CONS.online) consStatus('Could not reach the introduction service (check the internet connection)'); };
   CONS.hb = setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'HEARTBEAT' })); }, 5000);
 }
 function consGoOffline(quiet) {
-  clearInterval(CONS.hb); clearTimeout(CONS.rt); const ws = CONS.ws; CONS.ws = null; CONS.online = false; if (!quiet) { CONS.want = false; CONS.retry = 0; }
+  clearInterval(CONS.hb); clearTimeout(CONS.rt); const ws = CONS.ws; CONS.ws = null; CONS.online = false;
+  if (!quiet) { CONS.want = false; CONS.retry = 0; consLS('svOnline', null); consKeepAwake(false); }
   if (ws) try { ws.close(); } catch (e) { }
   if (!quiet) { consStatus('Offline'); consUI(); }
 }
-const consSend = (dst, type, payload) => { if (CONS.ws && CONS.ws.readyState === 1) { CONS.ws.send(JSON.stringify(payload ? { type, payload, dst } : { type, dst })); if (type !== 'CANDIDATE') consLog('sent ' + type + ' to ' + dst.replace(/^sliceview-/, '')); } else consLog('not sent ' + type + ' (offline)'); };
+const consSend = (dst, type, payload) => { if (CONS.ws && CONS.ws.readyState === 1) { CONS.ws.send(JSON.stringify(payload ? { type, payload, dst } : { type, dst })); if (type !== 'CANDIDATE') consLog('sent ' + type + ' to ' + dst.replace(/^sliceview-/, '')); } else if (type !== 'CANDIDATE') consLog('not sent ' + type + ' (offline)'); };
+const consDialer = c => consKey(CONS.me) < c.id; // after a drop, the same phone always calls back (no two calls crossing)
+function consConv(id, name) {
+  let c = CONS.peers.get(id);
+  if (!c) { c = { id, name, state: 'calling', chat: [], unread: 0, cases: [], inbox: null, out: null, pc: null, dc: null, cands: [], ever: false, t0: Date.now() }; CONS.peers.set(id, c); }
+  return c;
+}
 function consSignal(m) {
   if (m.type === 'OPEN') { CONS.online = true; CONS.retry = 0; consStatus('Online as ' + CONS.me + ': colleagues can reach you by this name'); consUI();
-    for (const p of [...CONS.peers.values()]) if (p.caller && p.state === 'connecting') { consClose(p, true); consPeer(p.id, p.name, true); } // calls waiting: sent again
+    for (const c of CONS.peers.values()) if (c.state !== 'open' && (c.dialing || (c.ever && consDialer(c)))) consRtc(c, true); // calls waiting, conversations to restore: called again
     return; }
-  if (m.type === 'ID-TAKEN') { consGoOffline(true); consStatus('That name is in use by someone else now: choose another'); consUI(); return; }
+  if (m.type === 'ID-TAKEN') { CONS.want = false; consGoOffline(true); consStatus('That name is in use by someone else now: choose another'); consUI(); return; }
   if (m.type === 'ERROR' || m.type === 'INVALID-KEY') { CONS.err = 'The introduction service said: ' + ((m.payload && m.payload.msg) || m.type); consStatus(CONS.err); return; }
-  if (m.type === 'EXPIRE') { const p = [...CONS.peers.values()].find(x => x.id === m.src); if (p && p.state !== 'open') { p.away = true; consStatus(p.name + ' is not online yet: still calling (Sliceview must be open on their phone, online with exactly that name)'); consUI(); } return; }
-  if (m.type === 'LEAVE') { const p = [...CONS.peers.values()].find(x => x.id === m.src); if (p) consClose(p, true, 'left'); return; }
+  if (m.type === 'EXPIRE') { const c = CONS.peers.get(m.src); if (c && c.state !== 'open') { c.away = true; if (!c.ever) consStatus(c.name + ' is not online yet: still calling (Sliceview must be open on their phone, online with exactly that name)'); consUI(); } return; }
+  if (m.type === 'LEAVE') return; // their link to the service dropped: the conversation waits for them
   const pl = m.payload || {};
   if (m.type === 'OFFER') {
+    if (!pl.sdp) return;
     const name = String((pl.metadata && pl.metadata.from) || m.src.replace(/^sliceview-/, '')).slice(0, 40);
-    const old = CONS.peers.get(m.src);
-    if (old && old.caller && old.state === 'connecting' && consKey(CONS.me) < m.src) return; // both called at once: one call is kept (the other phone answers ours)
-    if (old && !old.caller && old.offer === pl.sdp.sdp && old.state !== 'closed') return; // the same call again (it is repeated until answered)
-    if (old) consClose(old, true);
-    const p = consPeer(m.src, name, false); p.offer = pl.sdp.sdp; if (pl.connectionId) p.cid = pl.connectionId;
-    p.pc.setRemoteDescription(pl.sdp).then(() => p.pc.createAnswer()).then(a => p.pc.setLocalDescription(a)).then(() => consSend(m.src, 'ANSWER', { sdp: { type: p.pc.localDescription.type, sdp: p.pc.localDescription.sdp }, type: 'data', connectionId: p.cid, browser: 'chrome' })).then(() => consFlush(p)).catch(() => consClose(p, true));
-    return;
+    const c = consConv(m.src, name);
+    if (c.offer === pl.sdp.sdp && c.pc && c.pc.signalingState !== 'closed') return; // the same call again (it is repeated until answered)
+    if (c.dialing && c.state !== 'open' && consDialer(c)) return; // both called at once: ours is kept, they answer it
+    consRtc(c, false); c.offer = pl.sdp.sdp; if (pl.connectionId) c.cid = pl.connectionId;
+    const pc = c.pc;
+    pc.setRemoteDescription(pl.sdp).then(() => pc.createAnswer()).then(a => pc.setLocalDescription(a))
+      .then(() => consSend(m.src, 'ANSWER', { sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, type: 'data', connectionId: c.cid, browser: 'chrome' }))
+      .then(() => consFlush(c)).catch(() => { });
+    consUI(); return;
   }
-  const p = CONS.peers.get(m.src); if (!p) return;
-  if (m.type === 'ANSWER') { p.answered = true; consUI(); }
-  if (m.type === 'ANSWER') p.pc.setRemoteDescription(pl.sdp).then(() => consFlush(p)).catch(() => consClose(p, true));
-  else if (m.type === 'CANDIDATE' && pl.candidate) { if (p.pc.remoteDescription) p.pc.addIceCandidate(pl.candidate).catch(() => { }); else p.cands.push(pl.candidate); }
+  const c = CONS.peers.get(m.src); if (!c || !c.pc) return;
+  if (m.type === 'ANSWER') { if (c.pc.signalingState === 'have-local-offer') { c.answered = true; c.pc.setRemoteDescription(pl.sdp).then(() => consFlush(c)).catch(() => { }); consUI(); } }
+  else if (m.type === 'CANDIDATE' && pl.candidate) { if (c.pc.remoteDescription) c.pc.addIceCandidate(pl.candidate).catch(() => { }); else c.cands.push(pl.candidate); }
 }
-function consFlush(p) { for (const c of p.cands.splice(0)) p.pc.addIceCandidate(c).catch(() => { }); }
-function consPeer(id, name, caller) {
-  const pc = new RTCPeerConnection(CONS_ICE), p = { id, name, pc, dc: null, cands: [], chat: [], state: 'connecting', unread: 0, inbox: null, sending: null, cases: [], caller, answered: !caller, t0: Date.now() };
-  CONS.peers.set(id, p);
-  p.timer = setTimeout(() => { // no connection after 30 s: say why, and stop
-    if (p.state !== 'connecting') return;
-    const ice = pc.iceConnectionState;
-    consStatus(!CONS.online ? 'Could not connect to ' + name + ': the introduction service was lost' : !p.answered ? name + ' did not answer: is Sliceview open and online on their phone, with exactly that name?' : 'Could not connect to ' + name + ': no direct route between the phones (' + ice + '). Try both phones on the same Wi-Fi, or both on mobile data');
-    consClose(p, true);
-  }, caller ? 90000 : 30000);
-  pc.oniceconnectionstatechange = () => { consLog(name + ': route ' + pc.iceConnectionState); consUI(); };
-  p.cid = 'dc_' + Math.random().toString(36).slice(2, 12);
-  pc.onicecandidate = e => { if (e.candidate) consSend(id, 'CANDIDATE', { candidate: e.candidate.toJSON(), type: 'data', connectionId: p.cid }); };
-  pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') { consNote(p, 'The connection failed (some networks block direct connections; try the same Wi-Fi)'); consClose(p, true); } };
-  const wire = dc => { p.dc = dc; dc.binaryType = 'arraybuffer'; dc.bufferedAmountLowThreshold = 1 << 20;
-    dc.onopen = () => { p.state = 'open'; consNote(p, 'Connected with ' + p.name); consUI(); consChatOpen(p); };
-    dc.onclose = () => { if (p.state !== 'closed') consClose(p, true, 'left'); };
-    dc.onmessage = ev => consData(p, ev.data); };
-  if (caller) { wire(pc.createDataChannel('sv', { ordered: true }));
-    const offer = () => consSend(id, 'OFFER', { sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, type: 'data', connectionId: p.cid, label: p.cid, reliable: true, serialization: 'raw', metadata: { from: CONS.me }, browser: 'chrome' });
-    pc.createOffer().then(o => pc.setLocalDescription(o)).then(offer).catch(() => consClose(p, true));
-    p.again = setInterval(() => { if (p.answered || p.state !== 'connecting') { clearInterval(p.again); return; } if (CONS.online && pc.localDescription) offer(); }, 5000); } // repeated until answered: they may open Sliceview a moment later
-  else pc.ondatachannel = e => wire(e.channel);
-  return p;
+function consFlush(c) { for (const x of c.cands.splice(0)) c.pc.addIceCandidate(x).catch(() => { }); }
+function consRtc(c, dial) { // a fresh connection for a conversation (first, or after a drop)
+  if (c.pc) { const o = c.pc; c.pc = null; try { o.close(); } catch (e) { } }
+  clearInterval(c.again); c.cands = []; c.answered = false; c.dialing = dial; c.offer = null; c.dc = null;
+  const pc = new RTCPeerConnection(CONS_ICE); c.pc = pc; c.cid = 'dc_' + Math.random().toString(36).slice(2, 12);
+  pc.onicecandidate = e => { if (e.candidate && c.pc === pc) consSend(c.id, 'CANDIDATE', { candidate: e.candidate.toJSON(), type: 'data', connectionId: c.cid }); };
+  pc.oniceconnectionstatechange = () => { if (c.pc !== pc) return; consLog(c.name + ': route ' + pc.iceConnectionState); if (pc.iceConnectionState === 'failed') consDrop(c, pc); consUI(); };
+  const wire = dc => { if (c.pc !== pc) return; c.dc = dc; dc.binaryType = 'arraybuffer'; dc.bufferedAmountLowThreshold = 256 * 1024;
+    dc.onopen = () => consOpen(c, dc);
+    dc.onclose = () => { if (c.dc === dc) consDrop(c, pc); };
+    dc.onmessage = ev => { if (c.dc === dc) consData(c, ev.data); }; };
+  if (dial) {
+    wire(pc.createDataChannel(c.cid, { ordered: true }));
+    const offer = () => consSend(c.id, 'OFFER', { sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, type: 'data', connectionId: c.cid, label: c.cid, reliable: true, serialization: 'raw', metadata: { from: CONS.me }, browser: 'chrome' });
+    pc.createOffer().then(o => pc.setLocalDescription(o)).then(() => { if (CONS.online) offer(); }).catch(() => { });
+    c.again = setInterval(() => { // repeated until answered: they may open Sliceview a moment later
+      if (c.pc !== pc || c.state === 'open' || c.state === 'closed') { clearInterval(c.again); return; }
+      if (!c.answered && CONS.online && pc.localDescription) offer();
+      if (c.answered && Date.now() - c.tAns > 20000 && pc.connectionState !== 'connected') consRtc(c, true); // answered but no route came up: try again
+    }, 5000);
+  } else pc.ondatachannel = e => wire(e.channel);
+  if (!c.ever) { clearTimeout(c.timer); c.timer = setTimeout(() => { // a first call that never connects: say why, and stop
+    if (c.state === 'open' || c.ever || c.state === 'closed') return;
+    consStatus(!CONS.online ? 'Could not connect to ' + c.name + ': the introduction service was lost' : !c.answered ? c.name + ' did not answer: is Sliceview open and online on their phone, with exactly that name?' : 'Could not connect to ' + c.name + ': no route between the phones (' + pc.iceConnectionState + ')');
+    consEnd(c, true);
+  }, 90000); }
+  if (c.state !== 'open') c.state = c.ever ? 'reconnecting' : 'calling';
+  c.tAns = Date.now();
+}
+function consOpen(c, dc) {
+  const again = c.ever; c.state = 'open'; c.ever = true; c.away = false; clearInterval(c.again); clearTimeout(c.timer);
+  consNote(c, again ? 'Reconnected' : 'Connected with ' + c.name); consUI(); if (!again) consChatOpen(c, true); else consChatDraw();
+  consRoute(c);
+  const r = c.inbox; if (r && !r.ask && r.got < r.count) { r.cur = null; r.q.then(() => consText(c, { t: 'resume', id: r.id, have: r.got })); } // a case arriving: on from where it stopped
+}
+async function consRoute(c) { // direct, or through the relay: said once per connection (it decides the speed)
+  const pc = c.pc; if (!pc) return; await new Promise(r => setTimeout(r, 600));
+  try { const st = await pc.getStats(); let pair = null; st.forEach(x => { if (x.type === 'candidate-pair' && x.state === 'succeeded' && (x.nominated || x.selected) && (!pair || x.bytesSent > pair.bytesSent)) pair = x; });
+    const loc = pair && st.get(pair.localCandidateId), rem = pair && st.get(pair.remoteCandidateId);
+    if (!loc) return; const relay = loc.candidateType === 'relay' || (rem && rem.candidateType === 'relay');
+    c.route = relay ? 'through the relay' + (loc.relayProtocol ? ' (' + loc.relayProtocol + ')' : '') : 'direct'; consLog(c.name + ': ' + c.route + (pair.currentRoundTripTime ? ', ' + Math.round(pair.currentRoundTripTime * 1000) + ' ms' : ''));
+    consNote(c, 'Route: ' + c.route + (pair.currentRoundTripTime ? ' · ' + Math.round(pair.currentRoundTripTime * 1000) + ' ms' : ''));
+  } catch (e) { }
+}
+function consDrop(c, pc) { // the connection went (another app, the screen off, a network change): the conversation stays, and comes back
+  if (c.pc !== pc || c.state === 'closed' || c.state === 'reconnecting') return;
+  const was = c.state; c.state = c.ever ? 'reconnecting' : 'calling'; c.dc = null;
+  if (c.out) c.out.wake && c.out.wake(); // a send waiting on this connection stops; it resumes when the other phone asks
+  if (was === 'open') consNote(c, 'Connection lost: reconnecting…');
+  if (c.inbox) c.inbox.cur = null; // a file half-received comes again
+  consUI(); consChatDraw();
+  if (consDialer(c) && CONS.online) setTimeout(() => { if (c.state === 'reconnecting' && c.pc === pc) consRtc(c, true); }, 800);
 }
 function consCall(name) {
   name = (name || '').trim(); if (!name) return;
   if (!CONS.online) { consStatus('Go online first'); return; }
   const id = consKey(name); if (id === consKey(CONS.me)) { consStatus('That is your own name'); return; }
   const recent = (consLS('svRecent') || '').split('\n').filter(x => x && x.toLowerCase() !== name.toLowerCase()); recent.unshift(name); consLS('svRecent', recent.slice(0, 6).join('\n'));
-  const old = CONS.peers.get(id); if (old && old.state === 'open') { consChatOpen(old); return; } if (old) consClose(old, true);
-  consStatus('Calling ' + name + '…'); consPeer(id, name, true); consUI();
+  const c = consConv(id, name);
+  if (c.state === 'open') { $('#sheetCons').hidden = true; consChatOpen(c); return; }
+  consStatus('Calling ' + name + '…'); consRtc(c, true); consUI();
 }
-function consClose(p, quiet, why) {
-  if (p.state === 'closed') return; p.state = 'closed'; clearTimeout(p.timer); clearInterval(p.again);
-  try { p.dc && p.dc.close(); } catch (e) { } try { p.pc.close(); } catch (e) { }
-  CONS.peers.delete(p.id);
-  consWipe(p); // the cases from this conversation go
-  if (CONS.open === p) { CONS.open = null; $('#consChat').hidden = true; }
-  if (why === 'left') say(p.name + ' ended the conversation; the shared case was closed', 3500);
+function consEnd(c, quiet) { // End: the conversation and its case go, on both phones
+  if (c.state === 'closed') return; c.state = 'closed'; clearTimeout(c.timer); clearInterval(c.again);
+  const pc = c.pc; c.pc = null; c.dc = null; try { pc && pc.close(); } catch (e) { }
+  CONS.peers.delete(c.id); c.out = null;
+  consWipe(c);
+  if (CONS.open === c) { CONS.open = null; $('#consChat').hidden = true; }
+  if (!quiet) say(c.name + ' ended the conversation; the shared case was closed', 3500);
   consUI();
 }
-function consWipe(p) { const gone = S.series.filter(s => p.cases.includes(s.__consCase)); if (gone.length) closeSeries(gone); p.cases = []; }
-const consText = (p, o) => { if (p.dc && p.dc.readyState === 'open') p.dc.send(JSON.stringify(o)); };
-function consNote(p, text) { p.chat.push({ sys: true, text }); if (CONS.open === p) consChatDraw(); }
-function consData(p, d) {
-  if (typeof d !== 'string') { // a piece of a case
-    const r = p.inbox; if (!r || !r.on) return;
-    r.parts.push(d); r.got += d.byteLength; consProgress(p, r.got / r.size, 'Receiving'); return;
+function consWipe(c) { const gone = S.series.filter(s => c.cases.includes(s.__consCase)); if (gone.length) closeSeries(gone); c.cases = []; }
+const consRate = o => { const sec = (performance.now() - o.t0) / 1000; return sec > 2 && o.bytes ? ' · ' + (o.bytes / 1048576 / sec).toFixed(o.bytes / sec > 1048576 ? 1 : 2) + ' MB/s' : ''; };
+const consText = (c, o) => { if (c.dc && c.dc.readyState === 'open') { c.dc.send(JSON.stringify(o)); return true; } return false; };
+function consNote(c, text) { c.chat.push({ sys: true, text }); if (CONS.open === c) consChatDraw(); }
+
+/* ---------- sending a case: file by file, compressed, each one confirmed ----------
+   Plain (uncompressed) images are packed losslessly: each pixel is predicted from its neighbours (as JPEG-LS and PNG do)
+   and only the small difference is kept, then squeezed (deflate). Typically two to three times smaller, exactly the same
+   pixels at the other end. Images already compressed in the file (JPEG 2000, JPEG) go as they are. */
+async function consDeflate(u8, back) {
+  const s = new Blob([u8]).stream().pipeThrough(back ? new DecompressionStream('deflate-raw') : new CompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+function consPredict(px, rows, cols, frames, signed, back) { // px: the pixel bytes (16-bit); forward: values to differences; back: the other way
+  const n = rows * cols, N = n * frames, v = signed ? new Int16Array(N) : new Uint16Array(N), lo = px.subarray(0, N), hi = px.subarray(N, 2 * N);
+  if (!back) { const src = new DataView(px.buffer, px.byteOffset, px.byteLength); for (let i = 0; i < N; i++) v[i] = signed ? src.getInt16(i * 2, true) : src.getUint16(i * 2, true); }
+  const out = back ? null : new Uint8Array(2 * N);
+  for (let f = 0; f < frames; f++) { const o = f * n;
+    for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+      const i = o + y * cols + x;
+      const a = x ? v[i - 1] : (y ? v[i - cols] : 0), b = y ? v[i - cols] : a, c = x && y ? v[i - cols - 1] : b;
+      const p = c >= Math.max(a, b) ? Math.min(a, b) : c <= Math.min(a, b) ? Math.max(a, b) : a + b - c; // the median predictor (LOCO-I)
+      if (back) { const z = lo[i] | (hi[i] << 8), r = (z >>> 1) ^ -(z & 1); v[i] = p + r; }
+      else { const r = ((v[i] - p) << 16) >> 16, z = ((r << 1) ^ (r >> 31)) & 0xFFFF; out[i] = z & 255; out[N + i] = z >> 8; }
+    } }
+  if (!back) return out;
+  const res = new Uint8Array(2 * N), d = new DataView(res.buffer); for (let i = 0; i < N; i++) d.setUint16(i * 2, v[i] & 0xFFFF, true); return res;
+}
+async function consPack(bytes) { // one anonymised file, packed: { m: how to unpack, data }
+  let info = null; try { info = DICOM.parse(bytes.buffer.byteLength === bytes.length ? bytes.buffer : bytes.slice().buffer); } catch (e) { info = null; }
+  if (info && info.codec) return { m: { z: 0 }, data: bytes }; // already compressed
+  if (info && !info.codec && info.bitsAllocated === 16 && (info.spp || 1) === 1 && info.pixelOffset > 0) {
+    const N = info.rows * info.cols * (info.frames || 1), off = info.pixelOffset;
+    if (off + 2 * N <= bytes.length) {
+      const res = bytes.slice(); res.set(consPredict(bytes.subarray(off, off + 2 * N), info.rows, info.cols, info.frames || 1, info.pixelRep === 1, false), off);
+      return { m: { z: 1, p: 1, off, r: info.rows, c: info.cols, f: info.frames || 1, s: info.pixelRep === 1 ? 1 : 0 }, data: await consDeflate(res) };
+    }
+  }
+  return { m: { z: 1 }, data: await consDeflate(bytes) };
+}
+async function consUnpack(m, data) {
+  let b = m.z ? await consDeflate(data, true) : data;
+  if (m.p) { const N = m.r * m.c * m.f; b.set(consPredict(b.subarray(m.off, m.off + 2 * N), m.r, m.c, m.f, !!m.s, true), m.off); }
+  return b;
+}
+async function consOffer(c, scope) {
+  if (c.out || c.state !== 'open') return;
+  const plan = anonPlan(scope); if (!plan || !plan.items.length) { consNote(c, 'Nothing to send from this case'); return; }
+  const se = curSeries(), id = 'k' + Date.now().toString(36);
+  c.out = { id, plan, next: 0, acked: 0, bytes: 0, raw: 0, t0: 0, go: false };
+  consText(c, { t: 'case', id, count: plan.items.length, desc: (se && se.modality ? se.modality + ' ' : '') + (scope === 'study' ? 'study, ' + plan.series.length + ' series' : (se && se.desc) || 'series') });
+  consProgress(c, 0, 'Waiting for ' + c.name + ' to accept');
+}
+async function consPump(c) { // sends the files, a few ahead of the confirmations
+  const o = c.out; if (!o || o.pumping) return; o.pumping = true;
+  try {
+    while (c.out === o && o.go && o.next < o.plan.items.length) {
+      if (c.state !== 'open' || !c.dc) break;
+      if (o.next - o.acked >= 6) { await new Promise(res => { o.wake = res; setTimeout(res, 3000); }); continue; }
+      const n = o.next, item = o.plan.items[n];
+      let pk = null; try { const b = await anonOne(item, o.plan.ctx); if (b) { o.raw += b.length; pk = await consPack(b); } } catch (e) { pk = null; }
+      if (c.out !== o || c.state !== 'open' || o.next !== n) continue; // the connection changed meanwhile
+      const dc = c.dc;
+      if (!pk) { consText(c, { t: 'skip', id: o.id, n }); o.next++; continue; }
+      consText(c, { t: 'f', id: o.id, n, len: pk.data.length, m: pk.m });
+      const CH = 64 * 1024;
+      for (let p = 0; p < pk.data.length; p += CH) {
+        if (dc.readyState !== 'open' || c.dc !== dc) break;
+        if (dc.bufferedAmount > 4 * 1024 * 1024) await new Promise(res => { const f = () => { dc.removeEventListener('bufferedamountlow', f); res(); }; dc.addEventListener('bufferedamountlow', f); setTimeout(f, 4000); });
+        try { dc.send(pk.data.subarray(p, Math.min(pk.data.length, p + CH))); } catch (e) { break; }
+      }
+      if (c.dc !== dc || dc.readyState !== 'open') break;
+      o.bytes += pk.data.length; o.next++;
+      consProgress(c, o.acked / o.plan.items.length, 'Sending ' + o.acked + ' / ' + o.plan.items.length + consRate(o));
+    }
+  } finally { o.pumping = false; }
+}
+async function consData(c, d) {
+  const r = c.inbox;
+  if (typeof d !== 'string') { // a piece of a file
+    const f = r && r.cur; if (!f) return;
+    f.parts.push(new Uint8Array(d)); f.recv += d.byteLength;
+    if (f.recv >= f.len) { r.cur = null; r.busy = true; const all = new Uint8Array(f.len); let p = 0; for (const x of f.parts) { all.set(x, p); p += x.length; } r.q = r.q.then(() => consIngestFile(c, r, f, all)); }
+    return;
   }
   let m; try { m = JSON.parse(d); } catch (e) { return; }
-  if (m.t === 'chat') { p.chat.push({ from: p.name, text: String(m.text || '').slice(0, 2000) }); if (CONS.open !== p) p.unread++; consChatDraw(); consUI(); }
-  else if (m.t === 'case') { p.inbox = { id: m.id, size: +m.size || 0, count: +m.count || 0, desc: String(m.desc || ''), parts: [], got: 0, on: false, ask: true }; consChatOpen(p); consChatDraw(); }
-  else if (m.t === 'begin') { if (p.inbox && p.inbox.id === m.id) p.inbox.on = true; }
-  else if (m.t === 'end') { const r = p.inbox; if (!r || r.id !== m.id) return; p.inbox = null; consReceived(p, r); }
-  else if (m.t === 'accept') { if (p.sending && p.sending.id === m.id) consStream(p); }
-  else if (m.t === 'decline') { if (p.sending && p.sending.id === m.id) { p.sending = null; consNote(p, p.name + ' declined the case'); consProgress(p, -1); } }
-  else if (m.t === 'bye') consClose(p, true, 'left');
-}
-async function consReceived(p, r) {
-  consProgress(p, -1);
-  const id = 'c' + (++CONS.cid), f = new File(r.parts, 'case.zip', { type: 'application/zip' }); r.parts = null;
-  const before = new Set(S.series);
-  await addFiles([f], { noKeep: true });
-  const mine = S.series.filter(s => !before.has(s)); mine.forEach(s => { s.__consCase = id; }); p.cases.push(id);
-  consNote(p, 'Case opened (' + mine.reduce((a, s) => a + s.images.length, 0) + ' images). It closes when the conversation ends.');
-  consChatOpen(p, true);
-}
-async function consOffer(p, scope) {
-  if (p.sending) return; const btns = $('#consChat').querySelectorAll('.cons-send button'); btns.forEach(b => b.disabled = true);
-  consProgress(p, 0, 'Anonymising');
-  let r = null; try { r = await anonExport(scope, (k, n) => consProgress(p, k / n, 'Anonymising')); } catch (e) { r = null; }
-  btns.forEach(b => b.disabled = false);
-  if (!r || r.empty) { consProgress(p, -1); consNote(p, 'Nothing to send from this case'); return; }
-  const id = 'k' + Date.now().toString(36), se = curSeries();
-  p.sending = { id, blob: r.blob, size: r.blob.size };
-  consText(p, { t: 'case', id, size: r.blob.size, count: r.count, desc: (se && se.modality ? se.modality + ' ' : '') + (scope === 'study' ? 'study' : (se && se.desc) || 'series') });
-  consProgress(p, 0, 'Waiting for ' + p.name + ' to accept');
-}
-async function consStream(p) {
-  const s = p.sending, dc = p.dc, CH = 64 * 1024; consText(p, { t: 'begin', id: s.id });
-  for (let o = 0; o < s.size; o += CH) {
-    if (p.state !== 'open' || p.sending !== s) return;
-    if (dc.bufferedAmount > 8 * CH * 16) await new Promise(res => { const f = () => { dc.removeEventListener('bufferedamountlow', f); res(); }; dc.addEventListener('bufferedamountlow', f); });
-    dc.send(await s.blob.slice(o, Math.min(s.size, o + CH)).arrayBuffer());
-    if ((o / CH) % 16 === 0) consProgress(p, o / s.size, 'Sending');
+  if (m.t === 'chat') { c.chat.push({ from: c.name, text: String(m.text || '').slice(0, 2000) }); if (CONS.open !== c || $('#consChat').hidden) c.unread++; consChatDraw(); consUI(); }
+  else if (m.t === 'case') { if (r && r.id === m.id) return; c.inbox = { id: m.id, count: +m.count || 0, desc: String(m.desc || ''), got: 0, cur: null, ask: true, q: Promise.resolve(), caseId: 'c' + (++CONS.cid), first: true, t0: 0 }; consChatOpen(c, true); consChatDraw(); }
+  else if (m.t === 'f') {
+    if (!r || r.id !== m.id || r.ask) return;
+    if (m.n === r.got && !r.busy) r.cur = { n: m.n, len: +m.len, m: m.m, parts: [], recv: 0 };
+    else { r.cur = null; if (m.n < r.got) consText(c, { t: 'ack', id: r.id, n: m.n }); else if (m.n > r.got && !r.busy) consText(c, { t: 'resume', id: r.id, have: r.got }); } // a file again (already here), or one missed
   }
-  consText(p, { t: 'end', id: s.id }); p.sending = null; consProgress(p, -1); consNote(p, 'Case sent to ' + p.name);
+  else if (m.t === 'skip') { if (r && r.id === m.id && m.n === r.got) r.q = r.q.then(() => { r.got++; consText(c, { t: 'ack', id: r.id, n: m.n }); consRecvDone(c, r); }); }
+  else if (m.t === 'ack') { const o = c.out; if (o && o.id === m.id) { o.acked = Math.max(o.acked, m.n + 1); o.wake && o.wake(); consProgress(c, o.acked / o.plan.items.length, 'Sending ' + o.acked + ' / ' + o.plan.items.length + consRate(o));
+      if (o.acked >= o.plan.items.length) { const sec = (performance.now() - o.t0) / 1000; consNote(c, 'Case sent: ' + o.acked + ' images, ' + (o.bytes / 1048576).toFixed(0) + ' MB (packed from ' + (o.raw / 1048576).toFixed(0) + ' MB) in ' + Math.round(sec) + ' s (' + (o.bytes / 1048576 / Math.max(0.1, sec)).toFixed(2) + ' MB/s' + (c.route ? ', ' + c.route : '') + ')'); c.out = null; consProgress(c, -1); } } }
+  else if (m.t === 'accept') { const o = c.out; if (o && o.id === m.id) { o.go = true; o.t0 = performance.now(); consPump(c); } }
+  else if (m.t === 'resume') { const o = c.out; if (o && o.id === m.id) { o.next = o.acked = Math.max(0, +m.have || 0); o.go = true; consPump(c); } }
+  else if (m.t === 'decline') { if (c.out && c.out.id === m.id) { c.out = null; consNote(c, c.name + ' declined the case'); consProgress(c, -1); } }
+  else if (m.t === 'bye') consEnd(c);
 }
-function consProgress(p, f, label) {
-  if (CONS.open !== p) return; const e = $('#consProg');
-  if (f < 0) { e.hidden = true; return; } e.hidden = false; e.querySelector('span').textContent = label + (f > 0 ? ' ' + Math.round(f * 100) + '%' : '…'); e.querySelector('i').style.width = Math.round(f * 100) + '%';
+async function consIngestFile(c, r, f, data) {
+  r.busy = false;
+  if (c.inbox !== r || f.n !== r.got) return;
+  let b = null; try { b = await consUnpack(f.m, data); } catch (e) { b = null; }
+  try {
+    if (b) { const res = addBuffer(b.buffer.byteLength === b.length ? b.buffer : b.slice().buffer, 'case-' + f.n); if (res) for (const s of res.all) { s.__consCase = r.caseId; } }
+  } catch (e) { }
+  if (!c.cases.includes(r.caseId)) c.cases.push(r.caseId);
+  r.got++; consText(c, { t: 'ack', id: r.id, n: f.n });
+  consRecvDone(c, r);
 }
-function consChatOpen(p, quiet) { CONS.open = p; p.unread = 0; $('#consChat').hidden = false; $('#consWho').textContent = p.name; consChatDraw(); consUI(); if (!quiet && innerWidth > 700) $('#consMsg').focus(); }
+function consRecvDone(c, r) { // the case grows on screen as it arrives: the first images show at once
+  const now = performance.now(), mine = () => S.series.filter(s => s.__consCase === r.caseId);
+  if (r.first && mine().length) {
+    r.first = false; finishLoad();
+    const main = mine().sort((a, b) => b.images.length - a.images.length)[0];
+    if (S.cmps.length || S.rf) { S.cmps = []; S.rf = null; cmpLayout(); } if (S.vol) mprToggle(false);
+    selectSeries(S.series.indexOf(main)); const ph = S.series.find(s => s.uid === 'sample-phantom'); if (ph) closeSeries([ph]);
+    r.tUI = now; render();
+  } else if (now - (r.tUI || 0) > 700 || r.got >= r.count) {
+    r.tUI = now; const keep = cur(), touched = finishLoad(), se = curSeries();
+    if (keep && se && touched.includes(se)) { const i = se.images.indexOf(keep); if (i >= 0) S.idx = i; }
+    render();
+  }
+  consProgress(c, r.got / Math.max(1, r.count), 'Receiving ' + r.got + ' / ' + r.count);
+  if (r.got >= r.count) { c.inbox = null; consProgress(c, -1); consNote(c, 'Case received: ' + r.got + ' images. It closes when the conversation ends.'); if (typeof fuseUI === 'function') fuseUI(); }
+}
+function consProgress(c, f, label) {
+  c.prog = f < 0 ? null : { f, label }; if (CONS.open !== c) return; const e = $('#consProg');
+  if (f < 0) { e.hidden = true; return; } e.hidden = false; e.querySelector('span').textContent = label + (f > 0 && !/\d+ \/ \d+/.test(label) ? ' ' + Math.round(f * 100) + '%' : ''); e.querySelector('i').style.width = Math.round(f * 100) + '%';
+}
+function consChatOpen(c, quiet) { CONS.open = c; c.unread = 0; $('#consChat').hidden = false; $('#consWho').textContent = c.name; consChatDraw(); consUI(); if (c.prog) consProgress(c, c.prog.f, c.prog.label); else $('#consProg').hidden = true; if (!quiet && innerWidth > 700) $('#consMsg').focus(); }
 function consChatDraw() {
-  const p = CONS.open; if (!p) return; const box = $('#consLog');
-  const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
-  box.innerHTML = p.chat.map(m => m.sys ? '<div class="cm sys">' + esc(m.text) + '</div>' : '<div class="cm ' + (m.from === CONS.me ? 'me' : 'them') + '">' + esc(m.text) + '</div>').join('');
-  const r = p.inbox;
-  if (r && r.ask) box.insertAdjacentHTML('beforeend', '<div class="cm ask"><b>' + esc(p.name) + ' sent a case</b><br>' + esc(r.desc) + ' · ' + r.count + ' images · ' + (r.size / 1048576).toFixed(r.size < 1e7 ? 1 : 0) + ' MB<div class="ask-b"><button class="btn primary" data-a="open">Open</button><button class="btn" data-a="no">Decline</button></div></div>');
+  const c = CONS.open; if (!c) return; const box = $('#consLog');
+  const esc = s => String(s).replace(/[&<>]/g, x => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[x]);
+  box.innerHTML = c.chat.map(m => m.sys ? '<div class="cm sys">' + esc(m.text) + '</div>' : '<div class="cm ' + (m.from === CONS.me ? 'me' : 'them') + '">' + esc(m.text) + '</div>').join('');
+  const r = c.inbox;
+  if (r && r.ask) box.insertAdjacentHTML('beforeend', '<div class="cm ask"><b>' + esc(c.name) + ' sent a case</b><br>' + esc(r.desc) + ' · ' + r.count + ' images<div class="ask-b"><button class="btn primary" data-a="open">Open</button><button class="btn" data-a="no">Decline</button></div></div>');
   box.scrollTop = box.scrollHeight;
-  $('#consState').textContent = p.state === 'open' ? 'connected' : p.state === 'connecting' ? 'connecting…' : '';
+  $('#consState').textContent = c.state === 'open' ? 'connected' : c.state === 'reconnecting' ? 'reconnecting…' : c.state === 'calling' ? 'calling…' : '';
 }
 function consUI() { // the chat button in the top bar, with unread messages
   const b = $('#btnChat'); if (!b) return;
-  const n = [...CONS.peers.values()].reduce((a, p) => a + p.unread, 0), any = CONS.peers.size > 0;
+  const n = [...CONS.peers.values()].reduce((a, c) => a + c.unread, 0), any = CONS.peers.size > 0;
   b.hidden = !any; b.querySelector('b').textContent = n ? String(n) : ''; b.querySelector('b').hidden = !n;
-  const L = $('#consPeers'); if (L) L.innerHTML = [...CONS.peers.values()].map(p => '<button class="item" type="button" data-id="' + p.id + '">' + p.name.replace(/[&<>]/g, '') + ' · ' + (p.state === 'open' ? 'connected' : !p.answered ? (p.away ? 'calling… (not online yet)' : 'calling…') : 'connecting (' + p.pc.iceConnectionState + ')…') + (p.unread ? ' (' + p.unread + ' new)' : '') + '</button>').join('');
-  const on = $('#consOnline'); if (on) { on.textContent = CONS.online ? 'Go offline' : 'Go online'; on.classList.toggle('primary', !CONS.online); }
+  const st = c => c.state === 'open' ? 'connected' : c.state === 'reconnecting' ? 'reconnecting…' : !c.answered ? (c.away ? 'calling… (not online yet)' : 'calling…') : 'connecting (' + (c.pc ? c.pc.iceConnectionState : '') + ')…';
+  const L = $('#consPeers'); if (L) L.innerHTML = [...CONS.peers.values()].map(c => '<button class="item" type="button" data-id="' + c.id + '">' + c.name.replace(/[&<>]/g, '') + ' · ' + st(c) + (c.unread ? ' (' + c.unread + ' new)' : '') + '</button>').join('');
+  const on = $('#consOnline'); if (on) { on.textContent = CONS.online || CONS.want ? 'Go offline' : 'Go online'; on.classList.toggle('primary', !(CONS.online || CONS.want)); }
   const rc = $('#consRecent'); if (rc) rc.innerHTML = (consLS('svRecent') || '').split('\n').filter(Boolean).map(n => '<button class="chip" type="button">' + n.replace(/[&<>"]/g, '') + '</button>').join('');
+  if (CONS.open && !$('#consChat').hidden) consChatDraw();
 }
 function consSheet() {
   $('#consName').value = CONS.me || consLS('svName') || ''; consUI();
-  if (!CONS.ws) consStatus(window.claude && window.claude.use ? 'This works in the Sliceview app (the GitHub version), not inside the Claude link: Claude blocks connections to other phones' : window.RTCPeerConnection ? 'Offline' : 'This browser cannot connect to other phones');
+  if (!CONS.ws && !CONS.want) consStatus(window.claude && window.claude.use ? 'This works in the Sliceview app (the GitHub version), not inside the Claude link: Claude blocks connections to other phones' : window.RTCPeerConnection ? 'Offline' : 'This browser cannot connect to other phones');
   openSheet('#sheetCons');
 }
 $('#btnCons').addEventListener('click', () => { $('#sheetMore').hidden = true; consSheet(); });
-$('#consOnline').addEventListener('click', () => { if (CONS.online || CONS.ws) consGoOffline(); else consGoOnline($('#consName').value); });
+$('#consOnline').addEventListener('click', () => { if (CONS.online || CONS.want) consGoOffline(); else { consGoOnline($('#consName').value); if (CONS.want) consKeepAwake(true); } });
 $('#consCall').addEventListener('click', () => { consCall($('#consTo').value); });
 $('#consTo').addEventListener('keydown', e => { if (e.key === 'Enter') consCall($('#consTo').value); });
 $('#consRecent').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { $('#consTo').value = b.textContent; consCall(b.textContent); } });
-$('#consPeers').addEventListener('click', e => { const b = e.target.closest('button'); const p = b && CONS.peers.get(b.dataset.id); if (p) { $('#sheetCons').hidden = true; consChatOpen(p); } });
-$('#btnChat').addEventListener('click', () => { const p = CONS.open || [...CONS.peers.values()].sort((a, b) => b.unread - a.unread)[0]; if (!p) return; if (!$('#consChat').hidden && CONS.open === p) { $('#consChat').hidden = true; return; } consChatOpen(p); });
+$('#consPeers').addEventListener('click', e => { const b = e.target.closest('button'); const c = b && CONS.peers.get(b.dataset.id); if (c) { $('#sheetCons').hidden = true; consChatOpen(c); } });
+$('#btnChat').addEventListener('click', () => { const c = CONS.open || [...CONS.peers.values()].sort((a, b) => b.unread - a.unread)[0]; if (!c) return; if (!$('#consChat').hidden && CONS.open === c) { $('#consChat').hidden = true; return; } consChatOpen(c); });
 $('#consHide').addEventListener('click', () => { $('#consChat').hidden = true; });
-$('#consEnd').addEventListener('click', () => { const p = CONS.open; if (!p) return; consText(p, { t: 'bye' }); consSend(p.id, 'LEAVE'); consClose(p, true); });
-$('#consForm').addEventListener('submit', e => { e.preventDefault(); const p = CONS.open, i = $('#consMsg'), t = i.value.trim(); if (!p || !t || p.state !== 'open') return; consText(p, { t: 'chat', text: t }); p.chat.push({ from: CONS.me, text: t }); i.value = ''; consChatDraw(); });
+$('#consEnd').addEventListener('click', () => { const c = CONS.open; if (!c) return; consText(c, { t: 'bye' }); consEnd(c, true); });
+$('#consForm').addEventListener('submit', e => { e.preventDefault(); const c = CONS.open, i = $('#consMsg'), t = i.value.trim(); if (!c || !t) return; if (!consText(c, { t: 'chat', text: t })) { consNote(c, 'Not sent: reconnecting, try again in a moment'); return; } c.chat.push({ from: CONS.me, text: t }); i.value = ''; consChatDraw(); });
 $('#consChat').querySelector('.cons-send').addEventListener('click', e => { const b = e.target.closest('button'); if (b && CONS.open && CONS.open.state === 'open') consOffer(CONS.open, b.dataset.s); });
-$('#consLog').addEventListener('click', e => { const b = e.target.closest('button[data-a]'); const p = CONS.open; if (!b || !p || !p.inbox) return;
-  p.inbox.ask = false; if (b.dataset.a === 'open') { consText(p, { t: 'accept', id: p.inbox.id }); consProgress(p, 0, 'Receiving'); } else { consText(p, { t: 'decline', id: p.inbox.id }); p.inbox = null; }
+$('#consLog').addEventListener('click', e => { const b = e.target.closest('button[data-a]'); const c = CONS.open; if (!b || !c || !c.inbox) return;
+  const r = c.inbox; r.ask = false;
+  if (b.dataset.a === 'open') { consText(c, { t: 'accept', id: r.id }); consProgress(c, 0, 'Receiving 0 / ' + r.count); consNote(c, 'Opening as it arrives…'); } else { consText(c, { t: 'decline', id: r.id }); c.inbox = null; }
   consChatDraw(); });
-addEventListener('pagehide', () => { for (const p of CONS.peers.values()) consText(p, { t: 'bye' }); });
-document.addEventListener('visibilitychange', () => { // back in Sliceview (after WhatsApp, the lock screen...): online again at once
-  if (document.visibilityState === 'visible' && CONS.want && (!CONS.ws || CONS.ws.readyState > 1)) { clearTimeout(CONS.rt); CONS.ws = null; consGoOnline(CONS.me); }
+addEventListener('pagehide', e => { if (!e.persisted) for (const c of CONS.peers.values()) consText(c, { t: 'bye' }); });
+document.addEventListener('visibilitychange', () => { // back in Sliceview (after WhatsApp, the lock screen...): online again at once, conversations restored
+  if (document.visibilityState !== 'visible' || !CONS.want) return;
+  if (!CONS.ws || CONS.ws.readyState > 1) { clearTimeout(CONS.rt); CONS.ws = null; consGoOnline(CONS.me); }
+  else for (const c of CONS.peers.values()) if (c.state === 'reconnecting' && consDialer(c)) consRtc(c, true);
 });
 if (consLS('svName')) CONS.me = consLS('svName');
+// online again by itself when Sliceview opens, if you were online when you left it; the inaudible sound that keeps
+// it reachable in the background starts at your first touch (a browser plays sound only after one)
+if (consLS('svOnline') && CONS.me && window.RTCPeerConnection && !(window.claude && window.claude.use)) setTimeout(() => { if (!CONS.want) consGoOnline(CONS.me); }, 1500);
+addEventListener('pointerdown', () => { if (CONS.want && (!CONS.awake || CONS.awake.paused)) consKeepAwake(true); }, { capture: true, passive: true });
 /* ---------- reference lines (as in RadiAnt): in Compare, where the slice of each other view cuts this one ----------
    Only between series of the same study in different orientations (an axial on a coronal or sagittal, a scout). */
 const geoIm = im => im && im.fuse ? im.fuse.ct : im;
