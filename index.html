@@ -660,7 +660,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1406</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1452</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -4667,10 +4667,14 @@ async function anonExport(scope, onStep) {
    Peer to peer: the two phones find each other through the free PeerJS introduction service (only connection details
    pass through it), then the anonymised case and the chat go directly between them, encrypted (WebRTC).
    Nothing is stored anywhere: a received case is open only while the conversation lasts, and End wipes it. */
-const CONS = { me: '', ws: null, online: false, peers: new Map(), hb: 0, open: null, cid: 0 };
+const CONS = { me: '', ws: null, online: false, want: false, retry: 0, rt: 0, peers: new Map(), hb: 0, open: null, cid: 0 };
 const consKey = n => 'sliceview-' + n.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const consLS = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } };
-const CONS_ICE = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' }] };
+// the relay (Metered, free 20 GB a month): used only when the phones cannot reach each other directly (mobile data);
+// it passes the encrypted data across and keeps nothing
+const CONS_TURN = { username: '708999c0e60e325dddebc5a9', credential: 'GGcElWZno00lWJ70' };
+const CONS_ICE = { iceServers: [{ urls: 'stun:stun.relay.metered.ca:80' }, { urls: 'stun:stun.l.google.com:19302' },
+  Object.assign({ urls: ['turn:standard.relay.metered.ca:80', 'turn:standard.relay.metered.ca:80?transport=tcp', 'turn:standard.relay.metered.ca:443', 'turns:standard.relay.metered.ca:443?transport=tcp'] }, CONS_TURN)] };
 function consSignalUrl(id) {
   const base = consLS('svSignal') || 'wss://0.peerjs.com:443/peerjs?key=peerjs';
   return base + '&id=' + encodeURIComponent(id) + '&token=' + Math.random().toString(36).slice(2) + '&version=1.5.4';
@@ -4678,42 +4682,59 @@ function consSignalUrl(id) {
 function consStatus(t) { const e = $('#consStatus'); if (e) e.textContent = t; }
 function consGoOnline(name) {
   name = (name || '').trim(); if (consKey(name).length < 13) { consStatus('Choose a name of at least 3 letters'); return; }
-  consGoOffline(true); CONS.me = name; consLS('svName', name);
+  consGoOffline(true); CONS.me = name; consLS('svName', name); CONS.want = true;
   let ws; try { ws = new WebSocket(consSignalUrl(consKey(name))); } catch (e) { consStatus('Could not reach the introduction service'); return; }
-  CONS.ws = ws; consStatus('Connecting…');
+  CONS.ws = ws; consStatus(CONS.retry ? 'Reconnecting…' : 'Connecting…');
   ws.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } consSignal(m); };
-  ws.onclose = () => { if (CONS.ws !== ws) return; CONS.ws = null; CONS.online = false; clearInterval(CONS.hb); consStatus('Offline'); consUI(); };
-  ws.onerror = () => consStatus('Could not reach the introduction service (check the internet connection)');
+  ws.onclose = ev => { // dropped (a network change, the phone sleeping): back again by itself while you want to be online
+    if (CONS.ws !== ws) return; CONS.ws = null; CONS.online = false; clearInterval(CONS.hb); consUI();
+    if (!CONS.want) { consStatus('Offline'); return; }
+    const wait = Math.min(30, 2 ** Math.min(CONS.retry++, 5)); consStatus('Lost the introduction service (' + (ev.code || '?') + '); trying again in ' + wait + ' s…');
+    clearTimeout(CONS.rt); CONS.rt = setTimeout(() => { if (CONS.want && !CONS.ws) consGoOnline(CONS.me); }, wait * 1000);
+  };
+  ws.onerror = () => { if (!CONS.online) consStatus('Could not reach the introduction service (check the internet connection)'); };
   CONS.hb = setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'HEARTBEAT' })); }, 5000);
 }
 function consGoOffline(quiet) {
-  clearInterval(CONS.hb); const ws = CONS.ws; CONS.ws = null; CONS.online = false;
+  clearInterval(CONS.hb); clearTimeout(CONS.rt); const ws = CONS.ws; CONS.ws = null; CONS.online = false; if (!quiet) { CONS.want = false; CONS.retry = 0; }
   if (ws) try { ws.close(); } catch (e) { }
   if (!quiet) { consStatus('Offline'); consUI(); }
 }
 const consSend = (dst, type, payload) => { if (CONS.ws && CONS.ws.readyState === 1) CONS.ws.send(JSON.stringify({ type, payload, dst })); };
 function consSignal(m) {
-  if (m.type === 'OPEN') { CONS.online = true; consStatus('Online as ' + CONS.me + ': colleagues can reach you by this name'); consUI(); return; }
+  if (m.type === 'OPEN') { CONS.online = true; CONS.retry = 0; consStatus('Online as ' + CONS.me + ': colleagues can reach you by this name'); consUI();
+    for (const p of [...CONS.peers.values()]) if (p.caller && p.state === 'connecting') { consClose(p, true); consPeer(p.id, p.name, true); } // calls waiting: sent again
+    return; }
   if (m.type === 'ID-TAKEN') { consGoOffline(true); consStatus('That name is in use by someone else now: choose another'); consUI(); return; }
   if (m.type === 'ERROR' || m.type === 'INVALID-KEY') { consStatus('The introduction service said: ' + ((m.payload && m.payload.msg) || m.type)); return; }
-  if (m.type === 'EXPIRE') { const p = [...CONS.peers.values()].find(x => x.id === m.src); if (p && p.state !== 'open') { p.state = 'gone'; consStatus(p.name + ' is not online now'); consClose(p, true); } return; }
+  if (m.type === 'EXPIRE') { const p = [...CONS.peers.values()].find(x => x.id === m.src); if (p && p.state !== 'open') { consStatus(p.name + ' is not online now (check the name is exactly the one shown on their phone)'); consClose(p, true); } return; }
   if (m.type === 'LEAVE') { const p = [...CONS.peers.values()].find(x => x.id === m.src); if (p) consClose(p, true, 'left'); return; }
   const pl = m.payload || {};
   if (m.type === 'OFFER') {
     const name = String(pl.from || m.src.replace(/^sliceview-/, '')).slice(0, 40);
-    const old = CONS.peers.get(m.src); if (old) consClose(old, true);
+    const old = CONS.peers.get(m.src);
+    if (old && old.caller && old.state === 'connecting' && consKey(CONS.me) < m.src) return; // both called at once: one call is kept (the other phone answers ours)
+    if (old) consClose(old, true);
     const p = consPeer(m.src, name, false);
     p.pc.setRemoteDescription(pl.sdp).then(() => p.pc.createAnswer()).then(a => p.pc.setLocalDescription(a)).then(() => consSend(m.src, 'ANSWER', { sdp: p.pc.localDescription, connectionId: pl.connectionId, from: CONS.me })).then(() => consFlush(p)).catch(() => consClose(p, true));
     return;
   }
   const p = CONS.peers.get(m.src); if (!p) return;
+  if (m.type === 'ANSWER') { p.answered = true; consUI(); }
   if (m.type === 'ANSWER') p.pc.setRemoteDescription(pl.sdp).then(() => consFlush(p)).catch(() => consClose(p, true));
   else if (m.type === 'CANDIDATE' && pl.candidate) { if (p.pc.remoteDescription) p.pc.addIceCandidate(pl.candidate).catch(() => { }); else p.cands.push(pl.candidate); }
 }
 function consFlush(p) { for (const c of p.cands.splice(0)) p.pc.addIceCandidate(c).catch(() => { }); }
 function consPeer(id, name, caller) {
-  const pc = new RTCPeerConnection(CONS_ICE), p = { id, name, pc, dc: null, cands: [], chat: [], state: 'connecting', unread: 0, inbox: null, sending: null, cases: [] };
+  const pc = new RTCPeerConnection(CONS_ICE), p = { id, name, pc, dc: null, cands: [], chat: [], state: 'connecting', unread: 0, inbox: null, sending: null, cases: [], caller, answered: !caller, t0: Date.now() };
   CONS.peers.set(id, p);
+  p.timer = setTimeout(() => { // no connection after 30 s: say why, and stop
+    if (p.state !== 'connecting') return;
+    const ice = pc.iceConnectionState;
+    consStatus(!CONS.online ? 'Could not connect to ' + name + ': the introduction service was lost' : !p.answered ? name + ' did not answer: is Sliceview open and online on their phone, with exactly that name?' : 'Could not connect to ' + name + ': no direct route between the phones (' + ice + '). Try both phones on the same Wi-Fi, or both on mobile data');
+    consClose(p, true);
+  }, 30000);
+  pc.oniceconnectionstatechange = () => consUI();
   pc.onicecandidate = e => { if (e.candidate) consSend(id, 'CANDIDATE', { candidate: e.candidate, connectionId: 'sv' }); };
   pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') { consNote(p, 'The connection failed (some networks block direct connections; try the same Wi-Fi)'); consClose(p, true); } };
   const wire = dc => { p.dc = dc; dc.binaryType = 'arraybuffer'; dc.bufferedAmountLowThreshold = 1 << 20;
@@ -4734,7 +4755,7 @@ function consCall(name) {
   consStatus('Calling ' + name + '…'); consPeer(id, name, true); consUI();
 }
 function consClose(p, quiet, why) {
-  if (p.state === 'closed') return; p.state = 'closed';
+  if (p.state === 'closed') return; p.state = 'closed'; clearTimeout(p.timer);
   try { p.dc && p.dc.close(); } catch (e) { } try { p.pc.close(); } catch (e) { }
   CONS.peers.delete(p.id);
   consWipe(p); // the cases from this conversation go
@@ -4807,7 +4828,7 @@ function consUI() { // the chat button in the top bar, with unread messages
   const b = $('#btnChat'); if (!b) return;
   const n = [...CONS.peers.values()].reduce((a, p) => a + p.unread, 0), any = CONS.peers.size > 0;
   b.hidden = !any; b.querySelector('b').textContent = n ? String(n) : ''; b.querySelector('b').hidden = !n;
-  const L = $('#consPeers'); if (L) L.innerHTML = [...CONS.peers.values()].map(p => '<button class="item" type="button" data-id="' + p.id + '">' + p.name.replace(/[&<>]/g, '') + ' · ' + (p.state === 'open' ? 'connected' : 'connecting…') + (p.unread ? ' (' + p.unread + ' new)' : '') + '</button>').join('');
+  const L = $('#consPeers'); if (L) L.innerHTML = [...CONS.peers.values()].map(p => '<button class="item" type="button" data-id="' + p.id + '">' + p.name.replace(/[&<>]/g, '') + ' · ' + (p.state === 'open' ? 'connected' : !p.answered ? 'calling…' : 'connecting (' + p.pc.iceConnectionState + ')…') + (p.unread ? ' (' + p.unread + ' new)' : '') + '</button>').join('');
   const on = $('#consOnline'); if (on) { on.textContent = CONS.online ? 'Go offline' : 'Go online'; on.classList.toggle('primary', !CONS.online); }
   const rc = $('#consRecent'); if (rc) rc.innerHTML = (consLS('svRecent') || '').split('\n').filter(Boolean).map(n => '<button class="chip" type="button">' + n.replace(/[&<>"]/g, '') + '</button>').join('');
 }
