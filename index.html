@@ -321,7 +321,7 @@ body.focus > header.bar, body.focus .presets-row, body.focus .dock { display: no
 .keys td { padding: 5px 0; border-top: 1px solid var(--line); vertical-align: top; }
 .keys td:first-child { width: 44%; padding-right: 12px; white-space: nowrap; }
 .keys kbd { font: 12px ui-monospace, Menlo, Consolas, monospace; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; }
-.item { display: flex; gap: 12px; align-items: center; text-align: left; width: 100%; min-height: 64px; padding: 8px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--line); }
+.item { box-sizing: border-box; display: flex; gap: 12px; align-items: center; text-align: left; width: 100%; min-height: 64px; padding: 8px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--line); }
 .item[aria-current="true"] { border-color: var(--accent); }
 .item canvas { width: 48px; height: 48px; border-radius: 6px; background: #000; flex: none; }
 .item .t { min-width: 0; flex: 1; }
@@ -332,7 +332,8 @@ body.focus > header.bar, body.focus .presets-row, body.focus .dock { display: no
 .field select { min-height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); padding: 0 10px; font: inherit; width: 100%; }
 .field input { min-height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); padding: 0 12px; font: inherit; -webkit-user-select: text; user-select: text; }
 .note { color: var(--muted); font-size: 12px; margin: 0; }
-.note.owner { margin-top: 6px; line-height: 1.5; }
+.note.owner { position: static; white-space: normal; text-align: left; pointer-events: auto; padding: 0; margin: 4px 2px 0; line-height: 1.5; font-size: 12px; }
+#sheetMore #appVersion { margin: 14px 2px 0; padding-top: 12px; border-top: 1px solid var(--line); text-align: left; }
 .err { color: var(--danger); font-size: 13px; margin: 0; white-space: pre-line; }
 .anon .pii { visibility: hidden; }
 /* Phones (and small landscape screens): everything the image does not need gets smaller or moves to More. */
@@ -680,7 +681,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-0627</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-0636</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -4830,6 +4831,7 @@ function consGoOnline(name) {
   ws.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } if (m.type !== 'HEARTBEAT' && m.type !== 'CANDIDATE') consLog('got ' + m.type + (m.src ? ' from ' + m.src.replace(/^sliceview-/, '') : '') + (m.payload && m.payload.msg ? ': ' + m.payload.msg : '')); consSignal(m); };
   ws.onclose = ev => { // dropped (a network change, the phone sleeping): back again by itself while you want to be online
     if (CONS.ws !== ws) return; CONS.ws = null; CONS.online = false; clearInterval(CONS.hb); consUI(); consLog('closed ' + ev.code + (ev.reason ? ' ' + ev.reason : ''));
+    if (PRES.sentAt && Date.now() - PRES.sentAt < 5000) { PRES.off = true; consLog('online checks off (the service dropped the connection)'); } // never a loop of drops
     if (CONS.err) { consStatus(CONS.err); CONS.err = ''; }
     if (!CONS.want) { consStatus('Offline'); return; }
     const wait = Math.min(30, 2 ** Math.min(CONS.retry++, 5)); consStatus('Reconnecting to the introduction service in ' + wait + ' s…');
@@ -4860,7 +4862,7 @@ function consSignal(m) {
   if (m.type === 'EXPIRE') { presSet(m.src, false); const c = CONS.peers.get(m.src); if (c && c.state !== 'open') { c.away = true; if (!c.ever) consStatus(c.name + ' is not online yet: still calling (Sliceview must be open on their phone, online with exactly that name)'); consUI(); } return; }
   if (m.type === 'LEAVE') return; // their link to the service dropped: the conversation waits for them
   const pl = m.payload || {};
-  if (m.type === 'CANDIDATE' && pl.presence) { if (pl.presence === 1) consSend(m.src, 'CANDIDATE', { presence: 2, connectionId: 'pres' }); presSet(m.src, true); return; } // who is online: asked, and answered
+  if (m.type === 'CANDIDATE' && /^dc_svp[12]/.test(String(pl.connectionId || ''))) { if (pl.connectionId.startsWith('dc_svp1')) presMsg(m.src, 2); presSet(m.src, true); return; } // who is online: asked, and answered
   if (m.type === 'OFFER') {
     if (!pl.sdp) return;
     const name = String((pl.metadata && pl.metadata.from) || m.src.replace(/^sliceview-/, '')).slice(0, 40); presSet(m.src, true);
@@ -5331,7 +5333,7 @@ function consUI() { // the chat button in the top bar, with unread messages
   const on = $('#consOnline'); if (on) { on.textContent = CONS.online || CONS.want ? 'Go offline' : 'Go online'; on.classList.toggle('primary', !(CONS.online || CONS.want)); }
   const rc = $('#consRecent'); if (rc) { const names = presNames(), st = n => presState(consKey(n));
     rc.innerHTML = names.map(n => [n, st(n)]).sort((a, b) => (b[1].on === true) - (a[1].on === true)).map(([n, p]) => { const e = n.replace(/[&<>"]/g, '');
-      return '<button class="chip" type="button" data-n="' + e + '" title="' + (p.on === true ? 'Online now' : p.on === false ? 'Offline' : 'Checking…') + '"><i class="pdot' + (p.on === true ? ' on' : p.on === false ? ' off' : '') + '"></i>' + e + (p.on === true ? '' : p.on === false && p.seen ? '<small>' + presAgo(p.seen) + '</small>' : '') + '</button>'; }).join(''); }
+      return '<button class="chip" type="button" data-n="' + e + '" title="' + (p.on === true ? 'Online now' : p.on === false ? 'Offline' : 'Checking…') + '">' + (PRES.off && p.on !== true ? '' : '<i class="pdot' + (p.on === true ? ' on' : p.on === false ? ' off' : '') + '"></i>') + e + (p.on === true ? '' : p.on === false && p.seen ? '<small>' + presAgo(p.seen) + '</small>' : '') + '</button>'; }).join(''); }
   if (CONS.open && !$('#consChat').hidden) consChatDraw();
 }
 /* ---------- Who is online: a green dot on a colleague's name while their Sliceview is open and connected ---------- */
@@ -5346,14 +5348,17 @@ function presSet(k, on) {
   if (on) { const s = presSeen(); s[k] = Date.now(); const keys = Object.keys(s); if (keys.length > 40) delete s[keys[0]]; consLS('svSeen', JSON.stringify(s)); }
   if (was !== on) consUI();
 }
+function presMsg(dst, kind) { // shaped exactly like the service's own messages (anything else and it drops the connection)
+  consSend(dst, 'CANDIDATE', { candidate: { candidate: '', sdpMid: '0', sdpMLineIndex: 0, usernameFragment: null }, type: 'data', connectionId: 'dc_svp' + kind + Math.random().toString(36).slice(2, 9) });
+}
 function presPing(force) {
-  if (!CONS.online || $('#sheetCons').hidden || document.hidden) return;
+  if (PRES.off || !CONS.online || $('#sheetCons').hidden || document.hidden) return;
   const now = Date.now(), me = consKey(CONS.me || '');
   for (const n of presNames()) {
     const k = consKey(n); if (k === me || k === 'sliceview-') continue;
     const c = CONS.peers.get(k); if (c && c.state === 'open') continue;
     const p = PRES.get(k) || {}; if (!force && p.asked && now - p.asked < 15000) continue;
-    const t = p.asked = now; PRES.set(k, p); consSend(k, 'CANDIDATE', { presence: 1, connectionId: 'pres' });
+    const t = p.asked = now; PRES.set(k, p); PRES.sentAt = now; presMsg(k, 1);
     setTimeout(() => { const q = PRES.get(k); if (q && q.asked === t && !(q.lastOn >= t)) presSet(k, false); }, 7000);
   }
 }
