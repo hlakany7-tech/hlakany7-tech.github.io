@@ -678,7 +678,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.25-1508</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.25-1516</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -692,7 +692,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1508</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1516</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2459,12 +2459,13 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1508', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1516', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
   const secrets = () => { const out = new Set(); try { for (const se of (B ? B.series() : [])) for (const v of [se.patient, se.patientId, se.birth, se.dob]) if (v) { const t = String(v).trim(); if (t.length > 1) out.add(t); for (const w of t.split(/[\^\s,]+/)) if (w.length >= 3) out.add(w); } } catch (e) { } return [...out].sort((a, b) => b.length - a.length); };
-  const clean = m => { let t = String(m == null ? '' : m).replace(/\s+/g, ' ').slice(0, 500); for (const x of secrets()) t = t.split(x).join('[…]'); return t; };
+  const clean = m => { let t = String(m == null ? '' : m).replace(/\s+/g, ' ').slice(0, 500); for (const x of secrets()) t = t.split(x).join('[…]');
+    return t.replace(/[^\s\/\\:'"]+\.(zip|dcm|dicom|ima|img|rar|7z|tar|gz)\b/gi, '[file].$1'); }; // file names often carry the patient's name
   function add(k, m, now) { log.push({ t: Date.now(), s: sid, k, m: clean(m) }); if (log.length > MAX + 60) log = log.slice(-MAX); if (now) save(); else if (!dirty) { dirty = true; setTimeout(save, 1500); } }
   const mb = v => Math.round(v / 1e6);
   function ctx() { try { return B ? B.ctx() : state; } catch (e) { return state; } } // what the app was doing: for a freeze or a crash
@@ -2486,7 +2487,7 @@ const FR = (() => {
   function report() {
     const z = n => String(n).padStart(2, '0'), d = t => { const x = new Date(t); return z(x.getDate()) + '/' + z(x.getMonth() + 1) + ' ' + z(x.getHours()) + ':' + z(x.getMinutes()) + ':' + z(x.getSeconds()); };
     let ss = '', out = ['Sliceview app report · version ' + V + ' · ' + d(Date.now()), 'Now: ' + clean(ctx()), ''];
-    for (const e of log.slice(-MAX)) { if (e.s !== ss) { ss = e.s; out.push('— session ' + ss); } out.push(d(e.t) + '  ' + e.k + '  ' + e.m); }
+    for (const e of log.slice(-MAX)) { if (e.s !== ss) { ss = e.s; out.push('— session ' + ss); } out.push(d(e.t) + '  ' + e.k + '  ' + clean(e.m)); } // cleaned again: entries kept by an older version too
     return out.join('\n');
   }
   return { add, save, ctx, report, doing: t => { state = t; }, bind: b => { B = b; state = 'running'; }, clear: () => { log = []; save(); } };
@@ -7250,6 +7251,7 @@ async function rdZip(r, name, st, depth) {
   if (depth === 0) makeRoom(list.reduce((s, en) => s + (en.usize || 0), 0), st.seen);
   st.total += list.length - 1;
   const fast = [], slow = [];
+  if (depth === 0) FR.add('zip', list.length + ' entries, ' + list.filter(en => en.method === 8).length + ' compressed; ' + (RD.ws && RD.ws.length ? RD.ws.length + ' readers' : 'no readers') + (RAW_DEFLATE ? '' : '; browser cannot unzip (Sliceview unzips)'), true);
   for (const en of list) {
     const nm = name + '/' + en.name;
     if (!(en.flags & 1) && (en.method === 0 || en.method === 8)) fast.push({ blob: r.blob, lho: en.offset, csize: en.csize, method: en.method, name: nm, depth: depth + 1, en, r });
@@ -7314,6 +7316,8 @@ let LOADSTAT = '', LIVE_ST = null; // LIVE_ST: the study being read now (its pro
 async function addFiles(files, opts) {
   const list = [...files]; if (!list.length) return;
   const st = { ok: 0, n: 0, total: list.length, bad: [], last: 0, seen: new Set(), t0: performance.now(), memN: 0 }; LIVE_ST = st;
+  FR.add('opening', list.length + ' file' + (list.length > 1 ? 's' : '') + ', ' + Math.round(list.reduce((a, f) => a + (f.size || 0), 0) / 1e6) + ' MB' + (list.length === 1 && /\.zip$/i.test(list[0].name) ? ' (a zip)' : ''), true);
+  const frIv = setInterval(() => { if (st.done) { clearInterval(frIv); return; } FR.add('loading', st.n + ' of ' + st.total + ' read, ' + st.ok + ' images, ' + Math.round((performance.now() - st.t0) / 1000) + ' s' + (st.bad.length ? ', ' + st.bad.length + ' failed' : ''), true); }, 10000); // where a slow opening stood
   const openMain = () => { // the largest series read so far, at its first slice
     const main = [...st.seen].sort((a, b) => (petLike(a) - petLike(b)) || ((isVenous(b) && b.images.length >= 16) - (isVenous(a) && a.images.length >= 16)) || (b.images.length - a.images.length))[0]; // a PET-CT opens on its CT; a CT with phases on its venous phase
     // a newly opened case starts on its own: one plain view (Compare and MPR close; the earlier case stays in Series)
