@@ -685,7 +685,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.25-2246</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.25-2259</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -699,7 +699,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-2246</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-2259</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2466,7 +2466,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-2246', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-2259', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -3184,10 +3184,14 @@ function draw() {
   if (gpu) ctx.clearRect(0, 0, S.W, S.H); else { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, S.W, S.H); }
   if (!img) { if (GLR) GLR.clear(); updateOverlay(); return; }
   let show = img;
-  if (!img.pixels && !img.preview && !img.err) { // nearest slice that is ready, while this one decodes
+  if (!img.pixels && !img.err) { // this slice is not sharp yet: while scrolling, the nearest SHARP slice is shown (never a blurry
+    // quick copy when a sharp one is near); stopped, it is this slice (its quick copy only for the moment it takes to sharpen)
     const ims = curSeries().images;
     const moving = performance.now() - (S.moved || 0) < SETTLE, reach = moving ? clamp(Math.ceil((S.vel || 0) / 15), 6, 80) : 6;
-    for (let d = 1; d <= reach && show === img; d++) for (const j of [S.idx - d * (S.dir || 1), S.idx + d * (S.dir || 1)]) { const o = ims[j]; if (o && (o.pixels || o.preview)) { show = o; break; } }
+    const held = moving || performance.now() - (S.moved || 0) < 900; // just stopped: the sharp picture stays up for the moment this slice takes to sharpen (no haze in between)
+    if (held) for (let d = 1; d <= reach && show === img; d++) for (const j of [S.idx - d * (S.dir || 1), S.idx + d * (S.dir || 1)]) { const o = ims[j]; if (o && o.pixels) { show = o; break; } }
+    if (held && show !== img && !moving) setTimeout(render, 120);
+    if (show === img && !img.preview) for (let d = 1; d <= reach && show === img; d++) for (const j of [S.idx - d * (S.dir || 1), S.idx + d * (S.dir || 1)]) { const o = ims[j]; if (o && (o.pixels || o.preview)) { show = o; break; } }
   }
   if (S.bodyFit) { // the body fit for a CT that has just opened: once the slices it is measured on can be read
     // (the slice in view, and a quarter, half and three quarters through; compressed slices take a moment to decode,
@@ -3198,6 +3202,7 @@ function draw() {
     if (!S.fit || !S.W) S.bodyFit = false; // zoomed or moved by hand meanwhile: left as it is
     else if ((ready || (late && need[0] && (need[0].pixels || need[0].preview))) && (seriesBody(se, cur()) || performance.now() - S.bodyFitT > 15000)) { S.bodyFit = false; fitBody(); } else if (late && !S.bodyFitR) { S.bodyFitR = setTimeout(() => { S.bodyFitR = 0; render(); }, 1000); } // not measurable yet: looked at again in a second
   }
+  S.shown = show; // (what is on screen: for the tests)
   const ready = show.pixels || show.preview;
   if (!ready && (img.err || !S.painted)) {
     if (gpu) GLR.clear();
@@ -3680,7 +3685,7 @@ function volPlan(se, minK = 0) {
   if (a.spp !== 1) return 'MPR is not available for colour images';
   if (im.some(x => x.rows !== a.rows || x.cols !== a.cols)) return 'MPR needs slices of the same size';
   if (a.iop && im.some(x => !x.iop || x.iop.some((v, i) => Math.abs(v - a.iop[i]) > 1e-3))) return 'MPR needs slices with the same orientation';
-  const vb = volBudget(); let k = minK; while (k < 4 && n * Math.ceil(a.cols / 2 ** k) * Math.ceil(a.rows / 2 ** k) * 2 > vb) k++;
+  const vb = (DEC.squeeze || 1) < 1 ? volBudget() : VOL_BUDGET; let k = minK; // full detail as before; smaller only after this device has actually run out of memory while (k < 4 && n * Math.ceil(a.cols / 2 ** k) * Math.ceil(a.rows / 2 ** k) * 2 > vb) k++;
   const w = Math.ceil(a.cols / 2 ** k), h = Math.ceil(a.rows / 2 ** k);
   const locs = im.map(x => x.location);
   let dz = a.thickness || 1;
@@ -5767,7 +5772,11 @@ function drawPane(C) {
   const v = C.view; if (!v || !v.W || !cur()) return;
   cmpMatch(C);
   const ims = C.se.images; let im = ims[C.idx], show = im;
-  if (!im.pixels && !im.preview) for (let d = 1; d < ims.length && show === im; d++) for (const j of [C.idx - d, C.idx + d]) { const o = ims[j]; if (o && (o.pixels || o.preview)) { show = o; break; } }
+  if (!im.pixels) { // as the main view: scrolling, the nearest sharp slice; stopped, this slice
+    const moving = performance.now() - (S.moved || 0) < 900;
+    if (moving) for (let d = 1; d <= 12 && show === im; d++) for (const j of [C.idx - d, C.idx + d]) { const o = ims[j]; if (o && o.pixels) { show = o; break; } }
+    if (show === im && !im.preview) for (let d = 1; d < ims.length && show === im; d++) for (const j of [C.idx - d, C.idx + d]) { const o = ims[j]; if (o && (o.pixels || o.preview)) { show = o; break; } }
+  }
   const src = show.pixels ? { data: show.pixels, w: show.cols, h: show.rows } : show.preview;
   const sh = cmpShared(C), wc = sh ? S.wc : C.wc, ww = sh ? S.ww : C.ww;
   const g = v.ctx; g.setTransform(S.dpr, 0, 0, S.dpr, 0, 0); g.clearRect(0, 0, v.W, v.H);
@@ -6878,7 +6887,7 @@ function decInit() {
   if (DEC.mode !== 'init') return;
   try {
     const url = URL.createObjectURL(new Blob([J2K_SRC], { type: 'text/javascript' }));
-    const n = clamp(navigator.hardwareConcurrency || 4, 2, LOWMEM ? 4 : 8); // each decoder holds its own memory: four at most on a phone or tablet
+    const n = clamp(navigator.hardwareConcurrency || 4, 2, 8); // (four on phones made slices stay blurry longer: back to one per core)
     for (let i = 0; i < n; i++) {
       const w = new Worker(url);
       decWire(w, url);
@@ -7073,14 +7082,10 @@ function pump() {
     }
     return; // full resolution waits until the scrolling pauses
   }
-  // 1b. paused: something to show for this exact slice
-  if (needP(c) && !go(c, 'p')) return;
-  // 2. full resolution for the slice on screen, then its neighbours, ahead first
+  // 1b/2. paused: the slice on screen at full quality straight away (no blurry quick copy first: it only showed haze
+  // before the sharp one), then the compared panes' slices, then the neighbours, ahead first
   if (needF(c) && !go(c, 'f')) return;
-  for (const q of CP) { // the compared series: their slice on screen first, then the neighbours
-    if (!cGo(q, q.C.idx)) return;
-    const im = q.ims[q.C.idx]; if (im && needF(im) && !go(im, 'f')) return;
-  }
+  for (const q of CP) { const im = q.ims[q.C.idx]; if (im && needF(im) && !go(im, 'f')) return; } // the compared series: their slice on screen
   for (const q of CP) for (const d of [1, -1, 2, -2]) { const im = q.ims[q.C.idx + d * dir]; if (im && needF(im) && !go(im, 'f')) return; }
   for (let d = 1; d <= 4; d++) { const i = idx + d * dir; if (needF(ims[i]) && !go(ims[i], 'f')) return; }
   for (let d = 1; d <= 2; d++) { const i = idx - d * dir; if (needF(ims[i]) && !go(ims[i], 'f')) return; }
@@ -7376,7 +7381,7 @@ function rdInit() {
   if (typeof Worker === 'undefined' || window.__noRd) return false; // (older browsers: the readers unpack with Sliceview's own code)
   try {
     const url = URL.createObjectURL(new Blob([RD_SRC], { type: 'text/javascript' }));
-    for (let i = 0; i < clamp((navigator.hardwareConcurrency || 4) - 2, 2, LOWMEM ? 4 : 6); i++) { // unpacking a zip is processor work: all but two cores (four at most on a phone or tablet: each holds a chunk of the zip)
+    for (let i = 0; i < clamp((navigator.hardwareConcurrency || 4) - 2, 2, 6); i++) { // unpacking a zip is processor work: all but two cores
       const w = new Worker(url);
       w.onmessage = e => { const job = RD.jobs.get(e.data.id); RD.jobs.delete(e.data.id); job(e.data.out); };
       w.onerror = e => { if (e.preventDefault) e.preventDefault(); if (!RD.wErr) { RD.wErr = true; try { FR.add('reader', 'reader error: ' + (e.message || 'unknown') + (e.lineno ? ' line ' + e.lineno : ''), true); } catch (x) { } } };
