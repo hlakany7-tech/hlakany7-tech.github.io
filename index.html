@@ -156,8 +156,15 @@ body.vr #vswitch, body.vr #cmpbar, body.vr #planesReset, body.vr #presets, body.
 #consView { position: fixed; inset: 0; z-index: 70; background: rgba(0,0,0,.92); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 16px; }
 #consView[hidden] { display: none; } #consView img { max-width: 100%; max-height: calc(100% - 70px); object-fit: contain; } #consView .fb { display: flex; gap: 8px; }
 .cons-recent { display: flex; flex-wrap: wrap; gap: 6px; }
+.cons-recent .chip { position: relative; padding-left: 26px; } .cons-recent .chip small { margin-left: 6px; color: var(--muted); font-size: 11px; }
+.pdot { position: absolute; left: 10px; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; border-radius: 50%; background: transparent; box-shadow: inset 0 0 0 1.5px var(--muted); }
+.pdot.on { background: #31d158; box-shadow: 0 0 0 2px rgba(49,209,88,.25); } .pdot.off { background: var(--muted); box-shadow: none; opacity: .55; }
 .cons-chat { position: fixed; z-index: 55; right: max(12px, env(safe-area-inset-right, 0px)); bottom: max(12px, env(safe-area-inset-bottom, 0px)); width: min(380px, calc(100vw - 24px)); height: min(460px, 62vh); display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 14px 40px rgba(0,0,0,.55); }
 .cons-head { display: flex; align-items: center; gap: 8px; } .cons-head b { font: 600 15px var(--font-ui); } .cons-head span { flex: 1; color: var(--muted); font-size: 12px; } .cons-head .btn { min-height: 34px; padding: 0 12px; }
+.fol-bar { position: absolute; z-index: 6; top: 8px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; max-width: calc(100% - 24px); padding: 4px 4px 4px 12px; background: rgba(0,0,0,.72); border: 1px solid var(--line); border-radius: 999px; font-size: 13px; white-space: nowrap; }
+.fol-bar[hidden], .fol-dot[hidden] { display: none; }
+.fol-bar span { overflow: hidden; text-overflow: ellipsis; } .fol-bar .chip { min-height: 30px; } .fol-bar .chip[aria-pressed="true"] { background: #e5484d; color: #fff; border-color: #e5484d; }
+.fol-dot { position: absolute; z-index: 5; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: #ff3b3b; box-shadow: 0 0 0 3px rgba(255,59,59,.35), 0 0 12px rgba(255,59,59,.8); pointer-events: none; }
 .cons-send { display: flex; gap: 6px; } .cons-send .btn { flex: 1; justify-content: center; min-height: 36px; font-size: 13px; }
 .cons-prog { position: relative; height: 22px; border-radius: 8px; background: var(--panel-2); overflow: hidden; font: 600 12px/22px var(--font-ui); text-align: center; }
 .cons-prog i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); opacity: .35; } .cons-prog span { position: relative; }
@@ -442,6 +449,8 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 <main class="stage" id="stage">
   <canvas id="gl" aria-hidden="true"></canvas>
   <canvas id="cv"></canvas>
+  <div id="folBar" class="fol-bar" hidden><span></span><button class="chip" type="button" data-f="ptr" aria-pressed="false">Point</button><button class="chip" type="button" data-f="take">Take over</button><button class="chip" type="button" data-f="stop">Stop</button></div>
+  <i id="folDot" class="fol-dot" hidden></i>
   <pre class="ov tl pii" id="ovTL"></pre>
   <pre class="ov tr" id="ovTR"></pre>
   <pre class="ov bl" id="ovBL"></pre>
@@ -641,7 +650,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
   </div>
 </div>
 <div id="consChat" class="cons-chat" hidden>
-  <div class="cons-head"><b id="consWho"></b><span id="consState"></span><button class="btn" id="consEnd" title="End the conversation and close the shared case">End</button><button class="btn" id="consHide" aria-label="Hide">✕</button></div>
+  <div class="cons-head"><b id="consWho"></b><span id="consState"></span><button class="btn" id="consFollow" title="The other phone shows what you show: the same slice, window and zoom, and your pointer">Follow me</button><button class="btn" id="consEnd" title="End the conversation and close the shared case">End</button><button class="btn" id="consHide" aria-label="Hide">✕</button></div>
   <div class="cons-send"><button class="btn" type="button" data-s="series">Send this series</button><button class="btn" type="button" data-s="study">Send the whole study</button></div>
   <div id="consProg" class="cons-prog" hidden><span></span><i></i></div>
   <div id="consLog" class="cons-log"></div>
@@ -671,7 +680,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.24-1825</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-0627</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -3086,7 +3095,7 @@ function drawLoupeRing(g = loupeGeom(), c = ctx) {
 }
 
 /* ---------- drawing ---------- */
-function render() { if (!S.raf) S.raf = requestAnimationFrame(() => { draw(); updatePill(); }); }
+function render() { if (!S.raf) S.raf = requestAnimationFrame(() => { draw(); updatePill(); folDotPos(); }); }
 function draw() {
   fuseSync();
   { const o = $('#owner'), se = curSeries(), h = !!se && se.uid !== 'sample-phantom'; if (o.hidden !== h) o.hidden = h; } // the ownership line: on the start screen (empty or the sample) only
@@ -3426,6 +3435,7 @@ function movePinch() {
   S.ox += mx - pinch.mx; S.oy += my - pinch.my; linkZoom('ax'); render();
 }
 cv.addEventListener('pointerdown', e => {
+  if (folPtr(e, 0)) return; // Follow me, pointing: the finger moves the red dot
   const mt = mouseTool(e); if (mt === false) return; // mouse: the other buttons have their own tools (RadiAnt layout)
   if (e.pointerType === 'touch' && penDown) return; // palm resting on the screen while using the Pencil
   cv.setPointerCapture(e.pointerId); P.set(e.pointerId, pos(e));
@@ -3454,6 +3464,7 @@ cv.addEventListener('pointerdown', e => {
   } else if (P.size === 2) { clearTimeout(hold); glide = null; S.loupe = null; drag = null; S.draft = null; startPinch(); render(); }
 });
 cv.addEventListener('pointermove', e => {
+  if (folPtr(e, 1)) return;
   if (!P.has(e.pointerId)) return; P.set(e.pointerId, pos(e));
   if (P.size >= 2 && pinch) movePinch(); else if (drag) moveDrag(pos(e), e.timeStamp);
 });
@@ -4651,6 +4662,69 @@ function anonSeriesList(scope) { // the series to export: the one on screen (a f
   return S.series.filter(s => s.studyUid === se.studyUid && !s.derived && !s.isFuse && s.uid !== 'sample-phantom' && s.images.length);
 }
 const SC_CLASSES = /^1\.2\.840\.10008\.5\.1\.4\.1\.1\.(7(\.\d)*|88\.\d+|104\.1)$/; // screenshots, structured reports, PDFs: text that can name the patient
+/* ---------- Sending a study: the series the other phone can rebuild exactly from a thin one are left out ---------- */
+// A thick axial CT series (e.g. 5 mm) made from the same scan as a thin one (1 mm), and coronal or sagittal
+// reconstructions of it: same frame of reference, same kernel, same acquisition time, inside the thin series.
+// Anything not certain stays in. The other phone shows the thick axial as an average of the thin slices,
+// and the coronal and sagittal from its Cor and Sag buttons.
+const DERIV_TAGS = new WeakMap();
+function derivTag(im, key) {
+  if (!im || !im.hdr) return null;
+  let m = DERIV_TAGS.get(im.hdr); if (!m) { m = new Map(); try { for (const x of dicomDump(im.hdr)) if (!m.has(x.key)) m.set(x.key, String(x.value == null ? '' : x.value).trim()); } catch (e) { } DERIV_TAGS.set(im.hdr, m); }
+  return m.get(key) || null;
+}
+function derivNormal(im) { const o = im && im.iop; if (!o) return null; const n = [o[1] * o[5] - o[2] * o[4], o[2] * o[3] - o[0] * o[5], o[0] * o[4] - o[1] * o[3]]; const L = Math.hypot(...n) || 1; return n.map(v => v / L); }
+function derivHU(T, S) { // a thick slice against the average of the thin slices it covers: median difference in the body (HU), or null if not in memory
+  const tm = T.images[T.images.length >> 1]; if (!tm || !tm.pixels || coded(tm) || tm.location == null) return null;
+  const half = (tm.thickness || 0) / 2 + 0.01, L = S.images.filter(im => im.location != null && Math.abs(im.location - tm.location) <= half);
+  if (L.length < 2 || !L.every(im => im.pixels && !coded(im) && im.pixels.length === tm.pixels.length)) return null;
+  const d = [];
+  for (let i = 0; i < tm.pixels.length; i += 7) {
+    let a = 0; for (const im of L) a += im.pixels[i] * (im.slope || 1) + (im.intercept || 0); a /= L.length;
+    if (a > -500) d.push(Math.abs(tm.pixels[i] * (tm.slope || 1) + (tm.intercept || 0) - a));
+  }
+  if (d.length < 200) return null; d.sort((x, y) => x - y); return d[d.length >> 1];
+}
+function derivFind(list) { // -> [{ se, from, kind: 'axial' | 'coronal' | 'sagittal', t }]
+  const ct = list.filter(se => !se.derived && !se.isSlab && se.images.length >= 2 && (se.images[0].modality || se.modality) === 'CT' && (se.images[0].spp || 1) === 1 && se.images[0].iop && se.images[0].ipp);
+  const info = se => { const a = se.images[0], m = se.images[se.images.length >> 1], n = derivNormal(a);
+    const zs = se.images.map(im => im.ipp ? im.ipp[2] : null).filter(v => v != null);
+    return { a, m, n, kind: !n ? null : Math.abs(n[2]) > 0.95 ? 'axial' : Math.abs(n[1]) > 0.95 ? 'coronal' : Math.abs(n[0]) > 0.95 ? 'sagittal' : null,
+      t: +a.thickness || 0, for: derivTag(a, '00200052'), kern: derivTag(a, '00181210'), study: se.studyUid, z0: Math.min(...zs), z1: Math.max(...zs),
+      tm: dicomSeconds(derivTag(m, '00080032')), type: derivTag(a, '00080008') || '' }; };
+  const I = new Map(ct.map(se => [se, info(se)]));
+  const thin = ct.filter(se => { const x = I.get(se); return x.kind === 'axial' && x.t > 0 && x.t <= 1.5 && se.images.length >= 20 && x.for && x.tm != null; });
+  const out = [];
+  for (const T of ct) {
+    const t = I.get(T); if (!t.kind || thin.includes(T) || t.tm == null || !t.for) continue;
+    if (/\b(mip|minip|min ip|max ip|vr|vrt|3d|volume|curved|cpr|mpvr|slab|thick slab)\b/i.test(T.desc || '') || /LOCALIZER|PROJECTION|MIP|MINIP|VOLUME/i.test(t.type)) continue;
+    for (const S of thin) {
+      const s = I.get(S); if (S === T || s.study !== t.study || s.for !== t.for || (s.kern || '') !== (t.kern || '')) continue;
+      const sTimes = S.images.map(im => dicomSeconds(derivTag(im, '00080032'))).filter(v => v != null); if (!sTimes.length) continue;
+      const sMin = Math.min(...sTimes), sMax = Math.max(...sTimes);
+      if (t.tm < sMin - 2 || t.tm > sMax + 2) continue; // another acquisition (another phase)
+      if (t.kind === 'axial') {
+        if (t.t < 2 * s.t) continue; // not thicker: not a thick version
+        const sp = t.a.spacing, ss = s.a.spacing; if (!sp || !ss || Math.abs(sp[0] - ss[0]) > ss[0] * 0.01 || t.a.rows !== s.a.rows || t.a.cols !== s.a.cols) continue; // another field of view
+        if (Math.abs(t.a.ipp[0] - s.a.ipp[0]) > ss[0] || Math.abs(t.a.ipp[1] - s.a.ipp[1]) > ss[0]) continue;
+        if (Math.abs(derivNormal(t.a)[2]) < 0.999 || Math.abs(s.n[2]) < 0.999) continue; // tilted gantry: kept
+        if (t.z0 < s.z0 - t.t / 2 - 1 || t.z1 > s.z1 + t.t / 2 + 1) continue;
+        const nearest = S.images.reduce((b, im) => Math.abs(im.location - t.m.location) < Math.abs(b.location - t.m.location) ? im : b, S.images[0]);
+        const tn = dicomSeconds(derivTag(nearest, '00080032')); if (tn != null && Math.abs(tn - t.tm) > 2) continue;
+        const hu = derivHU(T, S); if (hu != null && hu > 12) continue; // the pictures differ: kept
+      } else {
+        const rs = t.a.spacing ? t.a.spacing[0] : 0, dz = t.a.iop[5] * rs * (t.a.rows - 1); // the vertical extent of a coronal/sagittal image
+        const zTop = Math.max(...T.images.map(im => im.ipp[2])), zBot = Math.min(...T.images.map(im => im.ipp[2] + dz));
+        if (zTop > s.z1 + 2 || zBot < s.z0 - 2) continue; // reaches beyond the thin series
+        const sx = s.a.ipp[0], sy = s.a.ipp[1], wx = s.a.cols * s.a.spacing[1], wy = s.a.rows * s.a.spacing[0];
+        const ex = T.images.flatMap(im => [im.ipp[0], im.ipp[0] + im.iop[0] * (t.a.cols - 1) * (t.a.spacing ? t.a.spacing[1] : 0)]), ey = T.images.flatMap(im => [im.ipp[1], im.ipp[1] + im.iop[1] * (t.a.cols - 1) * (t.a.spacing ? t.a.spacing[1] : 0)]);
+        if (Math.min(...ex) < sx - 2 || Math.max(...ex) > sx + wx + 2 || Math.min(...ey) < sy - 2 || Math.max(...ey) > sy + wy + 2) continue;
+      }
+      out.push({ se: T, from: S, kind: t.kind, t: t.t }); break;
+    }
+  }
+  return out;
+}
 function anonPlan(scope) { // what an export or a send holds: one entry per file, in order (the series on screen first)
   const list = anonSeriesList(scope); if (!list.length) return null;
   const on = curSeries();
@@ -4778,17 +4852,18 @@ function consConv(id, name) {
   return c;
 }
 function consSignal(m) {
-  if (m.type === 'OPEN') { CONS.online = true; CONS.retry = 0; consStatus('Online as ' + CONS.me + ': colleagues can reach you by this name'); consUI();
+  if (m.type === 'OPEN') { CONS.online = true; CONS.retry = 0; setTimeout(() => presPing(true), 500); consStatus('Online as ' + CONS.me + ': colleagues can reach you by this name'); consUI();
     for (const c of CONS.peers.values()) if (c.state !== 'open' && (c.dialing || (c.ever && consDialer(c)))) consRtc(c, true); // calls waiting, conversations to restore: called again
     return; }
   if (m.type === 'ID-TAKEN') { CONS.want = false; consGoOffline(true); consStatus('That name is in use by someone else now: choose another'); consUI(); return; }
   if (m.type === 'ERROR' || m.type === 'INVALID-KEY') { CONS.err = 'The introduction service said: ' + ((m.payload && m.payload.msg) || m.type); consStatus(CONS.err); return; }
-  if (m.type === 'EXPIRE') { const c = CONS.peers.get(m.src); if (c && c.state !== 'open') { c.away = true; if (!c.ever) consStatus(c.name + ' is not online yet: still calling (Sliceview must be open on their phone, online with exactly that name)'); consUI(); } return; }
+  if (m.type === 'EXPIRE') { presSet(m.src, false); const c = CONS.peers.get(m.src); if (c && c.state !== 'open') { c.away = true; if (!c.ever) consStatus(c.name + ' is not online yet: still calling (Sliceview must be open on their phone, online with exactly that name)'); consUI(); } return; }
   if (m.type === 'LEAVE') return; // their link to the service dropped: the conversation waits for them
   const pl = m.payload || {};
+  if (m.type === 'CANDIDATE' && pl.presence) { if (pl.presence === 1) consSend(m.src, 'CANDIDATE', { presence: 2, connectionId: 'pres' }); presSet(m.src, true); return; } // who is online: asked, and answered
   if (m.type === 'OFFER') {
     if (!pl.sdp) return;
-    const name = String((pl.metadata && pl.metadata.from) || m.src.replace(/^sliceview-/, '')).slice(0, 40);
+    const name = String((pl.metadata && pl.metadata.from) || m.src.replace(/^sliceview-/, '')).slice(0, 40); presSet(m.src, true);
     const c = consConv(m.src, name);
     if (c.offer === pl.sdp.sdp && c.pc && c.pc.signalingState !== 'closed') return; // the same call again (it is repeated until answered)
     if (c.dialing && c.state !== 'open' && consDialer(c)) return; // both called at once: ours is kept, they answer it
@@ -4870,7 +4945,7 @@ function consCall(name) {
   name = (name || '').trim(); if (!name) return;
   if (!CONS.online) { consStatus('Go online first'); return; }
   const id = consKey(name); if (id === consKey(CONS.me)) { consStatus('That is your own name'); return; }
-  const recent = (consLS('svRecent') || '').split('\n').filter(x => x && x.toLowerCase() !== name.toLowerCase()); recent.unshift(name); consLS('svRecent', recent.slice(0, 6).join('\n'));
+  const recent = (consLS('svRecent') || '').split('\n').filter(x => x && x.toLowerCase() !== name.toLowerCase()); recent.unshift(name); consLS('svRecent', recent.slice(0, 12).join('\n'));
   const c = consConv(id, name);
   if (c.state === 'open') { $('#sheetCons').hidden = true; consChatOpen(c); return; }
   consStatus('Calling ' + name + '…'); consRtc(c, true); consUI();
@@ -4878,7 +4953,7 @@ function consCall(name) {
 function consEnd(c, quiet) { // End: the conversation and its case go, on both phones
   if (c.state === 'closed') return; c.state = 'closed'; clearTimeout(c.timer); clearInterval(c.again); clearInterval(c.alive);
   const pc = c.pc; c.pc = null; c.dc = null; try { pc && pc.close(); } catch (e) { }
-  CONS.peers.delete(c.id); c.out = null; if (c.inbox) clearInterval(c.inbox.wantT); c.inbox = null; // nothing more is taken in
+  folStop(c, true); CONS.peers.delete(c.id); c.out = null; if (c.inbox) clearInterval(c.inbox.wantT); c.inbox = null; // nothing more is taken in
   consWipe(c);
   if (CONS.open === c) { CONS.open = null; $('#consChat').hidden = true; }
   if (!quiet) say(c.name + ' ended the conversation; the shared case was closed', 3500);
@@ -4991,11 +5066,16 @@ async function consOffer(c, scope) {
   if (c.out || c.state !== 'open') return;
   const plan = anonPlan(scope); if (!plan || !plan.items.length) { consNote(c, 'Nothing to send from this case'); return; }
   const se = curSeries(), id = 'k' + Date.now().toString(36);
+  let left = []; if (scope === 'study') { try { left = derivFind(plan.series); } catch (e) { left = []; } } // rebuilt there from the thin series: not sent
+  if (left.length) { const out = new Set(left.map(x => x.se)); plan.items = plan.items.filter(it => !out.has(it.se)); plan.series = plan.series.filter(s => !out.has(s)); }
   for (const s of plan.series) anonUid(plan.ctx, String(s.uid).split('#')[0]); // each series' new UID, known from the start (where they look is said by it)
+  c.sent = c.sent || new Map(); for (const s of plan.series) { const b = String(s.uid).split('#')[0]; c.sent.set(b, plan.ctx.uids.get(b)); } // Follow me names series by these
   const sizes = {}; for (const it of plan.items) { const u = plan.ctx.uids.get(String(it.se.uid).split('#')[0]); sizes[u] = (sizes[u] || 0) + Math.max(1, it.se.images.filter(x => x.hdr === it.im.hdr).length); } // how many images each series will have
   c.out = { id, plan, order: consOrder(plan), next: 0, acked: 0, bytes: 0, raw: 0, t0: 0, go: false };
-  c.out.offer = { t: 'case', id, sizes, count: plan.items.length, desc: (se && se.modality ? se.modality + ' ' : '') + (scope === 'study' ? 'study, ' + plan.series.length + ' series' : (se && se.desc) || 'series') };
-  consText(c, { t: 'case', id, sizes, count: plan.items.length, desc: (se && se.modality ? se.modality + ' ' : '') + (scope === 'study' ? 'study, ' + plan.series.length + ' series' : (se && se.desc) || 'series') });
+  const leftMsg = left.map(x => ({ desc: x.se.desc || 'series', n: x.se.images.length, kind: x.kind, t: x.t, z: x.kind === 'axial' ? x.se.images.map(im => im.location == null ? null : Math.round(im.location * 100) / 100).slice(0, 2000) : null, from: plan.ctx.uids.get(String(x.from.uid).split('#')[0]), fromDesc: x.from.desc || '' }));
+  c.out.offer = { t: 'case', id, sizes, left: leftMsg, count: plan.items.length, desc: (se && se.modality ? se.modality + ' ' : '') + (scope === 'study' ? 'study, ' + plan.series.length + ' series' : (se && se.desc) || 'series') };
+  if (leftMsg.length) consNote(c, 'Left out (' + c.name + '’s phone rebuilds them from the thin slices): ' + leftMsg.map(x => x.desc).join(', '));
+  consText(c, { t: 'case', id, sizes, left: leftMsg, count: plan.items.length, desc: (se && se.modality ? se.modality + ' ' : '') + (scope === 'study' ? 'study, ' + plan.series.length + ' series' : (se && se.desc) || 'series') });
   consProgress(c, 0, 'Waiting for ' + c.name + ' to accept');
 }
 async function consPump(c) { // sends the files, a few ahead of the confirmations
@@ -5037,7 +5117,7 @@ async function consData(c, d) {
   if (m.t === 'att') { consAttStart(c, m); return; }
   if (m.t === 'attEnd') { consAttEnd(c, m); return; }
   if (m.t === 'chat') { c.chat.push({ from: c.name, text: String(m.text || '').slice(0, 2000) }); if (CONS.open !== c || $('#consChat').hidden) c.unread++; consChatDraw(); consUI(); }
-  else if (m.t === 'case') { if (r && r.id === m.id) return; c.inbox = { id: m.id, expect: 0, sizes: m.sizes || null, count: +m.count || 0, desc: String(m.desc || ''), got: 0, cur: null, ask: true, q: Promise.resolve(), caseId: 'c' + (++CONS.cid), first: true, t0: 0 }; consChatOpen(c, true); consChatDraw(); }
+  else if (m.t === 'case') { if (r && r.id === m.id) return; c.inbox = { id: m.id, expect: 0, sizes: m.sizes || null, left: Array.isArray(m.left) ? m.left.slice(0, 40) : [], count: +m.count || 0, desc: String(m.desc || ''), got: 0, cur: null, ask: true, q: Promise.resolve(), caseId: 'c' + (++CONS.cid), first: true, t0: 0 }; consChatOpen(c, true); consChatDraw(); }
   else if (m.t === 'f') {
     if (!r || r.id !== m.id || r.ask) return;
     if (m.n === r.expect) { r.gap = false; r.cur = { n: m.n, i: m.i, len: +m.len, m: m.m, parts: [], recv: 0 }; }
@@ -5050,6 +5130,8 @@ async function consData(c, d) {
   else if (m.t === 'accept') { const o = c.out; if (o && o.id === m.id) { o.go = true; o.t0 = performance.now(); consPump(c); } }
   else if (m.t === 'resume') { const o = c.out; if (o && o.id === m.id) { o.next = o.acked = Math.max(0, +m.have || 0); o.go = true; consPump(c); } }
   else if (m.t === 'decline') { if (c.out && c.out.id === m.id) { c.out = null; consNote(c, c.name + ' declined the case'); consProgress(c, -1); } }
+  else if (m.t === 'view') folApply(c, m);
+  else if (m.t === 'fol') folMsg(c, m);
   else if (m.t === 'bye') consEnd(c);
 }
 async function consIngestFile(c, r, f, data) {
@@ -5065,6 +5147,21 @@ async function consIngestFile(c, r, f, data) {
   if (!c.cases.includes(r.caseId)) c.cases.push(r.caseId);
   r.got++; consText(c, { t: 'ack', id: r.id, n: f.n });
   consRecvDone(c, r);
+}
+function consRebuild(c, r) { // the series left out by the sender: thick axial as an average of the thin slices; coronal and sagittal from Cor/Sag
+  const mine = S.series.filter(s => s.__consCase === r.caseId && !s.isSlab), cs = [];
+  for (const x of r.left) {
+    const from = mine.filter(s => String(s.uid).split('#')[0] === x.from).sort((a, b) => b.images.length - a.images.length)[0];
+    if (!from) continue;
+    if (x.kind === 'axial' && x.t > 0) { try { const se = makeSlabSeries(from, 'avg', Math.round(x.t * 10) / 10); se.desc = String(x.desc).slice(0, 64) + ' (rebuilt)'; se.__consCase = r.caseId; se.rebuilt = true;
+        if (Array.isArray(x.z) && x.z.length && x.z.every(v => typeof v === 'number')) { // the slices where the original had them
+          const pick = []; for (const z of x.z) { let b = null; for (const im of se.images) if (im.location != null && (!b || Math.abs(im.location - z) < Math.abs(b.location - z))) b = im; if (b && !pick.includes(b)) pick.push(b); }
+          if (pick.length) se.images = pick; } } catch (e) { } }
+    else cs.push(String(x.desc).slice(0, 64) + ' (open ' + (from.desc || 'the thin series') + ', then ' + (x.kind === 'coronal' ? 'Cor' : 'Sag') + ')');
+  }
+  const ax = r.left.filter(x => x.kind === 'axial').map(x => String(x.desc).slice(0, 64));
+  consNote(c, [ax.length ? 'Rebuilt here from the thin slices: ' + ax.join(', ') : '', cs.length ? 'Not sent, made here on demand: ' + cs.join('; ') : ''].filter(Boolean).join('. '));
+  if (typeof seriesUI === 'function') try { seriesUI(); } catch (e) { }
 }
 function consArriving(se) { // a series of a case still arriving: how many of its images are here, of how many
   if (!se || !se.__consCase) return null;
@@ -5103,13 +5200,114 @@ function consRecvDone(c, r) {
   }
   consProgress(c, r.got / Math.max(1, r.count), 'Receiving ' + r.got + ' / ' + r.count);
   if (r.got >= r.count && r.have && r.have.size < r.count) consNote(c, (r.count - r.have.size) + ' slice' + (r.count - r.have.size === 1 ? '' : 's') + ' did not arrive: ask for the case again');
+  if (r.got >= r.count && r.left && r.left.length) consRebuild(c, r);
   if (r.got >= r.count) { clearInterval(r.wantT); c.inbox = null; consProgress(c, -1); c.chat.push({ sys: true, text: 'Case received: ' + r.got + ' images. It closes when the conversation ends.', save: r.caseId }); consChatDraw(); if (typeof fuseUI === 'function') fuseUI(); }
 }
+/* ---------- Follow me: the other phone shows what you show (slice, window, zoom, pointer) ---------- */
+const FOL = { lead: new Set(), from: null, dot: null, rdot: null, ptr: false, miss: false, T: 0 };
+const folBase = se => String(se.uid).split('#')[0];
+function folKey(se, c) { // a series as both phones know it: the anonymised UID the receiver has
+  if (!se) return null; const b = folBase(se), sfx = String(se.uid).slice(b.length);
+  if (se.__consCase) return { k: b, sfx };
+  const u = c.sent && c.sent.get(b); return u ? { k: u, sfx } : null;
+}
+function folState(c) {
+  const se = curSeries(), im = cur(), key = folKey(se, c);
+  if (!key || !im || !S.W) return { t: 'view', k: null };
+  const n = se.images.length, fs = fitScale() || 1, ctr = toImage(S.W / 2, S.H / 2), r2 = v => Math.round(v * 1000) / 1000;
+  return { t: 'view', k: key.k, sfx: key.sfx, d: se.desc || '', n, z: im.location != null ? Math.round(im.location * 100) / 100 : null, f: n > 1 ? r2(S.idx / (n - 1)) : 0,
+    wc: Math.round(S.wc * 10) / 10, ww: Math.round(S.ww * 10) / 10, inv: S.invert ? 1 : 0, s: r2(S.s / fs), cx: r2(ctr.x / im.cols), cy: r2(ctr.y / im.rows),
+    ang: r2(S.ang), fh: S.fh, fv: S.fv, p: FOL.dot ? [r2(FOL.dot.x / im.cols), r2(FOL.dot.y / im.rows)] : null };
+}
+function folTick() { // the leader: what changed goes at once (a few times a second), and once a second anyway
+  if (!FOL.lead.size) { clearInterval(FOL.T); FOL.T = 0; return; }
+  const now = performance.now();
+  for (const c of FOL.lead) { if (c.state !== 'open') continue;
+    const j = JSON.stringify(folState(c)); if (j !== c.folLast || now - (c.folT || 0) > 1000) { if (c.dc && c.dc.readyState === 'open' && c.dc.bufferedAmount < 4e6) { c.dc.send(j); c.folLast = j; c.folT = now; } } }
+}
+function folLead(c) { // Follow me: this phone leads
+  if (!c || c.state !== 'open') return;
+  if (FOL.from === c) FOL.from = null;
+  FOL.lead.add(c); c.folLast = ''; consText(c, { t: 'fol', on: 1 });
+  if (!FOL.T) FOL.T = setInterval(folTick, 80);
+  consNote(c, c.name + ' now sees what you see'); if (innerWidth < 700) $('#consChat').hidden = true;
+  folBar(); render();
+}
+function folStop(c, quiet) {
+  const was = FOL.lead.has(c) || FOL.from === c; if (!was) return;
+  FOL.lead.delete(c); if (FOL.from === c) { FOL.from = null; FOL.rdot = null; FOL.miss = false; }
+  if (!FOL.lead.size) { FOL.ptr = false; FOL.dot = null; }
+  if (!quiet) consText(c, { t: 'fol', on: 0 });
+  folBar(); render();
+}
+function folMsg(c, m) {
+  if (m.on) { // they lead now: this phone follows
+    FOL.lead.delete(c); if (!FOL.lead.size) { FOL.ptr = false; FOL.dot = null; }
+    if (FOL.from && FOL.from !== c) folStop(FOL.from);
+    FOL.from = c; FOL.miss = false; consNote(c, 'You are following ' + c.name + ': your screen shows theirs');
+    if (innerWidth < 700) $('#consChat').hidden = true;
+  } else if (FOL.from === c) { FOL.from = null; FOL.rdot = null; FOL.miss = false; consNote(c, c.name + ' stopped showing'); }
+  else if (FOL.lead.has(c)) { FOL.lead.delete(c); if (!FOL.lead.size) { FOL.ptr = false; FOL.dot = null; } consNote(c, c.name + ' stopped following'); }
+  folBar(); render();
+}
+function folApply(c, m) { // the follower: the leader's view, on this phone's own copy of the case
+  if (FOL.from !== c) return;
+  let cand = m.k ? S.series.filter(s => s.__consCase ? folBase(s) === m.k : c.sent && c.sent.get(folBase(s)) === m.k) : [];
+  if (!cand.length && m.k && m.d) { // a series whose UID was made up when read (no UID in its files): known by its name instead
+    const sh = S.series.filter(s => (s.desc || '') === m.d && (s.__consCase || (c.sent && c.sent.has(folBase(s)))));
+    cand = sh.filter(s => s.images.length === m.n); if (!cand.length) cand = sh; }
+  const miss = !cand.length; if (miss !== FOL.miss) { FOL.miss = miss; folBar(); }
+  if (miss) { if (FOL.rdot) { FOL.rdot = null; render(); } return; }
+  let se = cand.find(s => String(s.uid).slice(folBase(s).length) === m.sfx);
+  if (!se && m.z != null) { let best = Infinity; for (const s of cand) for (const im of s.images) if (im.location != null && Math.abs(im.location - m.z) < best) { best = Math.abs(im.location - m.z); se = s; } }
+  se = se || cand[0];
+  if (S.vol && S.vol.se !== volSe(se)) mprToggle(false);
+  const i = S.series.indexOf(se); if (i !== S.si) { selectSeries(i); S.bodyFit = false; }
+  if (curSeries() !== se) return; // still being read in: the next message (within a second) lands
+  const ims = se.images; let k = 0;
+  if (m.z != null && ims.some(x => x.location != null)) { let best = Infinity; ims.forEach((x, j) => { if (x.location != null && Math.abs(x.location - m.z) < best) { best = Math.abs(x.location - m.z); k = j; } }); }
+  else k = Math.round((+m.f || 0) * (ims.length - 1));
+  setIdx(k);
+  if (m.wc !== S.wc || m.ww !== S.ww) setWindow(+m.wc, +m.ww, null);
+  if (!!m.inv !== S.invert) { S.invert = !!m.inv; $('#actInvert').setAttribute('aria-pressed', String(S.invert)); }
+  S.ang = +m.ang || 0; S.fh = m.fh === -1 ? -1 : 1; S.fv = m.fv === -1 ? -1 : 1; S.bodyFit = false;
+  const im = cur(), fs = fitScale();
+  if (im && fs && m.s > 0) { S.s = m.s * fs; S.fit = false; S.ox = 0; S.oy = 0; const q = toScreen(m.cx * im.cols, m.cy * im.rows); S.ox = S.W / 2 - q.x; S.oy = S.H / 2 - q.y; }
+  FOL.rdot = m.p && im ? { x: m.p[0] * im.cols, y: m.p[1] * im.rows } : null;
+  S.dirty = true; render();
+}
+function folPtr(e, phase) { // the leader pointing: one finger moves the red dot (not the tool) while Point is on
+  if (!FOL.ptr || !FOL.lead.size || !cur()) return false;
+  if (phase === 0) { cv.setPointerCapture(e.pointerId); FOL.pid = e.pointerId; } else if (FOL.pid !== e.pointerId) return true;
+  const p = pos(e); FOL.dot = toImage(p.x, p.y); render(); return true;
+}
+function folDotPos() {
+  const d = $('#folDot'), p = FOL.lead.size ? FOL.dot : FOL.from ? FOL.rdot : null, im = cur();
+  if (!p || !im || S.vol || S.rf || S.cmps.length) { if (!d.hidden) d.hidden = true; return; }
+  const q = toScreen(p.x, p.y); d.style.left = (cv.offsetLeft + q.x) + 'px'; d.style.top = (cv.offsetTop + q.y) + 'px'; d.hidden = false;
+}
+function folBar() {
+  const b = $('#folBar'), lead = [...FOL.lead], esc = t => String(t).replace(/[&<>]/g, '');
+  $('#consFollow').textContent = CONS.open && FOL.lead.has(CONS.open) ? 'Stop showing' : 'Follow me';
+  b.hidden = !lead.length && !FOL.from; if (b.hidden) return;
+  b.querySelector('span').innerHTML = lead.length ? '<b>' + esc(lead.map(c => c.name).join(', ')) + '</b> ' + (lead.length > 1 ? 'follow' : 'follows') + ' you'
+    : 'Following <b>' + esc(FOL.from.name) + '</b>' + (FOL.miss ? ' · on a series you do not have' : '');
+  b.querySelector('[data-f="ptr"]').hidden = !lead.length; b.querySelector('[data-f="ptr"]').setAttribute('aria-pressed', String(FOL.ptr));
+  b.querySelector('[data-f="take"]').hidden = !FOL.from;
+}
+cv.addEventListener('pointerup', e => { if (FOL.pid === e.pointerId) FOL.pid = null; }); cv.addEventListener('pointercancel', e => { if (FOL.pid === e.pointerId) FOL.pid = null; });
+$('#folBar').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return; const f = b.dataset.f;
+  if (f === 'ptr') { FOL.ptr = !FOL.ptr; if (!FOL.ptr) FOL.dot = null; folBar(); render(); }
+  else if (f === 'take') { if (FOL.from) folLead(FOL.from); }
+  else if (f === 'stop') { for (const c of [...FOL.lead]) folStop(c); if (FOL.from) folStop(FOL.from); }
+});
+$('#consFollow').addEventListener('click', () => { const c = CONS.open; if (!c) return; if (FOL.lead.has(c)) folStop(c); else if (c.state === 'open') folLead(c); else say('Not connected yet', 2000); });
 function consProgress(c, f, label) {
   c.prog = f < 0 ? null : { f, label }; if (CONS.open !== c) return; const e = $('#consProg');
   if (f < 0) { e.hidden = true; return; } e.hidden = false; e.querySelector('span').textContent = label + (f > 0 && !/\d+ \/ \d+/.test(label) ? ' ' + Math.round(f * 100) + '%' : ''); e.querySelector('i').style.width = Math.round(f * 100) + '%';
 }
-function consChatOpen(c, quiet) { CONS.open = c; c.unread = 0; $('#consChat').hidden = false; $('#consWho').textContent = c.name; consChatDraw(); consUI(); if (c.prog) consProgress(c, c.prog.f, c.prog.label); else $('#consProg').hidden = true; if (!quiet && innerWidth > 700) $('#consMsg').focus(); }
+function consChatOpen(c, quiet) { CONS.open = c; c.unread = 0; folBar(); $('#consChat').hidden = false; $('#consWho').textContent = c.name; consChatDraw(); consUI(); if (c.prog) consProgress(c, c.prog.f, c.prog.label); else $('#consProg').hidden = true; if (!quiet && innerWidth > 700) $('#consMsg').focus(); }
 function consChatDraw() {
   const c = CONS.open; if (!c) return; const box = $('#consLog');
   const esc = s => String(s).replace(/[&<>]/g, x => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[x]);
@@ -5131,19 +5329,45 @@ function consUI() { // the chat button in the top bar, with unread messages
   const st = c => c.state === 'open' ? 'connected' : c.state === 'reconnecting' ? 'reconnecting…' : !c.answered ? (c.away ? 'calling… (not online yet)' : 'calling…') : 'connecting (' + (c.pc ? c.pc.iceConnectionState : '') + ')…';
   const L = $('#consPeers'); if (L) L.innerHTML = [...CONS.peers.values()].map(c => '<button class="item" type="button" data-id="' + c.id + '">' + c.name.replace(/[&<>]/g, '') + ' · ' + st(c) + (c.unread ? ' (' + c.unread + ' new)' : '') + '</button>').join('');
   const on = $('#consOnline'); if (on) { on.textContent = CONS.online || CONS.want ? 'Go offline' : 'Go online'; on.classList.toggle('primary', !(CONS.online || CONS.want)); }
-  const rc = $('#consRecent'); if (rc) rc.innerHTML = (consLS('svRecent') || '').split('\n').filter(Boolean).map(n => '<button class="chip" type="button">' + n.replace(/[&<>"]/g, '') + '</button>').join('');
+  const rc = $('#consRecent'); if (rc) { const names = presNames(), st = n => presState(consKey(n));
+    rc.innerHTML = names.map(n => [n, st(n)]).sort((a, b) => (b[1].on === true) - (a[1].on === true)).map(([n, p]) => { const e = n.replace(/[&<>"]/g, '');
+      return '<button class="chip" type="button" data-n="' + e + '" title="' + (p.on === true ? 'Online now' : p.on === false ? 'Offline' : 'Checking…') + '"><i class="pdot' + (p.on === true ? ' on' : p.on === false ? ' off' : '') + '"></i>' + e + (p.on === true ? '' : p.on === false && p.seen ? '<small>' + presAgo(p.seen) + '</small>' : '') + '</button>'; }).join(''); }
   if (CONS.open && !$('#consChat').hidden) consChatDraw();
 }
+/* ---------- Who is online: a green dot on a colleague's name while their Sliceview is open and connected ---------- */
+// Asked through the introduction service (a tiny message every 15 s while this sheet is open); no answer = offline.
+const PRES = new Map(); // id -> { on: true | false | undefined, asked }
+const presNames = () => (consLS('svRecent') || '').split('\n').filter(Boolean);
+function presSeen() { try { return JSON.parse(consLS('svSeen') || '{}') || {}; } catch (e) { return {}; } }
+function presState(k) { const p = PRES.get(k) || {}, c = CONS.peers.get(k); return { on: c && c.state === 'open' ? true : CONS.online ? p.on : undefined, seen: presSeen()[k] || 0 }; }
+function presAgo(t) { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago'; }
+function presSet(k, on) {
+  if (!k) return; const p = PRES.get(k) || {}; const was = p.on; p.on = on; if (on) p.lastOn = Date.now(); PRES.set(k, p);
+  if (on) { const s = presSeen(); s[k] = Date.now(); const keys = Object.keys(s); if (keys.length > 40) delete s[keys[0]]; consLS('svSeen', JSON.stringify(s)); }
+  if (was !== on) consUI();
+}
+function presPing(force) {
+  if (!CONS.online || $('#sheetCons').hidden || document.hidden) return;
+  const now = Date.now(), me = consKey(CONS.me || '');
+  for (const n of presNames()) {
+    const k = consKey(n); if (k === me || k === 'sliceview-') continue;
+    const c = CONS.peers.get(k); if (c && c.state === 'open') continue;
+    const p = PRES.get(k) || {}; if (!force && p.asked && now - p.asked < 15000) continue;
+    const t = p.asked = now; PRES.set(k, p); consSend(k, 'CANDIDATE', { presence: 1, connectionId: 'pres' });
+    setTimeout(() => { const q = PRES.get(k); if (q && q.asked === t && !(q.lastOn >= t)) presSet(k, false); }, 7000);
+  }
+}
+setInterval(() => presPing(false), 3000);
 function consSheet() {
   $('#consName').value = CONS.me || consLS('svName') || ''; consUI();
   if (!CONS.ws && !CONS.want) consStatus(window.claude && window.claude.use ? 'This works in the Sliceview app (the GitHub version), not inside the Claude link: Claude blocks connections to other phones' : window.RTCPeerConnection ? 'Offline' : 'This browser cannot connect to other phones');
-  openSheet('#sheetCons');
+  openSheet('#sheetCons'); setTimeout(() => presPing(true), 300);
 }
 $('#btnCons').addEventListener('click', () => { $('#sheetMore').hidden = true; consSheet(); });
 $('#consOnline').addEventListener('click', () => { if (CONS.online || CONS.want) consGoOffline(); else { consGoOnline($('#consName').value); if (CONS.want) consKeepAwake(true); } });
 $('#consCall').addEventListener('click', () => { consCall($('#consTo').value); });
 $('#consTo').addEventListener('keydown', e => { if (e.key === 'Enter') consCall($('#consTo').value); });
-$('#consRecent').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { $('#consTo').value = b.textContent; consCall(b.textContent); } });
+$('#consRecent').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { $('#consTo').value = b.dataset.n; consCall(b.dataset.n); } });
 $('#consPeers').addEventListener('click', e => { const b = e.target.closest('button'); const c = b && CONS.peers.get(b.dataset.id); if (c) { $('#sheetCons').hidden = true; consChatOpen(c); } });
 $('#btnChat').addEventListener('click', () => { const c = CONS.open || [...CONS.peers.values()].sort((a, b) => b.unread - a.unread)[0]; if (!c) return; if (!$('#consChat').hidden && CONS.open === c) { $('#consChat').hidden = true; return; } consChatOpen(c); });
 $('#consHide').addEventListener('click', () => { $('#consChat').hidden = true; });
@@ -8191,7 +8415,7 @@ async function volCacheLoad(V) {
 }
 
 keepRestore(false); // the app starts empty: the last study comes back only when asked for (the Reopen card)
-window.__sliceview = { selectSeries, memUsed, memLimit, composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice, refSeg }, anon: { anonExport, dicomDump, anonPlan, anonOne }, cons: CONS, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen } };
+window.__sliceview = { selectSeries, memUsed, memLimit, composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice, refSeg }, anon: { anonExport, dicomDump, anonPlan, anonOne }, cons: CONS, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen }, FOL, derivFind };
 })();
 </script>
 
