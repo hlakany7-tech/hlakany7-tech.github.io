@@ -690,7 +690,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1415</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1624</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2452,7 +2452,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1415', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1624', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -7133,9 +7133,9 @@ function rdInit() {
 }
 setTimeout(rdInit, 600); // start the readers early, while the user is still choosing files
 // A worker takes several messages at a time (they wait on storage, not on its processor): the next free one in turn.
-async function rdRun(items, chunk) {
+async function rdRun(items, chunk, transfer) {
   const w = RD.ws[RD.next = ((RD.next || 0) + 1) % RD.ws.length], id = RD.id++;
-  return new Promise(res => { RD.jobs.set(id, res); w.postMessage({ id, items, chunk }); });
+  return new Promise(res => { RD.jobs.set(id, res); w.postMessage({ id, items, chunk }, transfer || []); });
 }
 // entries: { blob, start, csize, method, lho (zip entries), name, depth, en and r (zip entry and its zip, for the slow path) }
 // On Android, Chrome hands the files of a folder to the page at about 10 a second, however they are asked for:
@@ -7160,7 +7160,13 @@ async function rdAll(list, st, chunked, tight) {
       while (performance.now() - Math.max(S.moved || 0, LAST_INPUT.t) < 300) await new Promise(r => setTimeout(r, 100));
       if (mine) { st.paused = (st.paused || 0) + performance.now() - p0; st.pausing = false; }
     }
-    const out = await rdRun(batch.map(e => ({ blob: e.blob, start: e.start, csize: e.csize, method: e.method, lho: e.lho })), chunked ? { blob: batch[0].blob, start: bt.start, end: bt.end } : null);
+    let out;
+    if (!chunked && batch.every(e => e.lho == null && !e.method)) { // a folder's files: their bytes fetched here (Android does that without holding up the screen) and handed over;
+      // handing over the files themselves cost the screen about 0.6 s for each batch of 8 on a phone
+      const abs = await Promise.all(batch.map(e => (e.start || e.csize != null ? e.blob.slice(e.start || 0, e.csize != null ? (e.start || 0) + e.csize : undefined) : e.blob).arrayBuffer().catch(() => null)));
+      if (abs.every(Boolean)) out = await rdRun(abs.map(ab => ({ ab, start: 0, csize: ab.byteLength, method: 0 })), null, abs);
+    }
+    if (!out) out = await rdRun(batch.map(e => ({ blob: e.blob, start: e.start, csize: e.csize, method: e.method, lho: e.lho })), chunked ? { blob: batch[0].blob, start: bt.start, end: bt.end } : null);
     for (let k = 0; k < batch.length; k++) {
       const e = batch[k], r = out[k];
       try {
@@ -8450,6 +8456,7 @@ async function keepStudy(files) {
 }
 async function keepSave() { // write the current list of files (after opening more, or closing some)
   if (!KEEP.files.length) return keepForget(true);
+  if (KEEP.files.length > 200) return keepForget(true); // a folder of hundreds of files is not kept: on a phone, asking each file its size and copying them all held the screen up
   const size = KEEP.files.reduce((a, f) => a + (f.size || 0), 0);
   if (size > 300e6) return keepForget(true); // a big study is not copied: writing hundreds of MB costs a phone memory and time
   try { if (navigator.storage && navigator.storage.estimate) { const e = await navigator.storage.estimate(); if (e.quota && size > e.quota * 0.6) return; } } catch (e) { }
