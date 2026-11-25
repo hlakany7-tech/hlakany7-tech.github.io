@@ -678,7 +678,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.25-1516</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.25-1529</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -692,7 +692,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1516</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1529</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2459,7 +2459,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1516', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1529', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -7125,10 +7125,11 @@ async function rdEntry(D, m) {
   return { kind: 'px', info, pixels, bytes: m.read };
 }
 const RD_SRC = workerSrc({ dicomModule, rdEntry, rawInflate, inflateModule }) +
-  '\nconst D = dicomModule();\nonmessage = async e => { const c = e.data.chunk;' +
+  '\nconst D = dicomModule();\nonmessage = async e => { try { const c = e.data.chunk;' +
   ' if (c) { const ab = await c.blob.slice(c.start, c.end).arrayBuffer(); for (const m of e.data.items) { m.ab = ab; m.lho -= c.start; } }' +
-  ' const tr = [], out = await Promise.all(e.data.items.map(m => rdEntry(D, m).catch(() => ({ kind: "slow" }))));' +
-  ' for (const r of out) { if (r.buf) tr.push(r.buf); if (r.frames) tr.push(...r.frames); if (r.pixels) for (const p of r.pixels) if (!tr.includes(p.buffer)) tr.push(p.buffer); } postMessage({ id: e.data.id, out }, tr); };';
+  ' const tr = [], out = await Promise.all(e.data.items.map(m => rdEntry(D, m).catch(x => ({ kind: "slow", err: String((x && x.message) || x) }))));' +
+  ' for (const r of out) { if (r.buf) tr.push(r.buf); if (r.frames) tr.push(...r.frames); if (r.pixels) for (const p of r.pixels) if (!tr.includes(p.buffer)) tr.push(p.buffer); } postMessage({ id: e.data.id, out }, tr); }' +
+  ' catch (x) { postMessage({ id: e.data.id, out: e.data.items.map(() => ({ kind: "slow", err: "reader: " + String((x && x.message) || x) })) }); } };'; // whatever goes wrong, an answer: the page then reads those itself
 const RD = { ws: null, free: [], wait: [], jobs: new Map(), id: 1 };
 function rdInit() {
   if (RD.ws) return RD.ws.length > 0;
@@ -7139,7 +7140,7 @@ function rdInit() {
     for (let i = 0; i < clamp((navigator.hardwareConcurrency || 4) - 2, 2, 6); i++) { // unpacking a zip is processor work: all but two cores
       const w = new Worker(url);
       w.onmessage = e => { const job = RD.jobs.get(e.data.id); RD.jobs.delete(e.data.id); job(e.data.out); };
-      w.onerror = e => { if (e.preventDefault) e.preventDefault(); };
+      w.onerror = e => { if (e.preventDefault) e.preventDefault(); if (!RD.wErr) { RD.wErr = true; try { FR.add('reader', 'reader error: ' + (e.message || 'unknown') + (e.lineno ? ' line ' + e.lineno : ''), true); } catch (x) { } } };
       RD.ws.push(w); RD.free.push(w);
     }
   } catch (err) { RD.ws = []; }
@@ -7149,7 +7150,12 @@ setTimeout(rdInit, 600); // start the readers early, while the user is still cho
 // A worker takes several messages at a time (they wait on storage, not on its processor): the next free one in turn.
 async function rdRun(items, chunk) {
   const w = RD.ws[RD.next = ((RD.next || 0) + 1) % RD.ws.length], id = RD.id++;
-  return new Promise(res => { RD.jobs.set(id, res); w.postMessage({ id, items, chunk }); });
+  return new Promise(res => {
+    const slow = why => items.map(() => ({ kind: 'slow', err: why }));
+    const t = setTimeout(() => { if (!RD.jobs.has(id)) return; RD.jobs.delete(id); if (!RD.timedOut) { RD.timedOut = true; FR.add('reader', 'a reader gave no answer in 60 s: read on the page instead', true); } res(slow('reader timed out')); }, 60000); // never waits for ever
+    RD.jobs.set(id, out => { clearTimeout(t); if (out && out.some(r => r && r.err) && !RD.errLogged) { RD.errLogged = true; FR.add('reader', 'readers could not read: ' + out.find(r => r && r.err).err, true); } res(out); });
+    try { w.postMessage({ id, items, chunk }); } catch (x) { clearTimeout(t); RD.jobs.delete(id); FR.add('reader', 'could not hand work to a reader: ' + ((x && x.message) || x), true); res(slow('post failed')); }
+  });
 }
 // entries: { blob, start, csize, method, lho (zip entries), name, depth, en and r (zip entry and its zip, for the slow path) }
 // On Android, Chrome hands the files of a folder to the page at about 10 a second, however they are asked for:
@@ -7189,7 +7195,7 @@ async function rdAll(list, st, chunked, tight) {
         if (r.kind === 'px' || r.kind === 'enc') { st.evN = (st.evN || 0) + 1; if (st.evN % 24 === 0) evict(); const res = addBuffer(null, e.name, r.kind === 'px' ? { info: r.info, pixels: r.pixels, src: { blob: e.blob, start: e.start, csize: e.csize, method: e.method, lho: e.lho } } : { info: r.info, frames: r.frames }); st.n++; st.ok++; res.all.forEach(s => st.seen.add(s)); }
         else if (r.kind === 'zip') await rdZip(Zip.fromBlob(e.blob), e.name, st, e.depth);
         else if (r.kind === 'buf') await ingest(Zip.fromBuffer(r.buf), e.name, st, e.depth + 1);
-        else if (e.en) await ingest(Zip.fromBuffer(await Zip.read(e.r, e.en)), e.name, st, e.depth + 1); // read on the page instead
+        else if (e.en) { await tick(); await ingest(Zip.fromBuffer(await Zip.read(e.r, e.en)), e.name, st, e.depth + 1); } // read on the page instead (a pause first: the screen keeps going)
         else await ingest(Zip.fromBlob(e.blob), e.name, st, e.depth);
       } catch (err) {
         if (outOfMemory(err.message) && !e.memRetry) { memTight(); e.memRetry = true; k--; continue; } // room made: this file once more
