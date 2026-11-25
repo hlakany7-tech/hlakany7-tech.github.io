@@ -685,7 +685,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.25-2211</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.25-2246</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -699,7 +699,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-2211</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-2246</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2466,7 +2466,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-2211', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-2246', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -6835,6 +6835,7 @@ $('#btnSeries').addEventListener('click', () => {
    then the slices just ahead of the scroll direction, then a wider window kept within a memory budget. */
 // Phones get a smaller cache of decoded slices: a page using too much memory is closed by the phone in the background.
 const BUDGET = 300e6, PREVIEW_BUDGET = 280e6, SETTLE = 140;
+const LOWMEM = !!(performance.memory && performance.memory.jsHeapSizeLimit < 1.8e9) || (navigator.deviceMemory || 8) <= 4 || matchMedia('(pointer: coarse)').matches; // a phone or tablet
 const decBudget = () => Math.max(40e6, clamp(memLimit() * 0.3, 80e6, BUDGET) * (DEC.squeeze || 1)); // sharp slices kept in memory: smaller on a device with less memory // ms without a slice change that counts as a pause
 // A job carries either a ready codestream (buf) or a zip entry still packed (z), unpacked here off the main thread.
 async function jobCodestream(m, D) {
@@ -6877,7 +6878,7 @@ function decInit() {
   if (DEC.mode !== 'init') return;
   try {
     const url = URL.createObjectURL(new Blob([J2K_SRC], { type: 'text/javascript' }));
-    const n = clamp(navigator.hardwareConcurrency || 4, 2, 8);
+    const n = clamp(navigator.hardwareConcurrency || 4, 2, LOWMEM ? 4 : 8); // each decoder holds its own memory: four at most on a phone or tablet
     for (let i = 0; i < n; i++) {
       const w = new Worker(url);
       decWire(w, url);
@@ -6943,7 +6944,7 @@ function decoded(img, d, kind) {
   if (kind === 'p') {
     img.busyP = false;
     if (d.err) img.noPreview = true;
-    else if (!img.pixels) { img.preview = { w: d.w, h: d.h, data: signFix(d, img) }; volPut(img, img.preview.data, d.w, d.h); }
+    else if (!img.pixels) { img.preview = { w: d.w, h: d.h, data: signFix(d, img) }; volPut(img, img.preview.data, d.w, d.h); prvAdd(img); }
   } else {
     img.busy = false;
     if (d.err) img.err = d.err;
@@ -6952,6 +6953,23 @@ function decoded(img, d, kind) {
   }
   if (img === cur()) { S.dirty = true; render(); } else if (S.cmps.length || (curSeries() && curSeries().derived)) { S.dirty = true; render(); pump(); }
   else if (S.bodyFit) render(); // the body fit is waiting for the slices it measures
+}
+// The quick low-resolution copies (previews) were never let go: on a big study (the tablet's 4873 images, four panes
+// compared) they piled up, unseen in the memory count, until Chrome closed the app ("Aw, Snap"). Now they have a budget
+// of their own like the sharp slices: past it, the ones furthest from where you are looking go first.
+const PRV = { set: new Set(), bytes: 0, n: 0 };
+const prvBudget = () => clamp(memLimit() * 0.18, 30e6, 180e6) * (DEC.squeeze || 1);
+function prvAdd(img) { if (!img.preview || PRV.set.has(img)) return; PRV.set.add(img); PRV.bytes += img.preview.data.byteLength; if (PRV.bytes > prvBudget()) prvEvict(); }
+function prvEvict() {
+  let total = 0; for (const im of PRV.set) { if (!im.preview) PRV.set.delete(im); else total += im.preview.data.byteLength; } PRV.bytes = total;
+  const B = prvBudget(); if (total <= B) return;
+  const cs = curSeries(), at = new Map(), srcs = t => t.fuse ? [t.fuse.ct, t.fuse.pt] : t.sub ? [t.sub.a, t.sub.b] : t.slab ? t.slab.list : [];
+  const look = (se, i) => { if (!se) return; if (!se.derived) { if (!at.has(se)) at.set(se, i); return; } for (const im of srcs(se.images[i] || {})) { if (!im) continue; const o = S.series.find(x => !x.derived && x.images.includes(im)); if (o && !at.has(o)) at.set(o, o.images.indexOf(im)); } };
+  look(cs, S.idx); for (const C of S.cmps) look(C.se, C.idx);
+  const pos = new Map(); for (const se of S.series) { const a = at.get(se); se.images.forEach((im, i) => { if (PRV.set.has(im)) pos.set(im, a == null ? 1e9 + (se.used ? -se.used / 1e6 : 0) : Math.abs(i - a)); }); }
+  const cand = [...PRV.set].sort((a, b) => (pos.get(b) ?? 2e9) - (pos.get(a) ?? 2e9));
+  for (const im of cand) { if (total <= B * 0.75) break; if ((pos.get(im) ?? 2e9) < 12) break; total -= im.preview.data.byteLength; im.preview = null; PRV.set.delete(im); } // the slices around each view stay
+  PRV.bytes = total;
 }
 function evict() {
   const B = decBudget(); if (DEC.bytes <= B) return;
@@ -7358,7 +7376,7 @@ function rdInit() {
   if (typeof Worker === 'undefined' || window.__noRd) return false; // (older browsers: the readers unpack with Sliceview's own code)
   try {
     const url = URL.createObjectURL(new Blob([RD_SRC], { type: 'text/javascript' }));
-    for (let i = 0; i < clamp((navigator.hardwareConcurrency || 4) - 2, 2, 6); i++) { // unpacking a zip is processor work: all but two cores
+    for (let i = 0; i < clamp((navigator.hardwareConcurrency || 4) - 2, 2, LOWMEM ? 4 : 6); i++) { // unpacking a zip is processor work: all but two cores (four at most on a phone or tablet: each holds a chunk of the zip)
       const w = new Worker(url);
       w.onmessage = e => { const job = RD.jobs.get(e.data.id); RD.jobs.delete(e.data.id); job(e.data.out); };
       w.onerror = e => { if (e.preventDefault) e.preventDefault(); if (!RD.wErr) { RD.wErr = true; try { FR.add('reader', 'reader error: ' + (e.message || 'unknown') + (e.lineno ? ' line ' + e.lineno : ''), true); } catch (x) { } } };
@@ -7521,7 +7539,7 @@ const memKeep = st => { const k = new Set([curSeries()].filter(Boolean)); if (st
 function memTight() { // memory ran out: hold less from now on (never a limit of nothing: slices kept for the screen count too)
   const now = performance.now(); if (now - (memTight.t || 0) < 3000) { makeRoom(0, memKeep(LIVE_ST)); return; } memTight.t = now; // once for a burst of failures
   FR.add('memory', 'ran out of memory: holding less · ' + FR.ctx());
-  DEC.squeeze = Math.max(0.25, (DEC.squeeze || 1) * 0.6); if (S.keepVol && S.keepVol !== S.vol) S.keepVol = null; evict(); // the MPR volume kept from before goes first
+  DEC.squeeze = Math.max(0.25, (DEC.squeeze || 1) * 0.6); if (S.keepVol && S.keepVol !== S.vol) S.keepVol = null; evict(); prvEvict(); // the MPR volume kept from before goes first
   MEM_CAP = Math.min(MEM_CAP, Math.max(150e6, (memUsed() + DEC.bytes + volHeld()) * 0.75)); makeRoom(0, memKeep(LIVE_ST)); }
 const outOfMemory = m => /allocation failed|out of memory/i.test(String(m || ''));
 const seBytes = se => se.derived || se.isFuse || se.isSlab ? 0 : se.images.reduce((a, im) => a + (!coded(im) && im.pixels ? im.pixels.byteLength : 0), 0); // a fused, subtracted or slab series makes its pictures when asked: never asked here (that built all of them)
