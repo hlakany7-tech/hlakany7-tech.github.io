@@ -676,12 +676,13 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" id="btnCons">Colleagues: send a case</button>
       <button class="item" type="button" id="btnTags">DICOM tags of this image</button>
       <button class="item" type="button" id="btnKeys">Keyboard and mouse shortcuts</button>
+      <button class="item" type="button" id="btnReport">Send app report (for fixing problems; no patient details)</button>
       <button class="item" type="button" data-do="btnServer">DICOMweb server</button>
       <button class="item" type="button" data-do="btnSample">Sample study</button>
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-0657</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1322</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2035,7 +2036,12 @@ function codecsModule() {
   async function decode(m, bytes) {
     const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
     let r;
-    if (m.codec === 'jpegll') r = jpegLossless(u8);
+    if (m.codec === 'raw') { // uncompressed, read again from the file on the device: its bytes as they are
+      const sg = m.pixelRep === 1, b = u8.byteOffset % 2 ? u8.slice() : u8, n = m.rows * m.cols;
+      const data = m.ba === 16 ? new (sg ? Int16Array : Uint16Array)(b.buffer, b.byteOffset, n).slice() : new (sg ? Int8Array : Uint8Array)(b.buffer, b.byteOffset, n).slice();
+      r = { width: m.cols, height: m.rows, signed: sg, data };
+    }
+    else if (m.codec === 'jpegll') r = jpegLossless(u8);
     else if (m.codec === 'jpegls') r = jpegLS(u8);
     else if (m.codec === 'rle') {
       r = rle(u8, m.rows, m.cols, (m.palette ? m.palette.ba : m.ba) >> 3, m.palette ? 1 : m.spp);
@@ -2434,6 +2440,44 @@ const DICOM = dicomModule();
 
 </script>
 <script>
+/* ---------- Flight recorder: a small log kept on this device (no names, no images, no files) ----------
+   What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
+   (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
+const FR = (() => {
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1322', sid = Math.random().toString(36).slice(2, 7);
+  let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
+  let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
+  const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
+  const secrets = () => { const out = new Set(); try { for (const se of (B ? B.series() : [])) for (const v of [se.patient, se.patientId, se.birth, se.dob]) if (v) { const t = String(v).trim(); if (t.length > 1) out.add(t); for (const w of t.split(/[\^\s,]+/)) if (w.length >= 3) out.add(w); } } catch (e) { } return [...out].sort((a, b) => b.length - a.length); };
+  const clean = m => { let t = String(m == null ? '' : m).replace(/\s+/g, ' ').slice(0, 500); for (const x of secrets()) t = t.split(x).join('[…]'); return t; };
+  function add(k, m, now) { log.push({ t: Date.now(), s: sid, k, m: clean(m) }); if (log.length > MAX + 60) log = log.slice(-MAX); if (now) save(); else if (!dirty) { dirty = true; setTimeout(save, 1500); } }
+  const mb = v => Math.round(v / 1e6);
+  function ctx() { try { return B ? B.ctx() : state; } catch (e) { return state; } } // what the app was doing: for a freeze or a crash
+  // the last session: ended while on screen without closing = a crash ("Aw, Snap") or the system stopping it
+  let prev = null; try { prev = JSON.parse(localStorage.getItem('svAlive') || 'null'); } catch (e) { }
+  if (prev && prev.s) add(prev.vis ? 'CRASH' : 'stopped', (prev.vis ? 'The last session (version ' + prev.v + ') ended while on screen' : 'The last session (version ' + prev.v + ') was closed by the system in the background') + ', ' + Math.max(0, Math.round((Date.now() - prev.t) / 1000)) + ' s after its last sign of life; it was: ' + (prev.st || '?'), true);
+  let closing = false;
+  const alive = () => { if (closing) return; try { localStorage.setItem('svAlive', JSON.stringify({ s: sid, v: V, t: Date.now(), vis: document.visibilityState === 'visible', st: clean(ctx()) })); } catch (e) { } };
+  alive(); setInterval(alive, 5000);
+  document.addEventListener('visibilitychange', alive);
+  addEventListener('pagehide', e => { if (!e.persisted) { closing = true; try { localStorage.removeItem('svAlive'); } catch (x) { } save(); } });
+  addEventListener('pageshow', () => { closing = false; alive(); });
+  add('start', 'version ' + V + ' · ' + (navigator.userAgent.match(/(Android [\d.]+|iPhone OS [\d_]+|Windows NT [\d.]+|Mac OS X [\d_]+|CrOS|Linux)/) || ['?'])[0] + ' · ' + (navigator.userAgent.match(/(Chrome|Firefox|Version|SamsungBrowser|HuaweiBrowser)\/[\d.]+/) || ['?'])[0] + ' · screen ' + screen.width + '×' + screen.height + ' · ' + (navigator.hardwareConcurrency || '?') + ' cores · ' + (navigator.deviceMemory || '?') + ' GB' + (matchMedia('(display-mode: standalone)').matches ? ' · installed app' : ' · browser') + (performance.memory ? ' · heap limit ' + mb(performance.memory.jsHeapSizeLimit) + ' MB' : ''));
+  addEventListener('error', ev => ev instanceof ErrorEvent && add('ERROR', (ev.message || ev.type) + (ev.filename ? ' @' + String(ev.filename).split('/').pop() + ':' + ev.lineno + ':' + ev.colno : '') + (ev.error && ev.error.stack ? ' | ' + String(ev.error.stack).split('\n').slice(1, 4).map(x => x.trim()).join(' < ') : '') + ' | ' + ctx(), true), true);
+  addEventListener('unhandledrejection', ev => { const r = ev.reason; add('ERROR', 'promise: ' + ((r && r.message) || r) + (r && r.stack ? ' | ' + String(r.stack).split('\n').slice(1, 4).map(x => x.trim()).join(' < ') : '') + ' | ' + ctx(), true); });
+  try { // the screen stuck for a while (a long piece of work on the screen's thread)
+    let last = 0; new PerformanceObserver(l => { for (const e of l.getEntries()) if (e.duration >= 400 && document.visibilityState === 'visible') { const now = Date.now(); if (now - last > 3000) { last = now; add('freeze', Math.round(e.duration) + ' ms while ' + (state || '') + ' · ' + ctx()); } } }).observe({ type: 'longtask', buffered: false });
+  } catch (e) { }
+  function report() {
+    const z = n => String(n).padStart(2, '0'), d = t => { const x = new Date(t); return z(x.getDate()) + '/' + z(x.getMonth() + 1) + ' ' + z(x.getHours()) + ':' + z(x.getMinutes()) + ':' + z(x.getSeconds()); };
+    let ss = '', out = ['Sliceview app report · version ' + V + ' · ' + d(Date.now()), 'Now: ' + clean(ctx()), ''];
+    for (const e of log.slice(-MAX)) { if (e.s !== ss) { ss = e.s; out.push('— session ' + ss); } out.push(d(e.t) + '  ' + e.k + '  ' + e.m); }
+    return out.join('\n');
+  }
+  return { add, save, ctx, report, doing: t => { state = t; }, bind: b => { B = b; state = 'running'; }, clear: () => { log = []; save(); } };
+})();
+</script>
+<script>
 // older browsers (Chrome before 99, some tablets' built-in browsers) have no roundRect: the labels drew it, and failed
 for (const C of [window.CanvasRenderingContext2D, window.OffscreenCanvasRenderingContext2D]) if (C && !C.prototype.roundRect) C.prototype.roundRect = function (x, y, w, h, r) {
   r = Math.max(0, Math.min(Array.isArray(r) ? (r[0] || 0) : (+r || 0), Math.abs(w) / 2, Math.abs(h) / 2));
@@ -2498,6 +2542,7 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 /* ---------- status ---------- */
 let statusTimer = 0;
 function say(msg, ms = 2600) {
+  try { FR.add('said', msg); } catch (e) { }
   const el = $('#status'); el.textContent = msg; el.classList.remove('off');
   clearTimeout(statusTimer); if (ms) statusTimer = setTimeout(() => { el.classList.add('off'); render(); }, ms);
   render();
@@ -4603,6 +4648,7 @@ async function inflateRawBuf(d) { // a raw deflate stream unpacked: the browser'
   const u = Inflate.inflateRaw(new Uint8Array(d)); return u.byteOffset === 0 && u.length === u.buffer.byteLength ? u.buffer : u.slice().buffer;
 }
 async function anonOriginal(im) { // the original file of an image, when it can be read again
+  if (im.zsrc && im.zsrc.blob) { const s = im.zsrc; let d = await s.blob.slice(s.start, s.start + s.csize).arrayBuffer(); if (s.method === 8) d = await inflateRawBuf(d); return new Uint8Array(d); }
   if (im.zsrc) { const s = im.zsrc, z = s.zbuf instanceof ArrayBuffer ? s.zbuf : s.zbuf.buffer; const off = s.zbuf instanceof ArrayBuffer ? 0 : s.zbuf.byteOffset;
     let d = z.slice(off + s.start, off + s.start + s.csize);
     if (s.method === 8) d = await inflateRawBuf(d);
@@ -4803,6 +4849,7 @@ function consSignalUrl(id) {
 }
 function consStatus(t) { const e = $('#consStatus'); if (e) e.textContent = t; }
 function consLog(t) { // the last few steps, shown small under the status: what to send when it does not connect
+  if (!/^(socket open|got OPEN)$/.test(t)) FR.add('net', t);
   const d = new Date(), z = n => String(n).padStart(2, '0'); CONS.log.push(z(d.getMinutes()) + ':' + z(d.getSeconds()) + ' ' + t);
   if (CONS.log.length > 8) CONS.log.shift(); const e = $('#consLogTxt'); if (e) e.textContent = CONS.log.join('\n');
 }
@@ -5142,9 +5189,11 @@ async function consIngestFile(c, r, f, data) {
   if (c.inbox !== r || c.state === 'closed') return; // ended meanwhile: dropped
   const dup = f.i != null && (r.have || (r.have = new Set())).has(f.i); if (f.i != null) r.have.add(f.i); // never the same slice twice
   if (!dup) try {
-    if (b) { const ab = b.buffer.byteLength === b.length ? b.buffer : b.slice().buffer, had = new Map(S.series.map(s => [s, s.images.length]));
-      const res = addBuffer(ab, 'case-' + f.n);
-      if (res) for (const s of res.all) { s.__consCase = r.caseId; r.lastBase = String(s.uid).split('#')[0]; for (let k = had.get(s) || 0; k < s.images.length; k++) if (!s.images[k].rawFile) s.images[k].rawFile = ab; } } // kept as it came: saving the case reuses it
+    if (b) { const ab = b.buffer.byteLength === b.length ? b.buffer : b.slice().buffer, info = DICOM.parse(ab);
+      // the file itself goes to the browser's storage (it can spill to disk): only the pixels near where you look stay in memory
+      const fr = k => Array.from({ length: info.frames || 1 }, (_, i) => k(ab, info, i));
+      const res = addBuffer(null, 'case-' + f.n, { info, src: { blob: new Blob([ab]), start: 0, method: 0 }, pixels: info.codec ? null : fr(DICOM.framePixels), frames: info.codec ? fr(DICOM.encodedFrame) : null });
+      if (res) for (const s of res.all) { s.__consCase = r.caseId; r.lastBase = String(s.uid).split('#')[0]; } }
   } catch (e) { }
   if (!c.cases.includes(r.caseId)) c.cases.push(r.caseId);
   r.got++; consText(c, { t: 'ack', id: r.id, n: f.n });
@@ -6438,6 +6487,12 @@ function roiMenu(b) { // the shapes, in a small menu above the HU button
 }
 $('#actInvert').addEventListener('click', toggleInvert);
 $('#btnKeys').addEventListener('click', () => { $('#sheetMore').hidden = true; openSheet('#sheetKeys'); });
+$('#btnReport').addEventListener('click', async () => { // the flight recorder's log, as text: to WhatsApp, email, or a file
+  $('#sheetMore').hidden = true; const text = FR.report();
+  try { if (navigator.share) { await navigator.share({ title: 'Sliceview app report', text }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(text); say('Report copied: paste it into a message', 3000); return; } catch (e) { }
+  saveBlobAs(new Blob([text], { type: 'text/plain' }), 'sliceview-report.txt');
+});
 $('#btnTags').addEventListener('click', () => { $('#sheetMore').hidden = true; tagsOpen(); });
 $('#actReset').addEventListener('click', () => {
   const se = curSeries(); if (!se) return;
@@ -6548,11 +6603,26 @@ $('#btnSeries').addEventListener('click', () => {
    so scrolling never shows a blank frame. Full resolution is decoded for the slice on screen first,
    then the slices just ahead of the scroll direction, then a wider window kept within a memory budget. */
 // Phones get a smaller cache of decoded slices: a page using too much memory is closed by the phone in the background.
-const BUDGET = 300e6, PREVIEW_BUDGET = 280e6, SETTLE = 140; // ms without a slice change that counts as a pause
+const BUDGET = 300e6, PREVIEW_BUDGET = 280e6, SETTLE = 140;
+const decBudget = () => clamp(memLimit() * 0.3, 80e6, BUDGET); // sharp slices kept in memory: smaller on a device with less memory // ms without a slice change that counts as a pause
 // A job carries either a ready codestream (buf) or a zip entry still packed (z), unpacked here off the main thread.
 async function jobCodestream(m, D) {
   if (!m.z) return new Uint8Array(m.buf);
   const z = m.z;
+  if (z.blob && z.enc) { // a compressed image's zip entry, read from the file on the device when it is needed
+    const d = await z.blob.slice(z.start, z.start + z.csize).arrayBuffer();
+    const b = z.method === 0 ? d : await new Response(new Blob([d]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+    const info = Object.assign({ frames: z.frames }, D.readFragments(new DataView(b), z.pixelOffset));
+    return new Uint8Array(D.encodedFrame(b, info, z.frame));
+  }
+  if (z.blob) { // an uncompressed image read again from the file on the device (the file stays on disk, not in memory)
+    let start = z.start || 0;
+    if (z.lho != null) { const lh = new DataView(await z.blob.slice(z.lho, z.lho + 30).arrayBuffer()); if (lh.getUint32(0, true) !== 0x04034B50) throw new Error('the zip changed'); start = z.lho + 30 + lh.getUint16(26, true) + lh.getUint16(28, true); }
+    const fb = z.rows * z.cols * z.spp * (z.ba >> 3), at = z.pixelOffset + z.frame * fb;
+    if (!z.method) return new Uint8Array(await z.blob.slice(start + at, start + at + fb).arrayBuffer());
+    const all = await new Response(z.blob.slice(start, start + z.csize).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+    return new Uint8Array(all, at, fb);
+  }
   const b = z.method === 0 ? z.data : await new Response(new Blob([z.data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
   const info = Object.assign({ frames: z.frames }, D.readFragments(new DataView(b), z.pixelOffset));
   return new Uint8Array(D.encodedFrame(b, info, z.frame));
@@ -6607,7 +6677,7 @@ function runMain(job) {
 }
 function submit(job) {
   job.t0 = performance.now();
-  if (DEC.mode === 'workers') { const w = DEC.free.pop(); job.id = DEC.id++; DEC.jobs.set(job.id, job); w.postMessage({ id: job.id, buf: job.buf, z: job.z, reduce: job.reduce, codec: job.codec, rows: job.rows, cols: job.cols, ba: job.ba, spp: job.spp, ybr: job.ybr, palette: job.palette }); }
+  if (DEC.mode === 'workers') { const w = DEC.free.pop(); job.id = DEC.id++; DEC.jobs.set(job.id, job); w.postMessage({ id: job.id, buf: job.buf, z: job.z, reduce: job.reduce, codec: job.codec, pixelRep: job.pixelRep, rows: job.rows, cols: job.cols, ba: job.ba, spp: job.spp, ybr: job.ybr, palette: job.palette }); }
   else runMain(job);
 }
 function signFix(d, img) {
@@ -6633,22 +6703,25 @@ function decoded(img, d, kind) {
   else if (S.bodyFit) render(); // the body fit is waiting for the slices it measures
 }
 function evict() {
-  if (DEC.bytes <= BUDGET) return;
+  const B = decBudget(); if (DEC.bytes <= B) return;
   const cs = curSeries(), cand = [];
   for (const se of S.series) se.images.forEach((im, i) => { if (coded(im) && im.pixels) cand.push([se === cs ? Math.abs(i - S.idx) : (C => C ? Math.abs(i - C.idx) : 1e9)(S.cmps.find(C => C.se === se)), im]); });
   cand.sort((a, b) => b[0] - a[0]);
-  for (const [, im] of cand) { if (DEC.bytes <= BUDGET * 0.8) break; DEC.bytes -= im.pixels.byteLength; im.pixels = null; im.mm = null; }
+  for (const [, im] of cand) { if (DEC.bytes <= B * 0.8) break; DEC.bytes -= im.pixels.byteLength; im.pixels = null; im.mm = null; }
 }
 // Preview size: at most 256 px across, smaller if the whole stack's previews would not fit the budget.
 function previewLevel(se) {
   const im = se.images[0]; if (!im) return 0;
   let red = 0; const big = Math.max(im.rows, im.cols);
   while ((big >> red) > 256) red++;
-  while (red < 4 && se.images.length * (im.rows >> red) * (im.cols >> red) * 2 * im.spp > PREVIEW_BUDGET) red++;
+  const pb = clamp(memLimit() * 0.15, 40e6, PREVIEW_BUDGET);
+  while (red < 4 && se.images.length * (im.rows >> red) * (im.cols >> red) * 2 * im.spp > pb) red++;
   return red;
 }
-const coded = im => !!(im && (im.frag || im.zsrc));
-const zjob = s => ({ data: s.zbuf.slice(s.start, s.start + s.csize), method: s.method, pixelOffset: s.pixelOffset, frame: s.frame, frames: s.frames });
+const LAZY_RAW = true;
+const coded = im => !!(im && (im.frag || im.zsrc || im.lazy));
+const rawJob = im => ({ blob: im.src.blob, start: im.src.start, csize: im.src.csize, method: im.src.method, lho: im.src.lho, pixelOffset: im.pixOff, frame: im.srcFrame || 0, rows: im.rows, cols: im.cols, spp: im.spp || 1, ba: im.ba });
+const zjob = s => s.blob ? { blob: s.blob, enc: true, start: s.start, csize: s.csize, method: s.method, pixelOffset: s.pixelOffset, frame: s.frame, frames: s.frames } : ({ data: s.zbuf.slice(s.start, s.start + s.csize), method: s.method, pixelOffset: s.pixelOffset, frame: s.frame, frames: s.frames });
 const LAST_INPUT = { t: 0, wait: 0 }; // the last touch, drag, wheel or key anywhere in the app
 for (const ev of ['wheel', 'pointerdown', 'pointermove', 'keydown']) addEventListener(ev, e => { if (ev !== 'pointermove' || e.buttons) LAST_INPUT.t = performance.now(); }, { capture: true, passive: true });
 function pump() {
@@ -6663,7 +6736,7 @@ function pump() {
   const needP = im => red > 0 && coded(im) && !im.pixels && !im.preview && !im.busyP && !im.busy && !im.err && !im.noPreview;
   const go = (im, kind, rd) => {
     if (kind === 'p') im.busyP = true; else if (kind === 'v') im.busyV = true; else im.busy = true;
-    submit({ buf: im.frag, z: im.zsrc ? zjob(im.zsrc) : null, codec: im.codec, rows: im.rows, cols: im.cols, ba: im.ba, spp: im.spp || 1, ybr: im.ybr, palette: im.palette, reduce: kind === 'p' ? (rd == null ? red : rd) : kind === 'v' ? (rd == null ? S.vol.k : rd) : 0, finish(r) { const ms = performance.now() - this.t0; if (kind === 'p') DEC.pms = 0.8 * (DEC.pms || 30) + 0.2 * ms; else DEC.fms = 0.8 * (DEC.fms || 150) + 0.2 * ms; decoded(im, r, kind); } });
+    submit({ buf: im.frag, z: im.zsrc ? zjob(im.zsrc) : im.lazy ? rawJob(im) : null, codec: im.codec || (im.lazy ? 'raw' : null), pixelRep: im.pixelRep, rows: im.rows, cols: im.cols, ba: im.ba, spp: im.spp || 1, ybr: im.ybr, palette: im.palette, reduce: kind === 'p' ? (rd == null ? red : rd) : kind === 'v' ? (rd == null ? S.vol.k : rd) : 0, finish(r) { const ms = performance.now() - this.t0; if (kind === 'p') DEC.pms = 0.8 * (DEC.pms || 30) + 0.2 * ms; else DEC.fms = 0.8 * (DEC.fms || 150) + 0.2 * ms; decoded(im, r, kind); } });
     return --cap > 0;
   };
   if (S.bodyFit && !se.derived) for (const f of [0.25, 0.5, 0.75]) { // the body fit waits for these: their quick previews first
@@ -6837,7 +6910,7 @@ function addBuffer(buf, name, lazy) {
       pixels: lazy && lazy.pixels ? lazy.pixels[f] : info.codec || lazy ? null : DICOM.framePixels(buf, info, f),
       frag: info.codec ? (lazy ? (lazy.frames ? lazy.frames[f] : null) : DICOM.encodedFrame(buf, info, f)) : null,
       zsrc: lazy && lazy.z ? Object.assign({ frame: f, frames: info.frames }, lazy.z) : null,
-      src: lazy && lazy.src ? lazy.src : null, srcFrame: f, // where its pixels can be read again (zip entry or file)
+      src: lazy && lazy.src ? lazy.src : null, srcFrame: f, pixOff: info.pixelOffset, // where its pixels can be read again (zip entry or file)
       hdr: info.hdr || null, // the file's header (DICOM tags)
       bitsStored: info.bitsStored, pixelRep: info.pixelRep, rows: info.rows, cols: info.cols, spp: info.spp, codec: info.codec, ba: info.bitsAllocated, ybr: info.ybr, palette: info.palette,
       mono1: info.photometric === 'MONOCHROME1', slope: (v('slope', info.slope) || 1) * (suvK || 1), intercept: (v('intercept', info.intercept) || 0) * (suvK || 1), suv: !!suvK, modality: info.modality,
@@ -6848,6 +6921,11 @@ function addBuffer(buf, name, lazy) {
       location: info.frameInfo && ipp ? null : info.sliceLocation != null ? info.sliceLocation : (ipp && ipp.length === 3 ? ipp[2] : null),
       name: name + (info.frames > 1 ? '#' + String(f).padStart(5, '0') : ''),
     });
+    const im = se.images[se.images.length - 1];
+    if (LAZY_RAW && lazy && lazy.src && lazy.src.blob && !info.codec && !info.palette && !info.ybr && (info.spp || 1) === 1 && (info.bitsAllocated === 16 || info.bitsAllocated === 8) && info.pixelOffset != null && (!lazy.src.method || RAW_DEFLATE)) {
+      im.lazy = true; // its pixels can always be read again from the file: kept only near where you look (memory stays bounded)
+      if (im.pixels) DEC.bytes += im.pixels.byteLength;
+    }
   }
   return first;
 }
@@ -6929,7 +7007,7 @@ function addLazy(r, en, nm, st) {
     try { info = DICOM.parse(h, { headerOnly: true }); }
     catch (err) { if (h.byteLength < lim) return false; continue; }
     if (!info.codec) return false; // uncompressed images are read in full the usual way
-    const res = addBuffer(null, nm, { info, z: { zbuf: r.buf, start: loc.start, csize: loc.csize, method: loc.method, pixelOffset: info.pixelOffset } });
+    const res = addBuffer(null, nm, { info, z: r.orig && LAZY_RAW ? { blob: r.orig, start: loc.start, csize: loc.csize, method: loc.method, pixelOffset: info.pixelOffset } : { zbuf: r.buf, start: loc.start, csize: loc.csize, method: loc.method, pixelOffset: info.pixelOffset } }); // with the file on the device at hand, the zip is not kept in memory
     st.n++; st.ok++; res.all.forEach(s => st.seen.add(s));
     return true;
   }
@@ -6941,11 +7019,19 @@ async function ingest(r, name, st, depth) {
     try { list = await Zip.entries(r); } catch (err) { st.bad.push(name + ': ' + err.message); return; }
     st.total += list.length - 1;
     // Reading the whole zip once is far faster than thousands of small reads.
-    if (!r.view && r.size <= 600e6) r = Zip.fromBuffer(await r.read(0, r.size));
+    const orig = r.blob || r.orig || null; // the file on the device: uncompressed slices are read again from it when needed
+    if (!r.view && r.size <= 600e6) { r = Zip.fromBuffer(await r.read(0, r.size)); if (depth === 0 && orig) r.orig = orig; }
     const one = async en => {
       const nm = name + '/' + en.name;
       try {
         if (r.buf && !(en.flags & 1) && (en.method === 0 || en.method === 8) && addLazy(r, en, nm, st)) { await progress(st); return; }
+        if (LAZY_RAW && orig && depth === 0 && r.buf && !(en.flags & 1) && (en.method === 0 || (en.method === 8 && RAW_DEFLATE))) { // an uncompressed slice: kept in memory only near where you look
+          const buf = await Zip.read(r, en); let info = null; try { info = DICOM.parse(buf); } catch (e) { info = null; }
+          if (info && !info.codec) { const loc = Zip.locate(r, en);
+            const res = addBuffer(null, nm, { info, src: { blob: orig, start: loc.start, csize: loc.csize, method: loc.method }, pixels: Array.from({ length: info.frames || 1 }, (_, i) => DICOM.framePixels(buf, info, i)) });
+            st.n++; st.ok++; res.all.forEach(x => st.seen.add(x)); await progress(st); return; }
+          if (info) { await ingest(Zip.fromBuffer(buf), nm, st, depth + 1); return; }
+        }
         await ingest(Zip.fromBuffer(await Zip.read(r, en)), nm, st, depth + 1);
       } catch (err) { st.bad.push(nm + ': ' + err.message); st.n++; }
     };
@@ -7055,7 +7141,7 @@ async function rdAll(list, st, chunked, tight) {
           for (const im of e.imgs) { im.pixels = r.pixels[im.srcFrame]; im.dropped = false; }
           st.n += e.imgs.length; continue;
         }
-        if (r.kind === 'px' || r.kind === 'enc') { const res = addBuffer(null, e.name, r.kind === 'px' ? { info: r.info, pixels: r.pixels, src: { blob: e.blob, start: e.start, csize: e.csize, method: e.method, lho: e.lho } } : { info: r.info, frames: r.frames }); st.n++; st.ok++; res.all.forEach(s => st.seen.add(s)); }
+        if (r.kind === 'px' || r.kind === 'enc') { st.evN = (st.evN || 0) + 1; if (st.evN % 24 === 0) evict(); const res = addBuffer(null, e.name, r.kind === 'px' ? { info: r.info, pixels: r.pixels, src: { blob: e.blob, start: e.start, csize: e.csize, method: e.method, lho: e.lho } } : { info: r.info, frames: r.frames }); st.n++; st.ok++; res.all.forEach(s => st.seen.add(s)); }
         else if (r.kind === 'zip') await rdZip(Zip.fromBlob(e.blob), e.name, st, e.depth);
         else if (r.kind === 'buf') await ingest(Zip.fromBuffer(r.buf), e.name, st, e.depth + 1);
         else if (e.en) await ingest(Zip.fromBuffer(await Zip.read(e.r, e.en)), e.name, st, e.depth + 1); // read on the page instead
@@ -7116,7 +7202,7 @@ async function rdZip(r, name, st, depth) {
   let list;
   try { list = await Zip.entries(r); } catch (err) { st.n++; st.bad.push(name + ': ' + err.message); return; }
   // a small study: one read of the whole zip is quicker than reading entry by entry
-  if (r.size <= 150e6 && list.reduce((s, en) => s + (en.usize || 0), 0) <= 120e6) { if (depth === 0) makeRoom(list.reduce((s, en) => s + (en.usize || 0), 0), st.seen); return ingest(r.buf ? r : Zip.fromBuffer(await r.read(0, r.size)), name, st, depth); }
+  if (r.size <= 150e6 && list.reduce((s, en) => s + (en.usize || 0), 0) <= 120e6) { if (depth === 0) makeRoom(list.reduce((s, en) => s + (en.usize || 0), 0), st.seen); return ingest(r.buf ? r : Object.assign(Zip.fromBuffer(await r.read(0, r.size)), { orig: r.blob || null }), name, st, depth); }
   if (depth === 0) makeRoom(list.reduce((s, en) => s + (en.usize || 0), 0), st.seen);
   st.total += list.length - 1;
   const fast = [], slow = [];
@@ -7149,7 +7235,7 @@ const memLimit = () => Math.min(MEM_CAP, nativeMem(), performance.memory && perf
 const memUsed = () => S.series.reduce((a, s) => a + seBytes(s), 0);
 // never put aside: the series on screen, and while a study is coming in, its biggest series so far (the one it opens on)
 const memKeep = st => { const k = new Set([curSeries()].filter(Boolean)); if (st && st.seen && st.seen.size) k.add([...st.seen].sort((a, b) => b.images.length - a.images.length)[0]); return k; };
-function memTight() { MEM_CAP = Math.min(MEM_CAP, memUsed() * 0.75); makeRoom(0, memKeep(LIVE_ST)); }
+function memTight() { FR.add('memory', 'ran out of memory: limit lowered · ' + FR.ctx()); MEM_CAP = Math.min(MEM_CAP, memUsed() * 0.75); makeRoom(0, memKeep(LIVE_ST)); }
 const outOfMemory = m => /allocation failed|out of memory/i.test(String(m || ''));
 const seBytes = se => se.images.reduce((a, im) => a + (im.pixels && !coded(im) ? im.pixels.byteLength : 0), 0);
 const needsReload = se => !!(se && se.images.some(im => im.dropped));
@@ -7219,8 +7305,9 @@ async function addFiles(files, opts) {
       memTight(); // room made: this file once more
       try { await ingest(Zip.fromBlob(f), f.name, st, 0); } catch (e2) { st.bad.push(f.name + ': ' + e2.message); }
     }
-    if (++st.memN % 16 === 0 && memUsed() > memLimit()) makeRoom(0, memKeep(st));
+    if (++st.memN % 16 === 0) { evict(); if (memUsed() > memLimit()) makeRoom(0, memKeep(st)); }
   });
+  evict(); // only the slices near where you look keep their pixels; the rest are read again from the file when needed
   if (st.opened) { // the other series came in behind: the slice on screen stays where it is
     const keep = cur(), touched = finishLoad(), se = curSeries();
     if (keep && touched.includes(se)) { const i = se.images.indexOf(keep); if (i >= 0) S.idx = i; }
@@ -7234,6 +7321,7 @@ async function addFiles(files, opts) {
       '; ' + (RD.ws && RD.ws.length ? RD.ws.length + ' readers' : 'read on the page') + '; device ' + (navigator.hardwareConcurrency || '?') + ' cores, ' + (navigator.deviceMemory || '?') + ' GB' +
       (st.tFirst ? '; first series on screen after ' + (st.tFirst / 1000).toFixed(1) + ' s (' + (st.rdN != null ? st.rdN + ' reads, ' + Math.round(st.rdMB) + ' MB' : st.firstN + ' files') + ')' + (st.paused > 50 ? '; the rest waited ' + (st.paused / 1000).toFixed(1) + ' s while you used the screen' : '') : '') +
       (performance.memory ? '; memory in use ' + Math.round(performance.memory.usedJSHeapSize / 1e6) + ' MB of ' + Math.round(performance.memory.jsHeapSizeLimit / 1e6) + ' MB' : '') + '.';
+    FR.add('open', LOADSTAT);
   }
   if (st.seen.size && !st.opened) openMain();
   if (st.seen.size) { if (st.bad.length) say(st.bad.length + ' file' + (st.bad.length === 1 ? '' : 's') + ' could not be read and ' + (st.bad.length === 1 ? 'was' : 'were') + ' skipped', 4000); }
@@ -8420,7 +8508,12 @@ async function volCacheLoad(V) {
 }
 
 keepRestore(false); // the app starts empty: the last study comes back only when asked for (the Reopen card)
-window.__sliceview = { selectSeries, memUsed, memLimit, composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice, refSeg }, anon: { anonExport, dicomDump, anonPlan, anonOne }, cons: CONS, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen }, FOL, derivFind };
+FR.bind({ series: () => S.series, ctx: () => { // what the viewer is doing, for the flight recorder
+  const n = S.series.filter(x => x.uid !== 'sample-phantom'), im = n.reduce((a, x) => a + x.images.length, 0), mb = v => Math.round(v / 1e6);
+  return [S.vol ? 'MPR' : '', S.rf ? 'Cor/Sag' : '', S.cmps && S.cmps.length ? 'compare x' + S.cmps.length : '', curSeries() && curSeries().isFuse ? 'fusion' : '', typeof VR !== 'undefined' && VR && VR.on ? '3D' : '',
+    n.length + ' series/' + im + ' images', 'held ' + mb(memUsed()) + '/' + mb(memLimit()) + ' MB', performance.memory ? 'heap ' + mb(performance.memory.usedJSHeapSize) + '/' + mb(performance.memory.jsHeapSizeLimit) + ' MB' : ''].filter(Boolean).join(', ');
+} });
+window.__sliceview = { dropAll: () => { for (const se of S.series) for (const im of se.images) if (coded(im) && im.pixels) { DEC.bytes -= im.pixels.byteLength; im.pixels = null; im.mm = null; } }, selectSeries, memUsed, memLimit, composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice, refSeg }, anon: { anonExport, dicomDump, anonPlan, anonOne }, cons: CONS, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen }, FOL, derivFind };
 })();
 </script>
 
