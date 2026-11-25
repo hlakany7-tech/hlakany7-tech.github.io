@@ -175,6 +175,7 @@ body.vr #vswitch, body.vr #cmpbar, body.vr #planesReset, body.vr #presets, body.
 .cm.ask { align-self: stretch; max-width: 100%; background: var(--panel-2); border: 1px solid var(--accent); } .ask-b { display: flex; gap: 6px; margin-top: 8px; } .ask-b .btn { flex: 1; justify-content: center; min-height: 36px; }
 .cons-form { display: flex; gap: 6px; } .cons-form input { flex: 1; min-width: 0; min-height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2); color: var(--fg); font: 14px var(--font-ui); }
 .act[hidden] { display: none; }
+.act.wait { opacity: .5; font-variant-numeric: tabular-nums; } .act:disabled { cursor: default; }
 .views.cmp[data-n="5"] .cmp-info, .views.cmp[data-n="6"] .cmp-info, .views.cmp[data-n="7"] .cmp-info, .views.cmp[data-n="8"] .cmp-info { font-size: 10px; padding: 5px 7px; }
 .cmp-bar .chip.cmpChange { font-size: 0; width: 36px; min-width: 36px; padding: 0; justify-content: center; } /* Change: a compact icon button in every view */
 .cmp-bar .chip.cmpChange::before { content: '⇄'; font-size: 17px; line-height: 1; }
@@ -690,7 +691,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1719</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1739</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2452,7 +2453,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1719', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1739', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -2669,9 +2670,15 @@ function bodyBox(c) {
 // measured on the slice in view and at a quarter, half and three quarters of the series, so no level is cut off.
 function seriesBody(se, img) { // the body over a series (image pixels), or null when it cannot be found
   const ct = t => t && (t.fuse ? t.fuse.ct : t), ims = se.images;
-  let b = null;
+  let b = null; const rs = [];
   for (const t of [img, ims[Math.floor(ims.length * 0.25)], ims[Math.floor(ims.length * 0.5)], ims[Math.floor(ims.length * 0.75)]]) {
-    const r = bodyBox(ct(t)); if (r) b = b ? { x0: Math.min(b.x0, r.x0), x1: Math.max(b.x1, r.x1), y0: Math.min(b.y0, r.y0), y1: Math.max(b.y1, r.y1) } : r;
+    const r = bodyBox(ct(t)); if (r) { rs.push(r); b = b ? { x0: Math.min(b.x0, r.x0), x1: Math.max(b.x1, r.x1), y0: Math.min(b.y0, r.y0), y1: Math.max(b.y1, r.y1) } : r; }
+  }
+  if (b && rs.length >= 3) { // a typical level's size, not the widest: one level with the arms down (or raised beside the head) left the trunk small
+    const med = v => { v.sort((p, q) => p - q); const m = v.length >> 1; return v.length & 1 ? v[m] : (v[m - 1] + v[m]) / 2; };
+    const w = Math.min(b.x1 - b.x0, med(rs.map(r => r.x1 - r.x0)) * 1.08), h = Math.min(b.y1 - b.y0, med(rs.map(r => r.y1 - r.y0)) * 1.08);
+    const cx = med(rs.map(r => (r.x0 + r.x1) / 2)), cy = med(rs.map(r => (r.y0 + r.y1) / 2));
+    b = { x0: cx - w / 2, x1: cx + w / 2, y0: cy - h / 2, y1: cy + h / 2 };
   }
   return b && img && (b.x1 - b.x0) >= img.cols * 0.15 ? b : null;
 }
@@ -3175,7 +3182,7 @@ function draw() {
     const need = [cur(), ims[Math.floor(ims.length * 0.25)], ims[Math.floor(ims.length * 0.5)], ims[Math.floor(ims.length * 0.75)]].map(ct);
     const ready = need.every(t => t && (t.pixels || t.preview)), late = performance.now() - (S.bodyFitT || 0) > 3000;
     if (!S.fit || !S.W) S.bodyFit = false; // zoomed or moved by hand meanwhile: left as it is
-    else if (ready || (late && need[0] && (need[0].pixels || need[0].preview))) { S.bodyFit = false; fitBody(); }
+    else if ((ready || (late && need[0] && (need[0].pixels || need[0].preview))) && (seriesBody(se, cur()) || performance.now() - S.bodyFitT > 15000)) { S.bodyFit = false; fitBody(); } else if (late && !S.bodyFitR) { S.bodyFitR = setTimeout(() => { S.bodyFitR = 0; render(); }, 1000); } // not measurable yet: looked at again in a second
   }
   const ready = show.pixels || show.preview;
   if (!ready && (img.err || !S.painted)) {
@@ -6109,12 +6116,16 @@ function fuseUI() { // the button shows itself when the study has a PET and a CT
   // while other series are still coming in, Fuse shows as soon as the CT and the PET themselves are complete (no new slices for 2 s)
   let ready = !loading; if (loading && pair) { const n = pair.CT.images.length + ':' + pair.PT.images.length, F = fuseUI.w || (fuseUI.w = {});
     if (F.st !== LIVE_ST) { F.st = LIVE_ST; F.shown = false; F.n = null; }
-    if (F.n !== n) { F.n = n; F.t = performance.now(); } ready = F.shown || performance.now() - F.t > 2000; if (ready) F.shown = true; } // once shown, it stays
+    if (F.n !== n) { F.n = n; F.t = performance.now(); } ready = F.shown || performance.now() - F.t > 2000 || (LIVE_ST.petFiles && pair.PT.images.length >= LIVE_ST.petFiles * 0.98 && pair.PT === bigPet()); if (ready) F.shown = true; } // once shown, it stays; the whole PET in: at once
   if (loading && !fuseUI.iv) fuseUI.iv = setInterval(() => { let l = false; try { l = !!(LIVE_ST && !LIVE_ST.done); } catch (e) { } fuseUI(); if (!l) { clearInterval(fuseUI.iv); fuseUI.iv = 0; } }, 1000);
   const can = on || (ready && !!pair);
-  const key = can + ':' + on; if (b.__k === key) return; b.__k = key;
-  b.hidden = !can; b.setAttribute('aria-pressed', on);
+  // a PET-CT still loading its PET: the button shows, greyed, with how much of the PET is in (lit the moment fusion is ready)
+  let wait = ''; if (!can && loading) { try { if (pair || LIVE_ST.petComing || [...LIVE_ST.seen].some(petLike)) { const P = bigPet(), n = P ? P.images.length : 0, of = LIVE_ST.petFiles; wait = of ? 'PET ' + Math.min(99, Math.floor(100 * n / of)) + '%' : 'PET…'; } } catch (e) { } }
+  const key = can + ':' + on + ':' + wait; if (b.__k === key) return; b.__k = key;
+  b.hidden = !can && !wait; b.disabled = !can; b.classList.toggle('wait', !can && !!wait); b.setAttribute('aria-pressed', on);
+  b.title = wait ? 'Fusion: waiting for the PET to load' : 'PET-CT fusion'; const lab = b.lastChild; if (lab && lab.nodeType === 3) lab.textContent = wait || 'Fuse';
 }
+const bigPet = () => S.series.filter(x => !x.derived && petLike(x)).sort((a, b) => b.images.length - a.images.length)[0];
 function fuseOpen() {
   const main = curSeries(); if (!main) return;
   if (main.isFuse) { subSwitch(main.fuseCT); return; } // back to the CT, same level
@@ -7216,8 +7227,11 @@ async function ctFirst(gs) {
     const v = gs.map((g, i) => [g, heads[i]]).filter(([g, h]) => g.length >= 16 && VENOUS_RX.test(h.desc) && !PRE_RX.test(h.desc)).sort((a, b) => b[0].length - a[0].length)[0];
     return v ? [v[0], ...gs.filter(g => g !== v[0])] : gs; // otherwise the biggest folder first, as before
   }
-  const rank = m => m === 'CT' ? 0 : m === 'PT' || m === 'NM' ? 2 : 1;
-  return gs.map((g, i) => [g, rank(mods[i])]).sort((a, b) => (a[1] - b[1]) || (b[0].length - a[0].length)).map(x => x[0]);
+  // the main CT (most slices), then the PET (Fuse needs it), then everything else (other CTs, scout, reports)
+  const pet = m => m === 'PT' || m === 'NM', ct = gs.map((g, i) => [g, i]).filter(([, i]) => mods[i] === 'CT').sort((a, b) => b[0].length - a[0].length)[0];
+  const pets = gs.filter((g, i) => pet(mods[i])).sort((a, b) => b.length - a.length);
+  try { if (LIVE_ST) { LIVE_ST.petComing = true; LIVE_ST.petFiles = pets[0].length; } } catch (e) { } // for the Fuse button: how much PET is coming
+  return [ct[0], ...pets, ...gs.filter(g => g !== ct[0] && !pets.includes(g)).sort((a, b) => b.length - a.length)];
 }
 // A zip already in memory, its files all in one folder: each file's header (a few KB, unpacked here) says which
 // series it belongs to. The series to show first: the CT of a PET-CT, else the venous phase with the most slices,
@@ -7369,7 +7383,7 @@ async function addFiles(files, opts) {
   else say(st.bad.length ? st.bad[0] : 'No DICOM images found', 9000);
   if (st.bad.length) console.warn(st.bad.join('\n'));
   st.done = true; fuseUI(); // the study is all in: Fuse can show
-  if (st.seen.size && S.fit && !S.bodyFit && cur() && isCTlike(curSeries()) && !curSeries().isFuse) { fitBody(); render(); } // a CT still showing its whole field of view once all is in: the body fills the view (not if moved or zoomed by hand)
+  if (st.seen.size && (S.fit || (S.autoBody && S.autoBody.s === S.s && S.autoBody.ox === S.ox && S.autoBody.oy === S.oy)) && !S.bodyFit && cur() && isCTlike(curSeries()) && !curSeries().isFuse) { fitBody(); render(); } // a CT still showing its whole field of view once all is in: the body fills the view (not if moved or zoomed by hand)
   if (st.seen.size && !(opts && (opts.restore || opts.noKeep))) keepStudy(list); // a case from a colleague is not kept
 }
 $('#inFiles').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; if (f.length) addFiles(f); });
