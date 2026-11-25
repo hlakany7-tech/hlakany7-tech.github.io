@@ -681,7 +681,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-0636</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-0657</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -4828,7 +4828,7 @@ function consGoOnline(name) {
   let ws; try { ws = new WebSocket(consSignalUrl(consKey(name))); } catch (e) { consStatus('Could not reach the introduction service'); return; }
   CONS.ws = ws; consStatus(CONS.retry ? 'Reconnecting…' : 'Connecting…'); consLog('connect as ' + consKey(name));
   ws.onopen = () => consLog('socket open');
-  ws.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } if (m.type !== 'HEARTBEAT' && m.type !== 'CANDIDATE') consLog('got ' + m.type + (m.src ? ' from ' + m.src.replace(/^sliceview-/, '') : '') + (m.payload && m.payload.msg ? ': ' + m.payload.msg : '')); consSignal(m); };
+  ws.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } if (m.type !== 'HEARTBEAT' && m.type !== 'CANDIDATE' && !(m.type === 'EXPIRE' && !CONS.peers.has(m.src))) consLog('got ' + m.type + (m.src ? ' from ' + m.src.replace(/^sliceview-/, '') : '') + (m.payload && m.payload.msg ? ': ' + m.payload.msg : '')); consSignal(m); };
   ws.onclose = ev => { // dropped (a network change, the phone sleeping): back again by itself while you want to be online
     if (CONS.ws !== ws) return; CONS.ws = null; CONS.online = false; clearInterval(CONS.hb); consUI(); consLog('closed ' + ev.code + (ev.reason ? ' ' + ev.reason : ''));
     if (PRES.sentAt && Date.now() - PRES.sentAt < 5000) { PRES.off = true; consLog('online checks off (the service dropped the connection)'); } // never a loop of drops
