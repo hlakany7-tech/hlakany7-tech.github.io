@@ -678,7 +678,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.25-1529</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.25-1534</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -692,7 +692,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1529</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1534</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2459,7 +2459,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1529', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1534', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -7164,11 +7164,12 @@ async function rdAll(list, st, chunked, tight) {
   const batches = [];
   if (chunked) { // zip entries, in the order they sit in the zip
     const es = list.slice().sort((a, b) => a.lho - b.lho); let cur = null;
+    const sizes = new Map(), bsize = b => { let v = sizes.get(b); if (v == null) { v = b.size; sizes.set(b, v); } return v; }; // asked once per file: on older Android each ask is a trip to the file system
     for (const e of es) {
       const end = e.lho + 30 + 1024 + e.csize;
       // tight: only the bytes of these entries, skipping what lies between them (the first series of a zip whose series are mixed)
       if (!cur || end - cur.start > (tight ? 24e6 : 12e6) || cur.items.length >= (tight ? 160 : 32) || (tight && e.lho > cur.end + 65536)) { cur = { start: e.lho, end, items: [] }; batches.push(cur); }
-      cur.items.push(e); cur.end = Math.min(e.blob.size, Math.max(cur.end, end));
+      cur.items.push(e); cur.end = Math.min(bsize(e.blob), Math.max(cur.end, end));
     }
     if (tight) { st.rdN = batches.length; st.rdMB = batches.reduce((a, b) => a + b.end - b.start, 0) / 1e6; }
   } else for (let i = 0; i < list.length; i += 8) batches.push({ items: list.slice(i, i + 8) });
