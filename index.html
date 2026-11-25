@@ -690,7 +690,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1439</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1415</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2452,7 +2452,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1439', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1415', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -2684,7 +2684,6 @@ function fitBody() {
   S.ang = 0; S.fh = 1; S.fv = 1;
   const sc = Math.min(fitScale() * 4, Math.min(S.W / (b.x1 - b.x0), S.H / ((b.y1 - b.y0) * a)) * 0.92);
   S.s = sc; S.ox = S.W / 2 - ((b.x0 + b.x1) / 2 - img.cols / 2) * sc; S.oy = S.H / 2 - ((b.y0 + b.y1) / 2 - img.rows / 2) * a * sc; S.fit = false;
-  S.autoBody = { s: S.s, ox: S.ox, oy: S.oy }; // fitted by the app, not by hand: fitted again if the view changes size
 }
 function fit() {
   if (!cur() || !S.W) return;
@@ -6128,8 +6127,7 @@ function fuseOpen() {
   selectSeries(S.series.indexOf(F));
   const j = w0 ? nearestSlice(F, w0) : -1; if (j >= 0) setIdx(j);
   cmpAdd(pair.PT); // the reading layout: fused | PET (its window sets how strong the colour is); the CT can be added with + Series
-  // the body (not the whole field of view) fills the fused view, centred: measured once the side-by-side layout has its size
-  fit(); S.bodyFit = true; S.bodyFitT = performance.now(); setTimeout(render, 3100); void keepZ;
+  if (keepZ && !keepZ.fit) Object.assign(S, keepZ); else fitBody(); // otherwise: the body (not the whole field of view) fills the view
   setWindow(keepW.wc, keepW.ww, keepW.p); fusePetWindow(S.fuse.max);
   if (typeof listSeries === 'function') listSeries();
   render(); pump();
@@ -6770,8 +6768,8 @@ function pump() {
     submit({ buf: im.frag, z: im.zsrc ? zjob(im.zsrc) : im.lazy ? rawJob(im) : null, codec: im.codec || (im.lazy ? 'raw' : null), pixelRep: im.pixelRep, rows: im.rows, cols: im.cols, ba: im.ba, spp: im.spp || 1, ybr: im.ybr, palette: im.palette, reduce: kind === 'p' ? (rd == null ? red : rd) : kind === 'v' ? (rd == null ? S.vol.k : rd) : 0, finish(r) { const ms = performance.now() - this.t0; if (kind === 'p') DEC.pms = 0.8 * (DEC.pms || 30) + 0.2 * ms; else DEC.fms = 0.8 * (DEC.fms || 150) + 0.2 * ms; decoded(im, r, kind); } });
     return --cap > 0;
   };
-  if (S.bodyFit) for (const f of [0, 0.25, 0.5, 0.75]) { // the body fit waits for these: their quick previews first (a fused view: its CT's)
-    let im = f ? ims[Math.floor(n * f)] : ims[idx]; if (im && im.fuse) im = im.fuse.ct; else if (se.derived || !f) continue; if (!im) continue;
+  if (S.bodyFit && !se.derived) for (const f of [0.25, 0.5, 0.75]) { // the body fit waits for these: their quick previews first
+    const im = ims[Math.floor(n * f)]; if (!im) continue;
     if (needP(im)) { if (!go(im, 'p')) return; } else if (red === 0 && needF(im)) { if (!go(im, 'f')) return; }
   }
   if (S.rf) { rfPump(go); return; } // coronal/sagittal compare: only the volumes are needed
@@ -7499,13 +7497,11 @@ new ResizeObserver(() => {
   // A zoomed view keeps showing the same point at its centre, at the same zoom relative to fit,
   // when it grows or shrinks (MPR layout changes), including after being hidden.
   const r = stage.getBoundingClientRect();
-  const auto = !S.fit && S.autoBody && S.autoBody.s === S.s && S.autoBody.ox === S.ox && S.autoBody.oy === S.oy; // still as the body fit left it
   if (!S.fit && S.W > 0 && S.H > 0 && cur()) { const f0 = fitScale(); S.keep = { c: toImage(S.W / 2, S.H / 2), rel: f0 ? S.s / f0 : 1 }; }
   S.W = r.width; S.H = r.height; S.dpr = window.devicePixelRatio || 1;
   cv.width = Math.round(S.W * S.dpr); cv.height = Math.round(S.H * S.dpr);
   if (GLR) GLR.resize(cv.width, cv.height);
-  if (auto && S.W > 0 && S.H > 0) { S.keep = null; fitBody(); } // the side-by-side layout (fusion, compare): the body fills the new size, centred
-  else if (S.fit) fit();
+  if (S.fit) fit();
   else if (S.keep && S.W > 0 && S.H > 0) { S.s = fitScale() * S.keep.rel; const p = toScreen(S.keep.c.x, S.keep.c.y); S.ox += S.W / 2 - p.x; S.oy += S.H / 2 - p.y; S.keep = null; }
   if (S.vol && S.W > 0) keepCrossInView(null);
   render();
@@ -8546,7 +8542,7 @@ FR.bind({ series: () => S.series, ctx: () => { // what the viewer is doing, for 
   return [S.vol ? 'MPR' : '', S.rf ? 'Cor/Sag' : '', S.cmps && S.cmps.length ? 'compare x' + S.cmps.length : '', curSeries() && curSeries().isFuse ? 'fusion' : '', typeof VR !== 'undefined' && VR && VR.on ? '3D' : '',
     n.length + ' series/' + im + ' images', 'held ' + mb(memUsed()) + '/' + mb(memLimit()) + ' MB', performance.memory ? 'heap ' + mb(performance.memory.usedJSHeapSize) + '/' + mb(performance.memory.jsHeapSizeLimit) + ' MB' : ''].filter(Boolean).join(', ');
 } });
-window.__sliceview = { fitBody, dropAll: () => { for (const se of S.series) for (const im of se.images) if (coded(im) && im.pixels) { DEC.bytes -= im.pixels.byteLength; im.pixels = null; im.mm = null; } }, selectSeries, memUsed, memLimit, composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice, refSeg }, anon: { anonExport, dicomDump, anonPlan, anonOne }, cons: CONS, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen }, FOL, derivFind };
+window.__sliceview = { dropAll: () => { for (const se of S.series) for (const im of se.images) if (coded(im) && im.pixels) { DEC.bytes -= im.pixels.byteLength; im.pixels = null; im.mm = null; } }, selectSeries, memUsed, memLimit, composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice, refSeg }, anon: { anonExport, dicomDump, anonPlan, anonOne }, cons: CONS, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen }, FOL, derivFind };
 })();
 </script>
 
