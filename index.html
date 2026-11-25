@@ -295,8 +295,10 @@ body.focus > header.bar, body.focus .presets-row, body.focus .dock { display: no
   padding: calc(16px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-left, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-right, 0px));
 }
 .sheet[hidden] { display: none; }
-.card { width: 100%; max-width: 580px; max-height: 100%; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.card { box-sizing: border-box; width: 100%; max-width: 580px; max-height: 100%; max-height: calc(100vh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); overflow: auto; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 .card h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.card > * { flex-shrink: 0; } /* older browsers: the menu scrolls instead of squeezing */
+.card h2 small { display: block; font-size: 11px; font-weight: 400; color: var(--muted); font-family: var(--font-mono); margin-top: 2px; }
 .card .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .list { display: flex; flex-direction: column; gap: 8px; }
 .prowhy { margin: 0; padding: 10px 12px; border-radius: 10px; background: rgba(140,196,255,.1); color: var(--accent); }
@@ -676,7 +678,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More</h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.25-1508</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -690,7 +692,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1500</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1508</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2457,7 +2459,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1500', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1508', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
