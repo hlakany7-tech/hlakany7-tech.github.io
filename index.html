@@ -628,6 +628,14 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
   </div>
 </div>
 
+<div class="sheet" id="sheetReport" hidden>
+  <div class="card" role="dialog" aria-label="App report">
+    <div class="head"><h2>App report</h2><button class="btn" data-close>Close</button></div>
+    <p class="note">What went wrong and when, kept on this device: no patient names, no images. Copy it and paste it into a message.</p>
+    <textarea id="reportTxt" readonly spellcheck="false" style="width:100%;height:46vh;box-sizing:border-box;font:11px/1.45 var(--font-mono);background:var(--panel-2);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px;white-space:pre;overflow:auto"></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn" type="button" id="reportCopy" style="flex:1">Copy</button><button class="btn" type="button" id="reportShare" style="flex:1">Share…</button><button class="btn" type="button" id="reportSave" style="flex:1">Save as file</button></div>
+  </div>
+</div>
 <div class="sheet" id="sheetKeys" hidden>
   <div class="card" role="dialog" aria-label="Keyboard and mouse">
     <div class="head"><h2>Keyboard and mouse</h2><button class="btn" data-close>Close</button></div>
@@ -676,13 +684,13 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" id="btnCons">Colleagues: send a case</button>
       <button class="item" type="button" id="btnTags">DICOM tags of this image</button>
       <button class="item" type="button" id="btnKeys">Keyboard and mouse shortcuts</button>
-      <button class="item" type="button" id="btnReport">Send app report (for fixing problems; no patient details)</button>
+      <button class="item" type="button" id="btnAppReport">Send app report (for fixing problems; no patient details)</button>
       <button class="item" type="button" data-do="btnServer">DICOMweb server</button>
       <button class="item" type="button" data-do="btnSample">Sample study</button>
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1339</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1415</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2444,7 +2452,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1339', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1415', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -6099,7 +6107,8 @@ function fuseUI() { // the button shows itself when the study has a PET and a CT
   const b = $('#actFuse'); if (!b) return; const se = curSeries(), on = !!(se && se.isFuse), pair = on ? null : fusePair(se);
   // while other series are still coming in, Fuse shows as soon as the CT and the PET themselves are complete (no new slices for 2 s)
   let ready = !loading; if (loading && pair) { const n = pair.CT.images.length + ':' + pair.PT.images.length, F = fuseUI.w || (fuseUI.w = {});
-    if (F.n !== n) { F.n = n; F.t = performance.now(); } ready = performance.now() - F.t > 2000; }
+    if (F.st !== LIVE_ST) { F.st = LIVE_ST; F.shown = false; F.n = null; }
+    if (F.n !== n) { F.n = n; F.t = performance.now(); } ready = F.shown || performance.now() - F.t > 2000; if (ready) F.shown = true; } // once shown, it stays
   if (loading && !fuseUI.iv) fuseUI.iv = setInterval(() => { let l = false; try { l = !!(LIVE_ST && !LIVE_ST.done); } catch (e) { } fuseUI(); if (!l) { clearInterval(fuseUI.iv); fuseUI.iv = 0; } }, 1000);
   const can = on || (ready && !!pair);
   const key = can + ':' + on; if (b.__k === key) return; b.__k = key;
@@ -6492,12 +6501,21 @@ function roiMenu(b) { // the shapes, in a small menu above the HU button
 }
 $('#actInvert').addEventListener('click', toggleInvert);
 $('#btnKeys').addEventListener('click', () => { $('#sheetMore').hidden = true; openSheet('#sheetKeys'); });
-$('#btnReport').addEventListener('click', async () => { // the flight recorder's log, as text: to WhatsApp, email, or a file
-  $('#sheetMore').hidden = true; const text = FR.report();
-  try { if (navigator.share) { await navigator.share({ title: 'Sliceview app report', text }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
-  try { await navigator.clipboard.writeText(text); say('Report copied: paste it into a message', 3000); return; } catch (e) { }
-  saveBlobAs(new Blob([text], { type: 'text/plain' }), 'sliceview-report.txt');
+$('#btnAppReport').addEventListener('click', () => { // the flight recorder's log, shown: copied, shared or saved from there (each straight from a tap)
+  $('#sheetMore').hidden = true; let t; try { t = FR.report(); } catch (e) { t = 'The report could not be made: ' + ((e && e.message) || e); }
+  $('#reportTxt').value = t; openSheet('#sheetReport');
 });
+$('#reportCopy').addEventListener('click', () => {
+  const ta = $('#reportTxt'), done = () => say('Report copied: paste it into a message', 3000);
+  const old = () => { ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length); let ok = false; try { ok = document.execCommand('copy'); } catch (e) { } if (ok) done(); else say('Select the text and copy it', 3000); };
+  try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).then(done, old); else old(); } catch (e) { old(); }
+});
+$('#reportShare').addEventListener('click', () => {
+  const text = $('#reportTxt').value;
+  if (!navigator.share) { say('Sharing is not available here: use Copy', 3000); return; }
+  navigator.share({ title: 'Sliceview app report', text }).catch(e => { if (!e || e.name !== 'AbortError') say('Could not open the share menu: use Copy', 3500); });
+});
+$('#reportSave').addEventListener('click', () => saveBlobAs(new Blob([$('#reportTxt').value], { type: 'text/plain' }), 'sliceview-report.txt'));
 $('#btnTags').addEventListener('click', () => { $('#sheetMore').hidden = true; tagsOpen(); });
 $('#actReset').addEventListener('click', () => {
   const se = curSeries(); if (!se) return;
@@ -6709,8 +6727,14 @@ function decoded(img, d, kind) {
 }
 function evict() {
   const B = decBudget(); if (DEC.bytes <= B) return;
-  const cs = curSeries(), cand = [];
-  for (const se of S.series) se.images.forEach((im, i) => { if (coded(im) && im.pixels) cand.push([se === cs ? Math.abs(i - S.idx) : (C => C ? Math.abs(i - C.idx) : 1e9)(S.cmps.find(C => C.se === se)), im]); });
+  // where you are looking, per series: the series on screen and the ones compared, and also the CT and PET under a fused
+  // view, the two series of a subtraction and the slices of a slab (their slices are what that view is made of)
+  const cs = curSeries(), focus = new Map(), srcs = t => t.fuse ? [t.fuse.ct, t.fuse.pt] : t.sub ? [t.sub.a, t.sub.b] : t.slab ? t.slab.list : [];
+  const look = (se, at) => { if (!se) return; if (!se.derived) { focus.set(se, at); return; }
+    for (const im of srcs(se.images[at] || {})) { if (!im) continue; const o = S.series.find(x => !x.derived && x.images.includes(im)); if (o && !focus.has(o)) focus.set(o, o.images.indexOf(im)); } };
+  look(cs, S.idx); for (const C of S.cmps) look(C.se, C.idx);
+  const cand = [];
+  for (const se of S.series) { const at = focus.get(se); se.images.forEach((im, i) => { if (coded(im) && im.pixels && !im.derived) cand.push([at == null ? 1e9 : Math.abs(i - at), im]); }); }
   cand.sort((a, b) => b[0] - a[0]);
   for (const [, im] of cand) { if (DEC.bytes <= B * 0.8) break; DEC.bytes -= im.pixels.byteLength; im.pixels = null; im.mm = null; }
 }
@@ -7242,7 +7266,7 @@ const memUsed = () => S.series.reduce((a, s) => a + seBytes(s), 0);
 const memKeep = st => { const k = new Set([curSeries()].filter(Boolean)); if (st && st.seen && st.seen.size) k.add([...st.seen].sort((a, b) => b.images.length - a.images.length)[0]); return k; };
 function memTight() { FR.add('memory', 'ran out of memory: limit lowered · ' + FR.ctx()); MEM_CAP = Math.min(MEM_CAP, memUsed() * 0.75); makeRoom(0, memKeep(LIVE_ST)); }
 const outOfMemory = m => /allocation failed|out of memory/i.test(String(m || ''));
-const seBytes = se => se.images.reduce((a, im) => a + (im.pixels && !coded(im) ? im.pixels.byteLength : 0), 0);
+const seBytes = se => se.derived || se.isFuse || se.isSlab ? 0 : se.images.reduce((a, im) => a + (!coded(im) && im.pixels ? im.pixels.byteLength : 0), 0); // a fused, subtracted or slab series makes its pictures when asked: never asked here (that built all of them)
 const needsReload = se => !!(se && se.images.some(im => im.dropped));
 function makeRoom(bytes, keep) {
   let used = S.series.reduce((a, s) => a + seBytes(s), 0);
