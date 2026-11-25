@@ -91,6 +91,12 @@ body.vr #vswitch, body.vr #cmpbar, body.vr #planesReset, body.vr #presets, body.
 .views.mpr #mvCor, .views.mpr #mvSag { display: block; }
 #mvAx { position: absolute; inset: 0; z-index: 4; border: 0; border-radius: inherit; } .views.mpr #mvAx:not([hidden]) { display: block; }
 .views.cmp .cmpv.on { display: block; }
+/* a double tap on one pane of a comparison (fused | PET): that pane alone fills the screen; again: back */
+.views.cmp[data-solo] { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0, 1fr) !important; }
+.views.cmp[data-solo] .stage { grid-row: auto !important; grid-column: auto !important; }
+.views.cmp[data-solo] .cmpv.on:not(.solo) { display: none !important; }
+/* a compared pane alone: the main view stays laid out underneath at the same size (unseen), as the pane is drawn through its zoom */
+.views.cmp[data-solo]:not([data-solo="M"]) .stage { position: absolute; inset: 0; visibility: hidden; pointer-events: none; }
 .views.cmp[data-n="2"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 .views.cmp[data-n="3"], .views.cmp[data-n="4"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
 .views.cmp[data-n="3"] .stage { grid-row: span 2; }
@@ -679,7 +685,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.25-2006</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.25-2058</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -693,7 +699,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-2006</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-2058</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2460,7 +2466,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-2006', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-2058', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -3489,6 +3495,7 @@ function tapped(p) {
     lastTap = null;
     if (S.vol && S.vol.se === volSe(curSeries()) && mprMax('ax')) return;
     if (!S.cmps.length && !S.rf) { focusToggle(); return; } // the single view: a double tap goes full screen, and back
+    if (S.cmps.length && !S.rf) return; // side by side: a double tap shows this pane alone (handled for all panes below)
     if (S.fit) zoomAbout(p.x, p.y, S.s, S.ox, S.oy, S.s * 2.5); else fit();
     linkZoom('ax');
     render();
@@ -4574,7 +4581,9 @@ const ANON_REMOVE = new Set(['00080014', '00080080', '00080081', '00080082', '00
 const ANON_KEEP10 = new Set(['00100040', '00101010', '00101020', '00101030']); // sex, age, size, weight (weight: PET SUV)
 const ANON_UIDS = new Set(['0020000D', '0020000E', '00080018', '00200052']);
 const ANON_IMPL = '2.25.297011556178405391640101957393125573227';
+const h32 = (str, seed) => { let h = seed ^ 0x9e3779b9; for (let i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 0x85ebca6b); h ^= h >>> 13; } h = Math.imul(h ^ (h >>> 16), 0xc2b2ae35); return (h ^ (h >>> 16)) >>> 0; };
 function anonUid(ctx, old) { // a new UID for an old one, the same each time within this export
+  if (!ctx.uids.has(old) && ctx.salt) { let n = 0n; for (let k = 1; k <= 4; k++) n = (n << 32n) | BigInt(h32(ctx.salt + '|' + old, k * 0x27d4eb2f)); ctx.uids.set(old, '2.25.' + n.toString()); } // sent to a colleague: the same ids if the case is sent again (a secret of this phone's makes them)
   if (!ctx.uids.has(old)) { const r = crypto.getRandomValues(new Uint32Array(4)); let n = 0n; for (const x of r) n = (n << 32n) | BigInt(x); ctx.uids.set(old, '2.25.' + n.toString()); }
   return ctx.uids.get(old);
 }
@@ -4799,10 +4808,11 @@ function derivFind(list) { // -> [{ se, from, kind: 'axial' | 'coronal' | 'sagit
   }
   return out;
 }
-function anonPlan(scope) { // what an export or a send holds: one entry per file, in order (the series on screen first)
+function anonPlan(scope, keepOrder) { // what an export or a send holds: one entry per file, in order (the series on screen first)
   const list = anonSeriesList(scope); if (!list.length) return null;
   const on = curSeries();
-  if (scope === 'study') list.sort((a, b) => (petLike(a) - petLike(b)) || ((isVenous(b) && b.images.length >= 16) - (isVenous(a) && a.images.length >= 16)) || (b.images.length - a.images.length)); // as a study opens here: the venous phase first (a PET-CT: its CT)
+  if (keepOrder) { } // a case sent again: exactly the series and order of the first time
+  else if (scope === 'study') list.sort((a, b) => (petLike(a) - petLike(b)) || ((isVenous(b) && b.images.length >= 16) - (isVenous(a) && a.images.length >= 16)) || (b.images.length - a.images.length)); // as a study opens here: the venous phase first (a PET-CT: its CT)
   else list.sort((a, b) => (b === on || (on && on.isFuse && (b === on.fuseCT))) - (a === on || (on && on.isFuse && (a === on.fuseCT))));
   const ctx = { uids: new Map(), code: 'ANON-' + crypto.getRandomValues(new Uint32Array(1))[0].toString(36).toUpperCase().slice(0, 6).padStart(6, '0') };
   const items = [], done = new Set(), used = new Set(); let shots = 0, skipped = 0;
@@ -4871,7 +4881,7 @@ const CONS_ICE = { iceServers: [{ urls: 'stun:stun.relay.metered.ca:80' }, { url
   Object.assign({ urls: ['turn:standard.relay.metered.ca:80', 'turn:standard.relay.metered.ca:80?transport=tcp', 'turn:standard.relay.metered.ca:443', 'turns:standard.relay.metered.ca:443?transport=tcp'] }, CONS_TURN)] };
 function consSignalUrl(id) {
   const base = consLS('svSignal') || 'wss://0.peerjs.com:443/peerjs?key=peerjs';
-  if (!CONS.token) CONS.token = Math.random().toString(36).slice(2); // the same token on every reconnection: the name stays ours
+  if (!CONS.token) { CONS.token = consLS('svToken') || Math.random().toString(36).slice(2); consLS('svToken', CONS.token); } // the same token on every reconnection, and after Sliceview is opened again: the name stays ours (the service hands it to the new one)
   return base + '&id=' + encodeURIComponent(id) + '&token=' + CONS.token + '&version=1.5.4';
 }
 function consStatus(t) { const e = $('#consStatus'); if (e) e.textContent = t; }
@@ -4928,10 +4938,13 @@ function consConv(id, name) {
   return c;
 }
 function consSignal(m) {
-  if (m.type === 'OPEN') { CONS.online = true; CONS.retry = 0; setTimeout(() => presPing(true), 500); consStatus('Online as ' + CONS.me + ': colleagues can reach you by this name'); consUI();
+  if (m.type === 'OPEN') { CONS.online = true; CONS.retry = 0; CONS.taken = 0; setTimeout(() => presPing(true), 500); consStatus('Online as ' + CONS.me + ': colleagues can reach you by this name'); consUI();
     for (const c of CONS.peers.values()) if (c.state !== 'open' && (c.dialing || (c.ever && consDialer(c)))) consRtc(c, true); // calls waiting, conversations to restore: called again
     return; }
-  if (m.type === 'ID-TAKEN') { CONS.want = false; consGoOffline(true); consStatus('That name is in use by someone else now: choose another'); consUI(); return; }
+  if (m.type === 'ID-TAKEN') { // after a restart the service can still hold the old connection for a minute: tried again for 2 minutes before saying so
+    CONS.taken = CONS.taken || Date.now();
+    if (Date.now() - CONS.taken < 120000) { try { CONS.ws && CONS.ws.close(); } catch (e) { } CONS.ws = null; clearTimeout(CONS.rt); CONS.rt = setTimeout(() => { if (CONS.want && !CONS.ws) consGoOnline(CONS.me); }, 8000); consStatus('Getting your name back from the previous session…'); return; }
+    CONS.taken = 0; CONS.want = false; consGoOffline(true); consStatus('That name is in use by someone else now: choose another'); consUI(); return; }
   if (m.type === 'ERROR' || m.type === 'INVALID-KEY') { CONS.err = 'The introduction service said: ' + ((m.payload && m.payload.msg) || m.type); consStatus(CONS.err); return; }
   if (m.type === 'EXPIRE') { presSet(m.src, false); const c = CONS.peers.get(m.src); if (c && c.state !== 'open') { c.away = true; if (!c.ever) consStatus(c.name + ' is not online yet: still calling (Sliceview must be open on their phone, online with exactly that name)'); consUI(); } return; }
   if (m.type === 'LEAVE') return; // their link to the service dropped: the conversation waits for them
@@ -4995,7 +5008,8 @@ function consOpen(c, dc) {
   consNote(c, again ? 'Reconnected' : 'Connected with ' + c.name); consUI(); if (!again) consChatOpen(c, true); else consChatDraw();
   consRoute(c);
   if (c.out && !c.out.go && c.out.offer) consText(c, c.out.offer); // a case offered but not yet answered: offered again
-  const r = c.inbox; if (r && !r.ask && r.got < r.count) { r.cur = null; r.q.then(() => { r.expect = r.got; r.gap = false; consText(c, { t: 'resume', id: r.id, have: r.got }); }); } // a case arriving: on from where it stopped
+  const r = c.inbox; if (r && !r.ask && r.got < r.count) consResumeAsk(c, r); // a case arriving: on from where it stopped
+  consPersistConvs(); setTimeout(() => consAutoResend(c), 300); // this phone restarted while sending: the case goes on
 }
 async function consRoute(c) { // direct, or through the relay: said once per connection (it decides the speed)
   const pc = c.pc; if (!pc) return; await new Promise(r => setTimeout(r, 600));
@@ -5029,7 +5043,7 @@ function consCall(name) {
 function consEnd(c, quiet) { // End: the conversation and its case go, on both phones
   if (c.state === 'closed') return; c.state = 'closed'; clearTimeout(c.timer); clearInterval(c.again); clearInterval(c.alive);
   const pc = c.pc; c.pc = null; c.dc = null; try { pc && pc.close(); } catch (e) { }
-  folStop(c, true); CONS.peers.delete(c.id); c.out = null; if (c.inbox) clearInterval(c.inbox.wantT); c.inbox = null; // nothing more is taken in
+  folStop(c, true); CONS.peers.delete(c.id); rxForget(c); consOutDone(c, true); consPersistConvs(); c.out = null; if (c.inbox) clearInterval(c.inbox.wantT); c.inbox = null; // nothing more is taken in
   consWipe(c);
   if (CONS.open === c) { CONS.open = null; $('#consChat').hidden = true; }
   if (!quiet) say(c.name + ' ended the conversation; the shared case was closed', 3500);
@@ -5180,16 +5194,20 @@ function consWant(o, m) { // the other phone is looking here: the slices around 
   if (!near.length) return; const set = new Set(near);
   o.order = o.order.slice(0, from).concat(near, rest.filter(i => !set.has(i)));
 }
-async function consOffer(c, scope) {
+function consSalt(c) { const k = 'svSalt:' + c.id; let v = consLS(k); if (!v) { v = Array.from(crypto.getRandomValues(new Uint32Array(4)), x => x.toString(36)).join(''); consLS(k, v); } return v; }
+async function consOffer(c, scope, again) {
   if (c.out || c.state !== 'open') return;
-  const plan = anonPlan(scope); if (!plan || !plan.items.length) { consNote(c, 'Nothing to send from this case'); return; }
-  const se = curSeries(), id = 'k' + Date.now().toString(36);
-  let left = []; if (scope === 'study') { try { left = derivFind(plan.series); } catch (e) { left = []; } } // rebuilt there from the thin series: not sent
+  const plan = anonPlan(again ? again.list : scope, !!again); if (!plan || !plan.items.length) { if (!again) consNote(c, 'Nothing to send from this case'); return; }
+  plan.ctx.salt = consSalt(c); plan.ctx.code = 'ANON-' + h32(plan.ctx.salt + '|' + (plan.series[0].studyUid || plan.series[0].uid), 7).toString(36).toUpperCase().slice(0, 6).padStart(6, '0');
+  const se = curSeries();
+  let left = []; if (scope === 'study' && !again) { try { left = derivFind(plan.series); } catch (e) { left = []; } } // rebuilt there from the thin series: not sent
   if (left.length) { const out = new Set(left.map(x => x.se)); plan.items = plan.items.filter(it => !out.has(it.se)); plan.series = plan.series.filter(s => !out.has(s)); }
   for (const s of plan.series) anonUid(plan.ctx, String(s.uid).split('#')[0]); // each series' new UID, known from the start (where they look is said by it)
   c.sent = c.sent || new Map(); for (const s of plan.series) { const b = String(s.uid).split('#')[0]; c.sent.set(b, plan.ctx.uids.get(b)); } // Follow me names series by these
   const sizes = {}; for (const it of plan.items) { const u = plan.ctx.uids.get(String(it.se.uid).split('#')[0]); sizes[u] = (sizes[u] || 0) + Math.max(1, it.se.images.filter(x => x.hdr === it.im.hdr).length); } // how many images each series will have
+  const id = 'k' + h32(plan.ctx.salt + '|' + plan.series.map(x => x.uid).join(',') + '|' + plan.items.length, 3).toString(36) + h32(plan.series.map(x => x.uid).join(','), 5).toString(36); // the same case: the same id (sent again after a restart, it carries on)
   c.out = { id, plan, order: consOrder(plan), next: 0, acked: 0, bytes: 0, raw: 0, t0: 0, go: false };
+  try { localStorage.setItem('svOut:' + c.id, JSON.stringify({ id, uids: plan.series.map(x => x.uid), desc: (again && again.desc) || null, t: Date.now() })); } catch (e) { }
   const leftMsg = left.map(x => ({ desc: x.se.desc || 'series', n: x.se.images.length, kind: x.kind, t: x.t, z: x.kind === 'axial' ? x.se.images.map(im => im.location == null ? null : Math.round(im.location * 100) / 100).slice(0, 2000) : null, from: plan.ctx.uids.get(String(x.from.uid).split('#')[0]), fromDesc: x.from.desc || '' }));
   c.out.offer = { t: 'case', id, sizes, left: leftMsg, count: plan.items.length, desc: (se && se.modality ? se.modality + ' ' : '') + (scope === 'study' ? 'study, ' + plan.series.length + ' series' : (se && se.desc) || 'series') };
   if (leftMsg.length) consNote(c, 'Left out (' + c.name + '’s phone rebuilds them from the thin slices): ' + leftMsg.map(x => x.desc).join(', '));
@@ -5247,7 +5265,7 @@ async function consData(c, d) {
   if (m.t === 'att') { consAttStart(c, m); return; }
   if (m.t === 'attEnd') { consAttEnd(c, m); return; }
   if (m.t === 'chat') { c.chat.push({ from: c.name, text: String(m.text || '').slice(0, 2000) }); if (CONS.open !== c || $('#consChat').hidden) c.unread++; consChatDraw(); consUI(); }
-  else if (m.t === 'case') { if (r && r.id === m.id) return; c.inbox = { id: m.id, expect: 0, sizes: m.sizes || null, left: Array.isArray(m.left) ? m.left.slice(0, 40) : [], count: +m.count || 0, desc: String(m.desc || ''), got: 0, cur: null, ask: true, q: Promise.resolve(), caseId: 'c' + (++CONS.cid), first: true, t0: 0 }; consChatOpen(c, true); consChatDraw(); }
+  else if (m.t === 'case') { if (r && r.id === m.id) { if (!r.ask) { consText(c, { t: 'accept', id: r.id }); consResumeAsk(c, r); } return; } if (c.doneIds && c.doneIds.has(m.id)) { consText(c, { t: 'accept', id: m.id }); consText(c, { t: 'resume', id: m.id, have: +m.count || 0, all: true }); return; } c.inbox = { id: m.id, expect: 0, sizes: m.sizes || null, left: Array.isArray(m.left) ? m.left.slice(0, 40) : [], count: +m.count || 0, desc: String(m.desc || ''), got: 0, cur: null, ask: true, q: Promise.resolve(), caseId: 'c' + (++CONS.cid), first: true, t0: 0 }; consChatOpen(c, true); consChatDraw(); }
   else if (m.t === 'f') {
     if (!r || r.id !== m.id || r.ask) return;
     if (m.n === r.expect) { r.gap = false; r.cur = { n: m.n, i: m.i, len: +m.len, m: m.m, parts: [], recv: 0 }; }
@@ -5255,11 +5273,11 @@ async function consData(c, d) {
   }
   else if (m.t === 'skip') { if (r && r.id === m.id && m.n === r.expect) r.expect++, r.q = r.q.then(() => { r.got++; consText(c, { t: 'ack', id: r.id, n: m.n }); consRecvDone(c, r); }); }
   else if (m.t === 'ack') { const o = c.out; if (o && o.id === m.id) { o.acked = Math.max(o.acked, m.n + 1); o.wake && o.wake(); consProgress(c, o.acked / o.plan.items.length, 'Sending ' + o.acked + ' / ' + o.plan.items.length + consRate(o));
-      if (o.acked >= o.plan.items.length) { const sec = (performance.now() - o.t0) / 1000; consNote(c, 'Case sent: ' + o.acked + ' images, ' + (o.bytes / 1048576).toFixed(0) + ' MB (packed from ' + (o.raw / 1048576).toFixed(0) + ' MB) in ' + Math.round(sec) + ' s (' + (o.bytes / 1048576 / Math.max(0.1, sec)).toFixed(2) + ' MB/s' + (c.route ? ', ' + c.route : '') + ')' + consSlow(o, sec)); c.out = null; consProgress(c, -1); } } }
+      if (o.acked >= o.plan.items.length) { const sec = (performance.now() - o.t0) / 1000; consOutDone(c); consNote(c, 'Case sent: ' + o.acked + ' images, ' + (o.bytes / 1048576).toFixed(0) + ' MB (packed from ' + (o.raw / 1048576).toFixed(0) + ' MB) in ' + Math.round(sec) + ' s (' + (o.bytes / 1048576 / Math.max(0.1, sec)).toFixed(2) + ' MB/s' + (c.route ? ', ' + c.route : '') + ')' + consSlow(o, sec)); c.out = null; consProgress(c, -1); } } }
   else if (m.t === 'want') { if (c.out && c.out.id === m.id) consWant(c.out, m); }
   else if (m.t === 'accept') { const o = c.out; if (o && o.id === m.id) { o.go = true; o.t0 = performance.now(); consPump(c); } }
-  else if (m.t === 'resume') { const o = c.out; if (o && o.id === m.id) { o.next = o.acked = Math.max(0, +m.have || 0); o.go = true; consPump(c); } }
-  else if (m.t === 'decline') { if (c.out && c.out.id === m.id) { c.out = null; consNote(c, c.name + ' declined the case'); consProgress(c, -1); } }
+  else if (m.t === 'resume') { const o = c.out; if (!(o && o.id === m.id)) consAutoResend(c, m.id); if (o && o.id === m.id) { consResume(c, o, m); if (c.out === o) { o.go = true; if (!o.t0) o.t0 = performance.now(); consPump(c); } } }
+  else if (m.t === 'decline') { if (c.out && c.out.id === m.id) { c.out = null; consOutDone(c, true); consNote(c, c.name + ' declined the case'); consProgress(c, -1); } }
   else if (m.t === 'view') folApply(c, m);
   else if (m.t === 'fol') folMsg(c, m);
   else if (m.t === 'bye') consEnd(c);
@@ -5269,16 +5287,65 @@ async function consIngestFile(c, r, f, data, up) {
   const ti0 = performance.now(); let b = null; try { b = up ? await up : await consUnpack(f.m, data); } catch (e) { b = null; } r.tUnpack = (r.tUnpack || 0) + performance.now() - ti0;
   if (c.inbox !== r || c.state === 'closed') return; // ended meanwhile: dropped
   const dup = f.i != null && (r.have || (r.have = new Set())).has(f.i); if (f.i != null) r.have.add(f.i); // never the same slice twice
-  if (!dup) try {
-    if (b) { const ab = b.buffer.byteLength === b.length ? b.buffer : b.slice().buffer, info = DICOM.parse(ab);
-      // the file itself goes to the browser's storage (it can spill to disk): only the pixels near where you look stay in memory
-      const fr = k => Array.from({ length: info.frames || 1 }, (_, i) => k(ab, info, i));
-      const res = addBuffer(null, 'case-' + f.n, { info, src: { blob: new Blob([ab]), start: 0, method: 0 }, pixels: info.codec ? null : fr(DICOM.framePixels), frames: info.codec ? fr(DICOM.encodedFrame) : null });
-      if (res) for (const s of res.all) { s.__consCase = r.caseId; r.lastBase = String(s.uid).split('#')[0]; } }
-  } catch (e) { }
+  if (!dup && b) { const ab = b.buffer.byteLength === b.length ? b.buffer : b.slice().buffer; consAddFile(r, f.n, ab); rxSave(c, r, f.n, f.i, ab); }
+  else if (!dup && f.i != null) rxSave(c, r, f.n, f.i, null); // could not be read: remembered as done all the same
   if (!c.cases.includes(r.caseId)) c.cases.push(r.caseId);
   r.tIn = (r.tIn || 0) + performance.now() - ti0; r.got++; consText(c, { t: 'ack', id: r.id, n: f.n });
   consRecvDone(c, r);
+}
+function consAddFile(r, n, ab) { // a received file into the case on screen
+  try { const info = DICOM.parse(ab);
+    // the file itself goes to the browser's storage (it can spill to disk): only the pixels near where you look stay in memory
+    const fr = k => Array.from({ length: info.frames || 1 }, (_, i) => k(ab, info, i));
+    const res = addBuffer(null, 'case-' + n, { info, src: { blob: new Blob([ab]), start: 0, method: 0 }, pixels: info.codec ? null : fr(DICOM.framePixels), frames: info.codec ? fr(DICOM.encodedFrame) : null });
+    if (res) for (const s of res.all) { s.__consCase = r.caseId; r.lastBase = String(s.uid).split('#')[0]; } } catch (e) { }
+}
+/* ---------- A case on its way survives either phone being closed or stopped by Android ----------
+   The receiving phone keeps each file as it comes (in this browser's storage, on this phone only: the case is anonymised)
+   and the conversation itself. Opened again, the case is back on screen and it carries on from where it stopped; the
+   sending phone, opened again with the same study, sends the rest. End removes all of it. */
+const RX = { db: null };
+function rxDb() {
+  if (!RX.db) RX.db = new Promise(ok => { try { const q = indexedDB.open('svRecv', 1); q.onupgradeneeded = () => { const d = q.result; d.createObjectStore('cases'); d.createObjectStore('files'); }; q.onsuccess = () => ok(q.result); q.onerror = () => ok(null); } catch (e) { ok(null); } });
+  return RX.db;
+}
+async function rxTx(store, fn, mode) { const d = await rxDb(); if (!d) return null; return new Promise(res => { try { const t = d.transaction(store, mode || 'readonly'), os = t.objectStore(store), out = fn(os); t.oncomplete = () => res(out && 'result' in out ? out.result : true); t.onerror = t.onabort = () => res(null); } catch (e) { res(null); } }); }
+const rxKey = (c, r) => c.id + '|' + r.id;
+function rxCase(c, r, done) { const v = { peer: c.id, name: c.name, id: r.id, count: r.count, sizes: r.sizes, left: r.left, desc: r.desc, done: !!done, t: Date.now() }; rxTx('cases', os => os.put(v, rxKey(c, r)), 'readwrite'); }
+function rxSave(c, r, n, i, ab) { if (r.noKeep) return; r.saveQ = (r.saveQ || Promise.resolve()).then(() => rxTx('files', os => os.put({ n, i, data: ab }, rxKey(c, r) + '|' + String(n).padStart(6, '0')), 'readwrite')).then(ok => { if (ok === null && !r.noKeep) { r.noKeep = true; try { FR.add('send', 'this phone could not keep the case as it came (storage full?)', true); } catch (e) { } } }); }
+function rxForget(c) { const lo = c.id + '|', hi = c.id + '|\uffff'; for (const st of ['cases', 'files']) rxTx(st, os => os.delete(IDBKeyRange.bound(lo, hi)), 'readwrite'); }
+async function rxRestore() { // opened again: the conversations and their cases come back
+  const cases = await rxTx('cases', os => os.getAll()); const keys = await rxTx('cases', os => os.getAllKeys());
+  let convs = []; try { convs = JSON.parse(localStorage.getItem('svConvs') || '[]'); } catch (e) { }
+  for (const v of convs) if (v && v.id && Date.now() - (v.t || 0) < 3 * 86400e3) { const c = consConv(v.id, v.name); if (c.state !== 'open') { c.ever = true; c.state = 'reconnecting'; } }
+  if (!cases || !keys) return;
+  for (let k = 0; k < cases.length; k++) { const v = cases[k]; if (!v || Date.now() - v.t > 3 * 86400e3) { rxTx('cases', os => os.delete(keys[k]), 'readwrite'); continue; }
+    const c = consConv(v.peer, v.name); if (c.state !== 'open') { c.ever = true; c.state = 'reconnecting'; }
+    const files = (await rxTx('files', os => os.getAll(IDBKeyRange.bound(keys[k] + '|', keys[k] + '|\uffff')))) || [];
+    const r = { id: v.id, expect: 0, sizes: v.sizes, left: v.left || [], count: v.count, desc: v.desc, got: 0, cur: null, ask: false, q: Promise.resolve(), caseId: 'c' + (++CONS.cid), first: true, t0: 0, have: new Set(), restored: true };
+    for (const f of files.sort((a, b) => a.n - b.n)) { if (f.i != null) { if (r.have.has(f.i)) continue; r.have.add(f.i); } if (f.data) consAddFile(r, f.n, f.data); r.got++; }
+    r.expect = r.got; if (!c.cases.includes(r.caseId)) c.cases.push(r.caseId);
+    if (r.got >= r.count) { (c.doneIds || (c.doneIds = new Set())).add(v.id); r.got = Math.max(r.got, r.count); r.wasDone = true; c.inbox = r; consRecvDone(c, r); }
+    else { c.inbox = r; consNote(c, 'The case was coming when Sliceview closed: ' + r.got + ' of ' + r.count + ' are here, the rest comes when ' + c.name + ' is back'); consRecvDone(c, r); }
+  }
+  consUI();
+}
+function consPersistConvs() { try { const list = [...CONS.peers.values()].filter(c => c.ever && c.state !== 'closed').map(c => ({ id: c.id, name: c.name, t: Date.now() })); localStorage.setItem('svConvs', JSON.stringify(list)); } catch (e) { } }
+function consResumeAsk(c, r) { // the receiving phone: on from where it stopped, saying what it already has
+  r.cur = null; r.q.then(() => { if (c.inbox !== r) return; const has = r.have ? [...r.have] : null; r.got = r.expect = has ? has.length : r.got; r.gap = false; consText(c, { t: 'resume', id: r.id, have: r.got, has }); });
+}
+function consResume(c, o, m) { // the sending phone: what the other phone has stays out; the rest goes, in the order it was going
+  if (m.all) { o.acked = o.next = o.plan.items.length; }
+  else if (Array.isArray(m.has)) { const hs = new Set(m.has.map(Number)), done = o.order.filter(i => hs.has(i)), rest = o.order.filter(i => !hs.has(i)); o.order = done.concat(rest); o.next = o.acked = o.hi = done.length; if (o.prep) o.prep.clear(); }
+  else o.next = o.acked = Math.max(0, +m.have || 0);
+  if (o.acked >= o.plan.items.length) { consOutDone(c); c.out = null; consProgress(c, -1); consNote(c, 'Case sent: ' + c.name + ' has all of it'); }
+}
+function consOutDone(c, ended) { try { if (ended) localStorage.removeItem('svOut:' + c.id); else { const v = JSON.parse(localStorage.getItem('svOut:' + c.id) || 'null'); if (v) { v.done = true; localStorage.setItem('svOut:' + c.id, JSON.stringify(v)); } } } catch (e) { } }
+function consAutoResend(c, want) { // this phone was closed while sending (or the other phone lost part of a case): once the same study is open, the rest goes
+  if (!c || c.out || c.state !== 'open') return; let v = null; try { v = JSON.parse(localStorage.getItem('svOut:' + c.id) || 'null'); } catch (e) { }
+  if (!v || Date.now() - v.t > 3 * 86400e3 || (want ? v.id !== want : v.done)) return;
+  const list = v.uids.map(u => S.series.find(x => x.uid === u && !x.derived)); if (list.some(x => !x)) return; // the study is not open (yet)
+  consNote(c, 'Sending the rest of the case'); consOffer(c, list, { list, desc: v.desc });
 }
 function consRebuild(c, r) { // the series left out by the sender: thick axial as an average of the thin slices; coronal and sagittal from Cor/Sag
   const mine = S.series.filter(s => s.__consCase === r.caseId && !s.isSlab), cs = [];
@@ -5333,7 +5400,7 @@ function consRecvDone(c, r) {
   consProgress(c, r.got / Math.max(1, r.count), 'Receiving ' + r.got + ' / ' + r.count);
   if (r.got >= r.count && r.have && r.have.size < r.count) consNote(c, (r.count - r.have.size) + ' slice' + (r.count - r.have.size === 1 ? '' : 's') + ' did not arrive: ask for the case again');
   if (r.got >= r.count && r.left && r.left.length) consRebuild(c, r);
-  if (r.got >= r.count) { clearInterval(r.wantT); c.inbox = null; consProgress(c, -1); c.chat.push({ sys: true, text: 'Case received: ' + r.got + ' images. It closes when the conversation ends.', save: r.caseId }); consChatDraw(); if (typeof fuseUI === 'function') fuseUI(); }
+  if (r.got >= r.count) { clearInterval(r.wantT); c.inbox = null; consProgress(c, -1); (c.doneIds || (c.doneIds = new Set())).add(r.id); if (!r.wasDone) (r.saveQ || Promise.resolve()).then(() => rxCase(c, r, true)); c.chat.push({ sys: true, text: (r.wasDone ? 'Case kept from before: ' : 'Case received: ') + r.got + ' images. It closes when the conversation ends.', save: r.caseId }); consChatDraw(); if (typeof fuseUI === 'function') fuseUI(); }
 }
 /* ---------- Follow me: the other phone shows what you show (slice, window, zoom, pointer) ---------- */
 const FOL = { lead: new Set(), from: null, dot: null, rdot: null, ptr: false, miss: false, T: 0 };
@@ -5525,9 +5592,9 @@ $('#consLog').addEventListener('click', async e => {
     if (r && r.blob) saveBlobAs(r.blob, r.name); else say('The case could not be saved', 3000); return; }
   const b = t.closest('button[data-a]'); if (!b || !c.inbox) return;
   const r = c.inbox; r.ask = false;
-  if (b.dataset.a === 'open') { consText(c, { t: 'accept', id: r.id }); consProgress(c, 0, 'Receiving 0 / ' + r.count); consNote(c, 'Opening as it arrives…'); } else { consText(c, { t: 'decline', id: r.id }); c.inbox = null; }
+  if (b.dataset.a === 'open') { rxCase(c, r); consText(c, { t: 'accept', id: r.id }); consProgress(c, 0, 'Receiving 0 / ' + r.count); consNote(c, 'Opening as it arrives…'); } else { consText(c, { t: 'decline', id: r.id }); c.inbox = null; }
   consChatDraw(); });
-addEventListener('pagehide', e => { if (!e.persisted) for (const c of CONS.peers.values()) consText(c, { t: 'bye' }); });
+// (no goodbye when Sliceview is closed or Android stops it: the conversation and a case on its way carry on when it is back; only End ends it)
 document.addEventListener('visibilitychange', () => { // back in Sliceview (after WhatsApp, the lock screen...): online again at once, conversations restored
   if (document.visibilityState !== 'visible' || !CONS.want) return;
   if (!CONS.ws || CONS.ws.readyState > 1) { clearTimeout(CONS.rt); CONS.ws = null; consGoOnline(CONS.me); }
@@ -5536,6 +5603,8 @@ document.addEventListener('visibilitychange', () => { // back in Sliceview (afte
 if (consLS('svName')) CONS.me = consLS('svName');
 // online again by itself when Sliceview opens, if you were online when you left it; the inaudible sound that keeps
 // it reachable in the background starts at your first touch (a browser plays sound only after one)
+if (window.RTCPeerConnection && !(window.claude && window.claude.use)) setTimeout(() => rxRestore().then(() => { // conversations and cases from before Sliceview closed
+  consUI(); if (CONS.online) for (const c of CONS.peers.values()) if (c.state !== 'open' && c.ever && consDialer(c) && !c.pc) consRtc(c, true); }).catch(() => { }), 900);
 if (consLS('svOnline') && CONS.me && window.RTCPeerConnection && !(window.claude && window.claude.use)) setTimeout(() => { if (!CONS.want) consGoOnline(CONS.me); }, 1500);
 addEventListener('pointerdown', () => { if (CONS.want && (!CONS.awake || CONS.awake.paused)) consKeepAwake(true); }, { capture: true, passive: true });
 /* ---------- reference lines (as in RadiAnt): in Compare, where the slice of each other view cuts this one ----------
@@ -5775,7 +5844,7 @@ function cmpInput(v) { // bound once per pane; acts on whichever series the pane
     if (d && !d.mt && e.type === 'pointerup' && !d.moved && performance.now() - d.t0 < 300) {
       const now = performance.now(), p = at(e), hm = C && !S.rf && cur() && hitIn(cmpList(C), cmpToScreen(C), p, 24, true);
       if (hm) { selToggle(hm.m, S.meas, cmpKey(C), 'cmp' + C.slot); last = null; }
-      else if (last && now - last.t < 320 && Math.hypot(p.x - last.x, p.y - last.y) < 40) { last = null; if (S.rf) S.rf.fit = true; else fit(); render(); } else last = { t: now, x: p.x, y: p.y };
+      else if (last && now - last.t < 320 && Math.hypot(p.x - last.x, p.y - last.y) < 40) { last = null; if (S.rf) { S.rf.fit = true; render(); } else if (C && !S.rf) { } else { fit(); render(); } } // (side by side: a double tap shows this pane alone, handled below) else last = { t: now, x: p.x, y: p.y };
     }
     if (P2.size === 0) d = null; if (P2.size < 2) pz = null;
   };
@@ -5801,8 +5870,28 @@ function cmpMake(se, slot) {
   C.view.__C = C;
   return C;
 }
+function cmpSolo(which) { // which: 'M' the main pane, or a compared pane's slot
+  const vw = $('#views'); if (!S.cmps.length || S.rf) return false;
+  const k = String(which), was = vw.dataset.solo;
+  document.querySelectorAll('.cmpv.solo').forEach(e => e.classList.remove('solo'));
+  if (was === k) delete vw.dataset.solo; else { vw.dataset.solo = k; if (k !== 'M') { const el = $('#mvCmp' + k); if (el) el.classList.add('solo'); } }
+  S.dirty = true; requestAnimationFrame(() => { S.cmps.forEach(C => cmpMatch(C)); S.dirty = true; render(); pump(); }); render();
+  return true;
+}
+{ // a double tap on any pane of a comparison: that pane alone fills the screen; again: back (as in MPR)
+  let t0 = null, last = null;
+  const paneOf = el => { const st = el.closest('.stage'); if (st) return 'M'; const c = el.closest('.cmpv'); return c && c.id && /^mvCmp\d$/.test(c.id) ? c.id.slice(5) : null; };
+  $('#views').addEventListener('pointerdown', e => { t0 = { id: e.pointerId, t: e.timeStamp, x: e.clientX, y: e.clientY, n: (t0 && t0.up === false) ? 2 : 1, up: false }; }, true);
+  $('#views').addEventListener('pointerup', e => {
+    const d = t0; if (!d || d.id !== e.pointerId) return; d.up = true;
+    if (!S.cmps.length || S.rf || S.vol || e.timeStamp - d.t > 300 || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 12) { last = null; return; }
+    const pane = paneOf(e.target); if (pane == null) { last = null; return; }
+    if (last && e.timeStamp - last.t < 350 && last.pane === pane && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 40) { last = null; cmpSolo(pane); }
+    else last = { t: e.timeStamp, x: e.clientX, y: e.clientY, pane };
+  }, true);
+}
 function cmpLayout() {
-  const vw = $('#views'); // coronal/sagittal also with a single view (no compared series)
+  const vw = $('#views'); if (vw.dataset.solo && (!S.cmps.length || S.rf || (vw.dataset.solo !== 'M' && !S.cmps.some(C => String(C.slot) === vw.dataset.solo)))) { delete vw.dataset.solo; document.querySelectorAll('.cmpv.solo').forEach(e => e.classList.remove('solo')); } // coronal/sagittal also with a single view (no compared series)
   const n = S.cmps.length, on = n > 0 || !!S.rf;
   if (n > 0 && !S.cmpWas) { // compare starts fitted, whatever zoom there was before: a CT (or fused PET-CT) to its body, as when it opens
     S.fit = true; S.ang = 0;
@@ -7484,7 +7573,7 @@ async function addFiles(files, opts) {
   if (st.seen.size) { if (st.bad.length) say(st.bad.length + ' file' + (st.bad.length === 1 ? '' : 's') + ' could not be read and ' + (st.bad.length === 1 ? 'was' : 'were') + ' skipped', 4000); }
   else say(st.bad.length ? st.bad[0] : 'No DICOM images found', 9000);
   if (st.bad.length) console.warn(st.bad.join('\n'));
-  st.done = true; fuseUI(); // the study is all in: Fuse can show
+  st.done = true; fuseUI(); try { for (const c of CONS.peers.values()) consAutoResend(c); } catch (e) { } // a case that was being sent when Sliceview closed: the rest goes now // the study is all in: Fuse can show
   if (st.seen.size && (S.fit || (S.autoBody && S.autoBody.s === S.s && S.autoBody.ox === S.ox && S.autoBody.oy === S.oy)) && !S.bodyFit && cur() && isCTlike(curSeries()) && !curSeries().isFuse) { fitBody(); render(); } // a CT still showing its whole field of view once all is in: the body fills the view (not if moved or zoomed by hand)
   if (st.seen.size && !(opts && (opts.restore || opts.noKeep))) keepStudy(list); // a case from a colleague is not kept
 }
