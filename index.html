@@ -679,7 +679,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.25-1942</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.25-2006</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -693,7 +693,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1942</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-2006</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2460,7 +2460,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1942', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-2006', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -2483,7 +2483,7 @@ const FR = (() => {
   addEventListener('error', ev => ev instanceof ErrorEvent && add('ERROR', (ev.message || ev.type) + (ev.filename ? ' @' + String(ev.filename).split('/').pop() + ':' + ev.lineno + ':' + ev.colno : '') + (ev.error && ev.error.stack ? ' | ' + String(ev.error.stack).split('\n').slice(1, 4).map(x => x.trim()).join(' < ') : '') + ' | ' + ctx(), true), true);
   addEventListener('unhandledrejection', ev => { const r = ev.reason; add('ERROR', 'promise: ' + ((r && r.message) || r) + (r && r.stack ? ' | ' + String(r.stack).split('\n').slice(1, 4).map(x => x.trim()).join(' < ') : '') + ' | ' + ctx(), true); });
   try { // the screen stuck for a while (a long piece of work on the screen's thread)
-    let last = 0; new PerformanceObserver(l => { for (const e of l.getEntries()) if (e.duration >= 400 && document.visibilityState === 'visible') { const now = Date.now(); if (now - last > 3000) { last = now; add('freeze', Math.round(e.duration) + ' ms while ' + (state || '') + ' · ' + ctx()); } } }).observe({ type: 'longtask', buffered: false });
+    let last = 0; new PerformanceObserver(l => { for (const e of l.getEntries()) if (e.duration >= 400 && document.visibilityState === 'visible') { const now = Date.now(); if (now - last > 3000) { last = now; const pk = window.__svPickT, rel = pk && Math.abs(e.startTime - pk) < 30000 ? ' (began ' + ((pk - e.startTime) / 1000).toFixed(1) + ' s before the folder reached the app)' : ''; add('freeze', Math.round(e.duration) + ' ms while ' + (state || '') + rel + ' · ' + ctx()); } } }).observe({ type: 'longtask', buffered: false });
   } catch (e) { }
   function report() {
     const z = n => String(n).padStart(2, '0'), d = t => { const x = new Date(t); return z(x.getDate()) + '/' + z(x.getMonth() + 1) + ' ' + z(x.getHours()) + ':' + z(x.getMinutes()) + ':' + z(x.getSeconds()); };
@@ -6750,12 +6750,29 @@ function decInit() {
     const n = clamp(navigator.hardwareConcurrency || 4, 2, 8);
     for (let i = 0; i < n; i++) {
       const w = new Worker(url);
-      w.onmessage = e => { if (e.data.engine) { DEC.engine = e.data.engine; return; } DEC.everOk = true; const job = DEC.jobs.get(e.data.id); DEC.jobs.delete(e.data.id); DEC.free.push(w); if (job) job.finish(e.data); pump(); };
-      w.onerror = e => { if (e.preventDefault) e.preventDefault(); decFallback(); };
+      decWire(w, url);
       DEC.workers.push(w); DEC.free.push(w);
     }
+    DEC.url = url;
+    if (!DEC.watch) DEC.watch = setInterval(() => { const now = performance.now(); for (const job of [...DEC.jobs.values()]) if (job.w && now - job.t0 > 12000) decLost(job.w, 'no answer in 12 s'); }, 3000); // a decoder that never answers is replaced
     DEC.mode = 'workers';
   } catch (err) { DEC.mode = 'main'; }
+}
+function decWire(w) {
+  w.onmessage = e => { if (e.data.engine) { DEC.engine = e.data.engine; return; } DEC.everOk = true; const job = DEC.jobs.get(e.data.id); DEC.jobs.delete(e.data.id); if (DEC.workers.includes(w)) DEC.free.push(w); if (job) job.finish(e.data); pump(); };
+  w.onerror = e => { if (e.preventDefault) e.preventDefault(); if (!DEC.everOk) decFallback(); else decLost(w, e.message || 'worker error'); };
+}
+// A decoder worker that dies (on a phone short of memory) took its slice with it: that slice stayed blurry for good.
+// Now the worker is replaced and its slice decoded again.
+function decLost(w, why) {
+  const i = DEC.workers.indexOf(w); if (i < 0) return;
+  try { w.terminate(); } catch (e) { }
+  DEC.workers.splice(i, 1); DEC.free = DEC.free.filter(x => x !== w);
+  for (const [id, job] of [...DEC.jobs]) if (job.w === w) { DEC.jobs.delete(id); job.finish({ err: why, retry: true }); }
+  if (!DEC.lostN) DEC.lostN = 0; DEC.lostN++; try { FR.add('decode', 'a decoder stopped (' + why + '): replaced', DEC.lostN < 4); } catch (e) { }
+  memTight();
+  try { const nw = new Worker(DEC.url); decWire(nw); DEC.workers.push(nw); DEC.free.push(nw); } catch (e) { }
+  pump();
 }
 function decFallback() { // workers are blocked here: decode on the main thread instead
   if (DEC.everOk || DEC.mode === 'main') return;
@@ -6778,7 +6795,7 @@ function runMain(job) {
 }
 function submit(job) {
   job.t0 = performance.now();
-  if (DEC.mode === 'workers') { const w = DEC.free.pop(); job.id = DEC.id++; DEC.jobs.set(job.id, job); w.postMessage({ id: job.id, buf: job.buf, z: job.z, reduce: job.reduce, codec: job.codec, pixelRep: job.pixelRep, rows: job.rows, cols: job.cols, ba: job.ba, spp: job.spp, ybr: job.ybr, palette: job.palette }); }
+  if (DEC.mode === 'workers') { const w = DEC.free.pop(); job.w = w; job.id = DEC.id++; DEC.jobs.set(job.id, job); w.postMessage({ id: job.id, buf: job.buf, z: job.z, reduce: job.reduce, codec: job.codec, pixelRep: job.pixelRep, rows: job.rows, cols: job.cols, ba: job.ba, spp: job.spp, ybr: job.ybr, palette: job.palette }); }
   else runMain(job);
 }
 function signFix(d, img) {
@@ -6789,6 +6806,9 @@ function signFix(d, img) {
   return out;
 }
 function decoded(img, d, kind) {
+  if (d.err && (d.retry || outOfMemory(d.err))) { // not the image's fault: tried again when there is room
+    if (kind === 'v') img.busyV = false; else if (kind === 'p') img.busyP = false; else img.busy = false;
+    if (!d.retry) memTight(); return; }
   if (kind === 'v') { img.busyV = false; if (!d.err) volPut(img, signFix(d, img), d.w, d.h); return; }
   if (kind === 'p') {
     img.busyP = false;
@@ -7371,7 +7391,7 @@ const memKeep = st => { const k = new Set([curSeries()].filter(Boolean)); if (st
 function memTight() { // memory ran out: hold less from now on (never a limit of nothing: slices kept for the screen count too)
   const now = performance.now(); if (now - (memTight.t || 0) < 3000) { makeRoom(0, memKeep(LIVE_ST)); return; } memTight.t = now; // once for a burst of failures
   FR.add('memory', 'ran out of memory: holding less · ' + FR.ctx());
-  DEC.squeeze = Math.max(0.25, (DEC.squeeze || 1) * 0.6); evict();
+  DEC.squeeze = Math.max(0.25, (DEC.squeeze || 1) * 0.6); if (S.keepVol && S.keepVol !== S.vol) S.keepVol = null; evict(); // the MPR volume kept from before goes first
   MEM_CAP = Math.min(MEM_CAP, Math.max(150e6, (memUsed() + DEC.bytes + volHeld()) * 0.75)); makeRoom(0, memKeep(LIVE_ST)); }
 const outOfMemory = m => /allocation failed|out of memory/i.test(String(m || ''));
 const seBytes = se => se.derived || se.isFuse || se.isSlab ? 0 : se.images.reduce((a, im) => a + (!coded(im) && im.pixels ? im.pixels.byteLength : 0), 0); // a fused, subtracted or slab series makes its pictures when asked: never asked here (that built all of them)
@@ -7469,14 +7489,14 @@ async function addFiles(files, opts) {
   if (st.seen.size && !(opts && (opts.restore || opts.noKeep))) keepStudy(list); // a case from a colleague is not kept
 }
 $('#inFiles').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; if (f.length) addFiles(f); });
-$('#inFolder').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; if (f.length) addFiles(f); });
+$('#inFolder').addEventListener('change', e => { const t0 = performance.now(), f = [...e.target.files]; e.target.value = ''; if (f.length) addFiles(f); try { FR.add('folder', f.length + ' files handed over; the app’s own part took ' + Math.round(performance.now() - t0) + ' ms', true); } catch (x) { } });
 // Picking a folder: once the picker closes, Android takes a few seconds to list the folder's files before the page hears of them.
 // The loading screen shows at once ("Reading the folder…") instead of a screen that seems stuck.
 const PICK = { on: false, t: 0, shown: false };
 for (const inp of document.querySelectorAll('input[webkitdirectory]')) {
   inp.addEventListener('click', () => { PICK.on = true; PICK.t = performance.now(); PICK.shown = false; try { FR.add('folder', 'folder picker opened'); } catch (e) { } });
   inp.addEventListener('cancel', () => { PICK.on = false; if (PICK.shown) { PICK.shown = false; if (!LIVE_ST || LIVE_ST.done) showLoading(null); } });
-  inp.addEventListener('change', () => { if (PICK.on) { try { FR.add('folder', 'files listed ' + ((performance.now() - PICK.t) / 1000).toFixed(1) + ' s after the picker opened', true); } catch (e) { } } PICK.on = false; PICK.shown = false; }, true);
+  inp.addEventListener('change', () => { window.__svPickT = performance.now(); if (PICK.on) { try { FR.add('folder', 'files listed ' + ((performance.now() - PICK.t) / 1000).toFixed(1) + ' s after the picker opened', true); } catch (e) { } } PICK.on = false; PICK.shown = false; }, true);
 }
 const pickBack = () => { if (!PICK.on || PICK.shown || document.hidden) return; PICK.shown = true;
   const box = $('#loading'); box.hidden = false; $('#loadTxt').textContent = 'Reading the folder…'; $('#loadBar').style.width = '0%'; $('#loadHint').hidden = true;
