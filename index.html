@@ -690,7 +690,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1634</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1702</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2452,7 +2452,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1634', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1702', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -6736,6 +6736,7 @@ function evict() {
     for (const im of srcs(se.images[at] || {})) { if (!im) continue; const o = S.series.find(x => !x.derived && x.images.includes(im)); if (o && !focus.has(o)) focus.set(o, o.images.indexOf(im)); } };
   look(cs, S.idx); for (const C of S.cmps) look(C.se, C.idx);
   const pets = new Set([cs, ...S.cmps.map(C => C.se)].filter(x => x && x.isFuse).map(x => x.fusePT)); // a fused view's PET (small) stays whole: its colour never drops out
+  for (const se of S.series) { const a = se.images[0]; if (a && !se.derived && (a.modality || se.modality) === 'PT' && se.images.length * a.rows * a.cols * 2 < 80e6) pets.add(se); } // and any PET of a usual size, from the moment it is read: Fuse has it all at once
   const cand = [];
   for (const se of S.series) { if (pets.has(se)) continue; const at = focus.get(se); se.images.forEach((im, i) => { if (coded(im) && im.pixels && !im.derived) cand.push([at == null ? 1e9 : Math.abs(i - at), im]); }); }
   cand.sort((a, b) => b[0] - a[0]);
@@ -7367,6 +7368,7 @@ async function addFiles(files, opts) {
   else say(st.bad.length ? st.bad[0] : 'No DICOM images found', 9000);
   if (st.bad.length) console.warn(st.bad.join('\n'));
   st.done = true; fuseUI(); // the study is all in: Fuse can show
+  if (st.seen.size && S.fit && !S.bodyFit && cur() && isCTlike(curSeries()) && !curSeries().isFuse) { fitBody(); render(); } // a CT still showing its whole field of view once all is in: the body fills the view (not if moved or zoomed by hand)
   if (st.seen.size && !(opts && (opts.restore || opts.noKeep))) keepStudy(list); // a case from a colleague is not kept
 }
 $('#inFiles').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; if (f.length) addFiles(f); });
