@@ -685,7 +685,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.25-2116</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.25-2129</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -699,7 +699,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-2116</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-2129</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2466,7 +2466,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-2116', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-2129', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -4955,12 +4955,12 @@ function consSignal(m) {
     const name = String((pl.metadata && pl.metadata.from) || m.src.replace(/^sliceview-/, '')).slice(0, 40); presSet(m.src, true);
     const c = consConv(m.src, name);
     if (c.offer === pl.sdp.sdp && c.pc && c.pc.signalingState !== 'closed') return; // the same call again (it is repeated until answered)
-    if (pl.restart && c.pc && c.cid === pl.connectionId && c.pc.signalingState === 'stable') { // a repair of the route we have: answered on the same connection
+    if (pl.metadata && pl.metadata.restart && c.pc && c.cid === pl.connectionId && c.pc.signalingState === 'stable') { // a repair of the route we have: answered on the same connection
       const pc = c.pc; c.offer = pl.sdp.sdp; c.restarting = true; consLog(c.name + ': finding a new route');
       pc.setRemoteDescription(pl.sdp).then(() => pc.createAnswer()).then(a => pc.setLocalDescription(a))
-        .then(() => { c.restarting = false; consSend(m.src, 'ANSWER', { sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, type: 'data', connectionId: c.cid, restart: true, browser: 'chrome' }); consFlush(c); })
+        .then(() => { c.restarting = false; consSend(m.src, 'ANSWER', { sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, type: 'data', connectionId: c.cid, browser: 'chrome' }); consFlush(c); })
         .catch(() => { c.restarting = false; }); return; }
-    if (pl.restart && c.pc && c.cid === pl.connectionId) return; // (mid-change: asked again in a moment)
+    if (pl.metadata && pl.metadata.restart && c.pc && c.cid === pl.connectionId) return; // (mid-change: asked again in a moment)
     if (c.dialing && c.state !== 'open' && consDialer(c)) return; // both called at once: ours is kept, they answer it
     consRtc(c, false); c.offer = pl.sdp.sdp; if (pl.connectionId) c.cid = pl.connectionId;
     const pc = c.pc;
@@ -4980,7 +4980,7 @@ function consIceRestart(c, pc) {
   if (c.pc !== pc || c.state !== 'open') return;
   if (Date.now() - c.iceBad > 45000) { consLog(c.name + ': route not back after 45 s: connecting again'); consDrop(c, pc, true); return; }
   if (!consDialer(c)) { if (!c.restartT) c.restartT = setInterval(() => { if (c.pc !== pc || !c.iceBad) { clearInterval(c.restartT); c.restartT = null; return; } if (Date.now() - c.iceBad > 50000) { clearInterval(c.restartT); c.restartT = null; consDrop(c, pc, true); } }, 5000); return; } // the other phone repairs it (no two at once)
-  const send = () => { if (c.pc === pc && pc.localDescription && pc.signalingState === 'have-local-offer') consSend(c.id, 'OFFER', { sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, type: 'data', connectionId: c.cid, restart: true, metadata: { from: CONS.me }, browser: 'chrome' }); };
+  const send = () => { if (c.pc === pc && pc.localDescription && pc.signalingState === 'have-local-offer') consSend(c.id, 'OFFER', { sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, type: 'data', connectionId: c.cid, label: c.cid, reliable: true, serialization: 'raw', metadata: { from: CONS.me, restart: true }, browser: 'chrome' }); }; // (the service's own message shape: it drops anything else)
   if (pc.signalingState === 'stable') { consLog(c.name + ': finding a new route'); c.restarting = true; pc.createOffer({ iceRestart: true }).then(o => pc.setLocalDescription(o)).then(send).catch(() => { c.restarting = false; }); }
   if (!c.restartT) c.restartT = setInterval(() => { if (c.pc !== pc || !c.iceBad) { clearInterval(c.restartT); c.restartT = null; return; }
     if (Date.now() - c.iceBad > 45000) { clearInterval(c.restartT); c.restartT = null; consIceRestart(c, pc); return; }
