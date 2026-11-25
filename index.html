@@ -690,7 +690,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1702</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1439</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2452,7 +2452,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1702', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1439', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -6735,10 +6735,8 @@ function evict() {
   const look = (se, at) => { if (!se) return; if (!se.derived) { focus.set(se, at); return; }
     for (const im of srcs(se.images[at] || {})) { if (!im) continue; const o = S.series.find(x => !x.derived && x.images.includes(im)); if (o && !focus.has(o)) focus.set(o, o.images.indexOf(im)); } };
   look(cs, S.idx); for (const C of S.cmps) look(C.se, C.idx);
-  const pets = new Set([cs, ...S.cmps.map(C => C.se)].filter(x => x && x.isFuse).map(x => x.fusePT)); // a fused view's PET (small) stays whole: its colour never drops out
-  for (const se of S.series) { const a = se.images[0]; if (a && !se.derived && (a.modality || se.modality) === 'PT' && se.images.length * a.rows * a.cols * 2 < 80e6) pets.add(se); } // and any PET of a usual size, from the moment it is read: Fuse has it all at once
   const cand = [];
-  for (const se of S.series) { if (pets.has(se)) continue; const at = focus.get(se); se.images.forEach((im, i) => { if (coded(im) && im.pixels && !im.derived) cand.push([at == null ? 1e9 : Math.abs(i - at), im]); }); }
+  for (const se of S.series) { const at = focus.get(se); se.images.forEach((im, i) => { if (coded(im) && im.pixels && !im.derived) cand.push([at == null ? 1e9 : Math.abs(i - at), im]); }); }
   cand.sort((a, b) => b[0] - a[0]);
   for (const [, im] of cand) { if (DEC.bytes <= B * 0.8) break; DEC.bytes -= im.pixels.byteLength; im.pixels = null; im.mm = null; }
 }
@@ -6783,9 +6781,8 @@ function pump() {
     const srcs = t => t && t.sub ? [[t.sub.a, t.sub.ra], [t.sub.b, t.sub.rb]] : t && t.fuse ? [[t.fuse.ct, t.fuse.rc], [t.fuse.pt, t.fuse.rp]] : t && t.slab ? t.slab.list.map(im => [im, t.slab.r]) : [];
     const moving = performance.now() - (S.moved || 0) < SETTLE;
     for (const [list, at] of subs) {
-      const fz = list[at] && list[at].fuse; // fused: sharp while scrolling
+      const fz = list[at] && list[at].fuse; // fused: sharp while scrolling too (the slice ahead first)
       if (!moving || fz) for (const d of fz && moving ? [0, 1, 2, 3, -1] : [0, 1, -1, 2, -2]) for (const [im] of srcs(list[at + d * dir])) if (im && needF(im) && !go(im, 'f')) return; // stopped: sharp here first
-      if (fz && list === ims && se.fusePT) { const P = se.fusePT.images, k0 = P.indexOf(fz.pt); for (let d = 0; d < P.length; d++) for (const j of d ? [k0 + d, k0 - d] : [k0]) { const im = P[j]; if (im && needF(im) && !go(im, 'f')) return; } } // the whole PET, nearest first too (the slice ahead first)
       for (let d = 0; d <= 40; d++) for (const s of d ? [d, -d] : [0]) for (const [im, r] of srcs(list[at + s * dir])) if (im && pv(im, r) && !go(im, 'p', r)) return; // quick ones along the scroll
       if (!moving) for (const d of [3, -3, 4, -4, 5, 6, 7, 8]) for (const [im] of srcs(list[at + d * dir])) if (im && needF(im) && !go(im, 'f')) return;
     }
@@ -7138,9 +7135,9 @@ function rdInit() {
 }
 setTimeout(rdInit, 600); // start the readers early, while the user is still choosing files
 // A worker takes several messages at a time (they wait on storage, not on its processor): the next free one in turn.
-async function rdRun(items, chunk, transfer) {
+async function rdRun(items, chunk) {
   const w = RD.ws[RD.next = ((RD.next || 0) + 1) % RD.ws.length], id = RD.id++;
-  return new Promise(res => { RD.jobs.set(id, res); w.postMessage({ id, items, chunk }, transfer || []); });
+  return new Promise(res => { RD.jobs.set(id, res); w.postMessage({ id, items, chunk }); });
 }
 // entries: { blob, start, csize, method, lho (zip entries), name, depth, en and r (zip entry and its zip, for the slow path) }
 // On Android, Chrome hands the files of a folder to the page at about 10 a second, however they are asked for:
@@ -7165,13 +7162,7 @@ async function rdAll(list, st, chunked, tight) {
       while (performance.now() - Math.max(S.moved || 0, LAST_INPUT.t) < 300) await new Promise(r => setTimeout(r, 100));
       if (mine) { st.paused = (st.paused || 0) + performance.now() - p0; st.pausing = false; }
     }
-    let out;
-    if (!chunked && batch.every(e => e.lho == null && !e.method)) { // a folder's files: their bytes fetched here (Android does that without holding up the screen) and handed over;
-      // handing over the files themselves cost the screen about 0.6 s for each batch of 8 on a phone
-      const abs = await Promise.all(batch.map(e => (e.start || e.csize != null ? e.blob.slice(e.start || 0, e.csize != null ? (e.start || 0) + e.csize : undefined) : e.blob).arrayBuffer().catch(() => null)));
-      if (abs.every(Boolean)) out = await rdRun(abs.map(ab => ({ ab, start: 0, csize: ab.byteLength, method: 0 })), null, abs);
-    }
-    if (!out) out = await rdRun(batch.map(e => ({ blob: e.blob, start: e.start, csize: e.csize, method: e.method, lho: e.lho })), chunked ? { blob: batch[0].blob, start: bt.start, end: bt.end } : null);
+    const out = await rdRun(batch.map(e => ({ blob: e.blob, start: e.start, csize: e.csize, method: e.method, lho: e.lho })), chunked ? { blob: batch[0].blob, start: bt.start, end: bt.end } : null);
     for (let k = 0; k < batch.length; k++) {
       const e = batch[k], r = out[k];
       try {
@@ -7368,7 +7359,6 @@ async function addFiles(files, opts) {
   else say(st.bad.length ? st.bad[0] : 'No DICOM images found', 9000);
   if (st.bad.length) console.warn(st.bad.join('\n'));
   st.done = true; fuseUI(); // the study is all in: Fuse can show
-  if (st.seen.size && S.fit && !S.bodyFit && cur() && isCTlike(curSeries()) && !curSeries().isFuse) { fitBody(); render(); } // a CT still showing its whole field of view once all is in: the body fills the view (not if moved or zoomed by hand)
   if (st.seen.size && !(opts && (opts.restore || opts.noKeep))) keepStudy(list); // a case from a colleague is not kept
 }
 $('#inFiles').addEventListener('change', e => { const f = [...e.target.files]; e.target.value = ''; if (f.length) addFiles(f); });
@@ -8464,7 +8454,6 @@ async function keepStudy(files) {
 }
 async function keepSave() { // write the current list of files (after opening more, or closing some)
   if (!KEEP.files.length) return keepForget(true);
-  if (KEEP.files.length > 200) return keepForget(true); // a folder of hundreds of files is not kept: on a phone, asking each file its size and copying them all held the screen up
   const size = KEEP.files.reduce((a, f) => a + (f.size || 0), 0);
   if (size > 300e6) return keepForget(true); // a big study is not copied: writing hundreds of MB costs a phone memory and time
   try { if (navigator.storage && navigator.storage.estimate) { const e = await navigator.storage.estimate(); if (e.quota && size > e.quota * 0.6) return; } } catch (e) { }
