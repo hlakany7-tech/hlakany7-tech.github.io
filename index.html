@@ -682,7 +682,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1322</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-1339</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2444,7 +2444,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1322', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-1339', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -6096,7 +6096,12 @@ function fusePetWindow(max) { const se = curSeries(), P = se && se.isFuse && S.c
 function fuseUI() { // the button shows itself when the study has a PET and a CT; lit while the fused view is on screen
   // Fuse shows once the study has finished loading: pressed while the CT or PET is still coming in, it stuttered for a minute
   let loading = false; try { loading = !!(LIVE_ST && !LIVE_ST.done); } catch (e) { } // (before the loader is set up: nothing loading)
-  const b = $('#actFuse'); if (!b) return; const se = curSeries(), on = !!(se && se.isFuse), can = on || (!loading && !!fusePair(se));
+  const b = $('#actFuse'); if (!b) return; const se = curSeries(), on = !!(se && se.isFuse), pair = on ? null : fusePair(se);
+  // while other series are still coming in, Fuse shows as soon as the CT and the PET themselves are complete (no new slices for 2 s)
+  let ready = !loading; if (loading && pair) { const n = pair.CT.images.length + ':' + pair.PT.images.length, F = fuseUI.w || (fuseUI.w = {});
+    if (F.n !== n) { F.n = n; F.t = performance.now(); } ready = performance.now() - F.t > 2000; }
+  if (loading && !fuseUI.iv) fuseUI.iv = setInterval(() => { let l = false; try { l = !!(LIVE_ST && !LIVE_ST.done); } catch (e) { } fuseUI(); if (!l) { clearInterval(fuseUI.iv); fuseUI.iv = 0; } }, 1000);
+  const can = on || (ready && !!pair);
   const key = can + ':' + on; if (b.__k === key) return; b.__k = key;
   b.hidden = !can; b.setAttribute('aria-pressed', on);
 }
