@@ -691,7 +691,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-1834</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-1915</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -705,7 +705,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1834</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1915</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2475,7 +2475,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1834', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1915', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -3641,6 +3641,9 @@ function moveDrag(p, ts) {
     case 'pan': S.ox = drag.ox0 + dx; S.oy = drag.oy0 + dy; S.fit = false; render(); break;
     case 'rotate': if (Math.hypot(p.x - S.ox, p.y - S.oy) > 24) { rotateView(null, drag.ang0 + Math.atan2(p.y - S.oy, p.x - S.ox) - drag.a0); } break;
     case 'zoom': zoomAbout(drag.x0, drag.y0, drag.s0, drag.ox0, drag.oy0, drag.s0 * Math.exp(-dy / 180)); linkZoom('ax'); render(); break;
+    case 'length': case 'roi': case 'rect': case 'free': case 'arrow': case 'text': case 'hu': case 'angle': if (!S.draft) return; // the slice changed under the finger (the measurement in progress went with it)
+  }
+  switch (drag.tool) {
     case 'length': S.draft.b = toImage(p.x, p.y); render(); break;
     case 'roi': case 'rect': case 'free': roiGrow(S.draft, toImage(p.x, p.y)); render(); break;
     case 'arrow': S.draft.b = toImage(p.x, p.y); render(); break;
@@ -5111,6 +5114,25 @@ const consLS = (k, v) => { try { if (v === undefined) return localStorage.getIte
 const CONS_TURN = { username: '708999c0e60e325dddebc5a9', credential: 'GGcElWZno00lWJ70' };
 const CONS_ICE = { iceServers: [{ urls: 'stun:stun.relay.metered.ca:80' }, { urls: 'stun:stun.l.google.com:19302' },
   Object.assign({ urls: ['turn:standard.relay.metered.ca:80', 'turn:standard.relay.metered.ca:80?transport=tcp', 'turn:standard.relay.metered.ca:443', 'turns:standard.relay.metered.ca:443?transport=tcp'] }, CONS_TURN)] };
+// The relay: Cloudflare's (the nearest of its sites to each phone: in or near Egypt), through short-lived passes from our
+// own Worker (the account's key never leaves Cloudflare). The free shared relay above stays as the fallback.
+const CF_TURN_URL = 'https://sliceview-turn.hlakany7.workers.dev/';
+const CF_ICE = { cfg: null, t: 0, busy: null };
+function cfIceLoad(force) {
+  if (CF_ICE.busy) return CF_ICE.busy; if (!force && CF_ICE.cfg && Date.now() - CF_ICE.t < 5 * 3600e3) return Promise.resolve(CF_ICE.cfg);
+  const ac = typeof AbortController === 'function' ? new AbortController() : null; const to = setTimeout(() => { try { ac && ac.abort(); } catch (e) { } }, 6000);
+  CF_ICE.busy = fetch(CF_TURN_URL, { cache: 'no-store', signal: ac ? ac.signal : undefined }).then(r => r.ok ? r.json() : Promise.reject(new Error('relay pass ' + r.status)))
+    .then(j => { if (!j || !Array.isArray(j.iceServers) || !j.iceServers.length) throw new Error('relay pass empty'); CF_ICE.cfg = { iceServers: j.iceServers }; CF_ICE.t = Date.now(); consLog('relay: Cloudflare ready');
+      try { for (const c of CONS.peers.values()) if (c.pc && c.relay === 'cloudflare' && c.pc.signalingState !== 'closed') c.pc.setConfiguration(Object.assign(c.pc.getConfiguration(), CF_ICE.cfg)); } catch (e) { } // a long conversation: its pass is renewed before it runs out
+      return CF_ICE.cfg; })
+    .catch(e => { consLog('relay: Cloudflare not reached (' + ((e && e.message) || e) + '): the shared relay is used'); return null; })
+    .finally(() => { clearTimeout(to); CF_ICE.busy = null; });
+  return CF_ICE.busy;
+}
+const consIce = () => (CF_ICE.cfg && Date.now() - CF_ICE.t < 5.5 * 3600e3) ? CF_ICE.cfg : (cfIceLoad(), CONS_ICE); // a pass about to expire is renewed first
+setTimeout(() => { try { cfIceLoad(); } catch (e) { } }, 1500); // ready before the first call
+setInterval(() => { if (CF_ICE.cfg && Date.now() - CF_ICE.t > 5 * 3600e3) cfIceLoad(true); }, 10 * 60e3); // passes last 6 h: renewed after 5
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !(CF_ICE.cfg && Date.now() - CF_ICE.t < 5 * 3600e3)) cfIceLoad(); });
 function consSignalUrl(id) {
   const base = consLS('svSignal') || 'wss://0.peerjs.com:443/peerjs?key=peerjs';
   if (!CONS.token) { CONS.token = consLS('svToken') || Math.random().toString(36).slice(2); consLS('svToken', CONS.token); } // the same token on every reconnection, and after Sliceview is opened again: the name stays ours (the service hands it to the new one)
@@ -5149,7 +5171,7 @@ function consGoOnline(name) {
   let ws; try { ws = new WebSocket(consSignalUrl(consKey(name))); } catch (e) { consStatus('Could not reach the introduction service'); return; }
   CONS.ws = ws; consStatus(CONS.retry ? 'Reconnecting…' : 'Connecting…'); consLog('connect as ' + consKey(name));
   ws.onopen = () => consLog('socket open');
-  ws.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } if (m.type !== 'HEARTBEAT' && m.type !== 'CANDIDATE' && !(m.type === 'EXPIRE' && !CONS.peers.has(m.src))) consLog('got ' + m.type + (m.src ? ' from ' + m.src.replace(/^sliceview-/, '') : '') + (m.payload && m.payload.msg ? ': ' + m.payload.msg : '')); consSignal(m); };
+  ws.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } const dup = m.type === 'OFFER' && m.payload && m.payload.sdp && ws.__lastOffer === m.payload.sdp.sdp; if (m.type === 'OFFER' && m.payload && m.payload.sdp) ws.__lastOffer = m.payload.sdp.sdp; if (!dup && m.type !== 'HEARTBEAT' && m.type !== 'CANDIDATE' && !(m.type === 'EXPIRE' && !CONS.peers.has(m.src))) consLog('got ' + m.type + (m.src ? ' from ' + m.src.replace(/^sliceview-/, '') : '') + (m.payload && m.payload.msg ? ': ' + m.payload.msg : '')); consSignal(m); };
   ws.onclose = ev => { // dropped (a network change, the phone sleeping): back again by itself while you want to be online
     if (CONS.ws !== ws) return; CONS.ws = null; CONS.online = false; clearInterval(CONS.hb); consUI(); consLog('closed ' + ev.code + (ev.reason ? ' ' + ev.reason : ''));
     if (PRES.sentAt && Date.now() - PRES.sentAt < 5000) { PRES.off = true; consLog('online checks off (the service dropped the connection)'); } // never a loop of drops
@@ -5227,7 +5249,8 @@ function consFlush(c) { for (const x of c.cands.splice(0)) c.pc.addIceCandidate(
 function consRtc(c, dial) { // a fresh connection for a conversation (first, or after a drop)
   if (c.pc) { const o = c.pc; c.pc = null; try { o.close(); } catch (e) { } }
   clearInterval(c.again); c.cands = []; c.answered = false; c.dialing = dial; c.offer = null; c.dc = null;
-  const pc = new RTCPeerConnection(CONS_ICE); c.pc = pc; c.cid = 'dc_' + Math.random().toString(36).slice(2, 12);
+  const ice = consIce(); c.relay = ice === CONS_ICE ? 'shared' : 'cloudflare';
+  const pc = new RTCPeerConnection(ice); c.pc = pc; c.cid = 'dc_' + Math.random().toString(36).slice(2, 12);
   pc.onicecandidate = e => { if (e.candidate && c.pc === pc) consSend(c.id, 'CANDIDATE', { candidate: e.candidate.toJSON(), type: 'data', connectionId: c.cid }); };
   pc.oniceconnectionstatechange = () => { if (c.pc !== pc) return; const st = pc.iceConnectionState; consLog(c.name + ': route ' + st);
     if (st === 'connected' || st === 'completed') { c.iceBad = 0; clearInterval(c.restartT); c.restartT = null; }
@@ -5277,7 +5300,7 @@ async function consRoute(c) { // direct, or through the relay: said once per con
   try { const st = await pc.getStats(); let pair = null; st.forEach(x => { if (x.type === 'candidate-pair' && x.state === 'succeeded' && (x.nominated || x.selected) && (!pair || x.bytesSent > pair.bytesSent)) pair = x; });
     const loc = pair && st.get(pair.localCandidateId), rem = pair && st.get(pair.remoteCandidateId);
     if (!loc) return; const relay = loc.candidateType === 'relay' || (rem && rem.candidateType === 'relay');
-    c.route = relay ? 'through the relay' + (loc.relayProtocol ? ' (' + loc.relayProtocol + ')' : '') : 'direct'; consLog(c.name + ': ' + c.route + (pair.currentRoundTripTime ? ', ' + Math.round(pair.currentRoundTripTime * 1000) + ' ms' : ''));
+    c.route = relay ? 'through the ' + (c.relay === 'cloudflare' ? 'Cloudflare ' : 'shared ') + 'relay' + (loc.relayProtocol ? ' (' + loc.relayProtocol + ')' : '') : 'direct'; consLog(c.name + ': ' + c.route + (pair.currentRoundTripTime ? ', ' + Math.round(pair.currentRoundTripTime * 1000) + ' ms' : ''));
     consNote(c, 'Route: ' + c.route + (pair.currentRoundTripTime ? ' · ' + Math.round(pair.currentRoundTripTime * 1000) + ' ms' : ''));
   } catch (e) { }
 }
