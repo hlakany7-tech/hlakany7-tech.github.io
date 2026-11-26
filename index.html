@@ -691,7 +691,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-1647</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-1658</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -705,7 +705,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1647</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1658</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2475,7 +2475,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1647', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1658', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -3415,14 +3415,15 @@ function mrCands(kind, list) {
 function mrPick() { for (const k of ['FLAIR', 'T2', 'T1', 'DWI']) { const c = mrCands(k)[0]; if (c && natPlane(c) === 'ax') return c; } return null; } // the series an MRI opens on
 // With several views on screen (Compare), a tap on a view chooses it (its edge lights up) and the sequence buttons fill
 // that view instead of going back to one view: T1 top left, T2 top right, T1+C, DWI... without the Series list.
-function cmpTarget() { if (!S.cmps.length || S.rf) return null; const t = S.cmpSel; if (S.cmps.length === 1 && t == null) return null; /* two views (DWI | ADC) with none chosen: a button goes back to one view */ return t === 'M' || S.cmps.some(C => C.slot === t) ? t : 'M'; }
+function cmpTarget() { if (!S.cmps.length || S.rf) return null; const t = S.cmpSel != null ? S.cmpSel : S.cmps.length >= 2 ? S.cmpLast : null; /* three or four views: the one last touched */ if (S.cmps.length === 1 && t == null) return null; /* two views (DWI | ADC) with none chosen: a button goes back to one view */ return t === 'M' || S.cmps.some(C => C.slot === t) ? t : 'M'; }
 function cmpUnpick() { if (S.cmpSel == null) return; S.cmpSel = null; cmpPickUI(); if (isMRse(curSeries())) buildPresets(); } // scrolling again: you are reading, not choosing
 function cmpPickUI() { const t = S.cmps.length && !S.rf && S.cmpSel != null ? cmpTarget() : null; /* lit only while you are choosing */
   $('#stage').classList.toggle('pick', t === 'M');
   document.querySelectorAll('section.cmpv[id^="mvCmp"]').forEach(el => { const k = el.id.slice(5); el.classList.toggle('pick', t != null && t !== 'M' && String(t) === k); }); }
 function cmpTapSelect(el, slot) { // a short tap without moving: choose this view (scrolling, zooming and measuring are not touched)
   let d0 = null;
-  el.addEventListener('pointerdown', e => { d0 = S.cmps.length && !S.rf && (e.isPrimary !== false) ? { x: e.clientX, y: e.clientY, t: performance.now() } : null; }, true);
+  el.addEventListener('pointerdown', e => { d0 = S.cmps.length && !S.rf && (e.isPrimary !== false) ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
+    if (S.cmps.length && !S.rf && S.cmpLast !== slot) { S.cmpLast = slot; if (isMRse(curSeries()) || ctStudy().length) buildPresets(); } }, true); // the view you are using: its button stays lit
   el.addEventListener('pointerup', e => { if (!d0) return; const moved = Math.hypot(e.clientX - d0.x, e.clientY - d0.y), dt = performance.now() - d0.t; d0 = null;
     if (moved < 10 && dt < 400 && S.cmps.length && !S.rf) { S.cmpSel = slot; cmpPickUI(); if (isMRse(curSeries())) buildPresets(); } }, true);
 }
@@ -3497,7 +3498,7 @@ function buildPresets1() {
     const dw = mrCands('DWI', list)[0], ad = mrCands('ADC', list)[0];
     if (dw && ad) { const b = document.createElement('button'); b.className = 'chip seq'; b.type = 'button'; b.dataset.seq = 'DWIADC'; b.textContent = 'DWI | ADC';
       b.setAttribute('aria-pressed', String(se === dw && S.cmps.length === 1 && S.cmps[0].se === ad));
-      b.addEventListener('click', () => { if (S.vr) vrClose(); if (S.vol) mprToggle(false); if (S.rf) rfStop(); S.mrKind = 'DWIADC'; S.cmpSel = null;
+      b.addEventListener('click', () => { if (S.vr) vrClose(); if (S.vol) mprToggle(false); if (S.rf) rfStop(); S.mrKind = 'DWIADC'; S.cmpSel = null; S.cmpLast = null;
         if (curSeries() !== dw) selectSeries(S.series.indexOf(dw));
         S.cmps = []; cmpAdd(ad, 0); if (!S.cmpSync) { S.cmpSync = true; try { cmpSyncUI(); } catch (e) { } } buildPresets(); render(); });
       box.append(b); } } // the side-by-side pair comes last, after the single sequences
@@ -6006,7 +6007,9 @@ function cmpInput(v) { // bound once per pane; acts on whichever series the pane
       const CC = C; d.feel = { stepPx: () => clamp(v.H * 0.8 / Math.max(1, (S.cmpSync ? curSeries() : CC.se).images.length), 4, 24),
         step: k => { if (S.cmpSync) { const b = S.idx; setIdx(S.idx + k); return S.idx !== b; } const b = CC.idx; CC.idx = clamp(CC.idx + k, 0, CC.se.images.length - 1); if (CC.idx !== b) cmpUnpick(); render(); pump(); return CC.idx !== b; } };
       feelDown(d.feel, p.y, e.timeStamp);
-      if (S.rf) { rfInput(v, C, e, 'down', d); if (mt) d.wl = true; return; }
+      if (S.rf) { const tool = e.pointerType === 'pen' ? 'length' : mt || S.tool;
+        if (tool === 'length' || tool === 'hu') { d.off = tool === 'hu' && e.pointerType === 'touch' ? HU_OFF : 0; const q = rfToMm(C, p.x, p.y - d.off); d.rfm = C.rfDraft = tool === 'hu' ? { type: 'hu', a: q } : { type: 'length', a: q, b: q }; render(); return; } // Length and HU work here too
+        rfInput(v, C, e, 'down', d); if (mt) d.wl = true; return; }
       if (!mt && e.pointerType !== 'pen' && S.tool === 'loupe') { d.loupe = true; v.loupe = { x: p.x, y: p.y }; render(); return; } // the Magnifier tool, as on the main view
       // the toolbar's tools work in every pane, as on the main view
       const tool = e.pointerType === 'pen' ? (MEASURE.has(S.tool) ? S.tool : 'length') : mt || S.tool, img = cmpImg(C);
@@ -6044,6 +6047,7 @@ function cmpInput(v) { // bound once per pane; acts on whichever series the pane
       const p = at(e);
       if (d.loupe) { v.loupe = { x: p.x, y: p.y }; render(); return; } // the magnifier follows the finger
       d.last = p; if (Math.hypot(p.x - d.x0, p.y - d.y0) > 6) d.moved = true;
+      if (d.rfm) { const q = rfToMm(C, p.x, p.y - (d.off || 0)); if (d.rfm.type === 'hu') d.rfm.a = q; else d.rfm.b = q; render(); return; }
       if (S.rf) { d.p = p; rfInput(v, C, e, 'move', d); return; }
       if (d.measure && C.draft) { const toI = cmpMap(C), q = toI(p.x, p.y); if (C.draft.type === 'angle') C.draft.pts[C.draft.pts.length - 1] = q; else if (C.draft.type === 'hu') C.draft.p = toI(p.x, p.y - (d.off || 0)); else if (C.draft.type === 'text') C.draft.p = q; else if (C.draft.type === 'roi') roiGrow(C.draft, q); else C.draft.b = q; render(); return; }
       if (d.edit) { moveEdit(d.edit, p); return; }
@@ -6062,6 +6066,9 @@ function cmpInput(v) { // bound once per pane; acts on whichever series the pane
   const up = e => {
     if (!P2.has(e.pointerId)) return; P2.delete(e.pointerId); clearTimeout(v.hold);
     if (d && d.loupe) { v.loupe = null; d = null; P2.clear(); render(); return; } // lifted: the magnifier goes
+    if (d && d.rfm) { const m = d.rfm, a = rfToScreen(C, m.a), b = m.b ? rfToScreen(C, m.b) : a;
+      if (e.type === 'pointerup' && (m.type === 'hu' || Math.hypot(b.x - a.x, b.y - a.y) > 6)) { const k = rfKey(C), l = S.rfMeas.get(k) || []; l.push(m); S.rfMeas.set(k, l); }
+      C.rfDraft = null; if (P2.size === 0) d = null; render(); return; }
     if (d && C && !S.rf && (d.measure || d.edit || d.tool)) {
       if (e.type === 'pointerup' || d.measure) {
         if (d.measure) { // a length or ROI is kept once dragged out; an angle after its third point; an HU point at once
@@ -6139,7 +6146,7 @@ function cmpLayout() {
     DEC.bytes = Math.max(0, DEC.bytes - freed);
   }
   cmpLayout.had = S.cmps.length > 0;
-  if (!S.cmps.length) S.cmpSel = null; try { cmpPickUI(); } catch (e) { }
+  if (!S.cmps.length) { S.cmpSel = null; S.cmpLast = null; } try { cmpPickUI(); } catch (e) { }
   const vw = $('#views'); if (vw.dataset.solo && (!S.cmps.length || S.rf || (vw.dataset.solo !== 'M' && !S.cmps.some(C => String(C.slot) === vw.dataset.solo)))) { delete vw.dataset.solo; document.querySelectorAll('.cmpv.solo').forEach(e => e.classList.remove('solo')); } // coronal/sagittal also with a single view (no compared series)
   const n = S.cmps.length, on = n > 0 || !!S.rf;
   if (n > 0 && !S.cmpWas) { // compare starts fitted, whatever zoom there was before: a CT (or fused PET-CT) to its body, as when it opens
@@ -6946,6 +6953,7 @@ $('#pDel').addEventListener('click', delSel);
 $('#actClear').addEventListener('click', () => { // the main slice and the slices shown beside it
   for (const key of [mkey(), ...(S.rf ? [] : S.cmps.map(cmpKey))]) { if ((S.meas.get(key) || []).length) snap(S.meas, key); S.meas.delete(key); }
   if (S.vol) for (const k of MVK) { const v = MV[k]; if (v && v.meas && v.g && (!S.planeMode || k === $('#views').dataset.main)) { const key = mvKey(v); if ((v.meas.get(key) || []).length) snap(v.meas, key); v.meas.delete(key); } if (v) v.draft = null; }
+  if (S.rf) for (const C of rfPanes()) { S.rfMeas.delete(rfKey(C)); C.rfDraft = null; } // coronal / sagittal side by side: their lengths and HU points
   for (const C of S.cmps) C.draft = null; S.sel = null; S.draft = null; render(); });
 $('#btnPrivacy').addEventListener('click', e => {
   S.anon = !S.anon; e.currentTarget.setAttribute('aria-pressed', S.anon); document.body.classList.toggle('anon', S.anon);
@@ -8180,6 +8188,7 @@ function rfDrawPane(C) {
     if (!V) { const why = volPlan(C.se); paneMsg(C, (R.plane === 'cor' ? 'Coronal' : 'Sagittal') + ' is not possible for this series' + (typeof why === 'string' ? ': ' + why.replace(/^MPR /, 'it ') : '')); v.info.textContent = C.se.desc || ''; return; }
     const cut = rfCut(C, V), sh = C.main || cmpShared(C), wc = sh ? S.wc : C.wc, ww = sh ? S.ww : C.ww;
     if (v.gl && v.gl.ok) v.gl.drawView({ data: cut.data, key: cut.data, w: cut.w, h: cut.h, slope: V.sl, ic: V.ic, cssW: v.W, cssH: v.H, map: rfMap(C, V), iw: cut.w, ih: cut.h, lo: wc - ww / 2, ww, inv: S.invert !== C.se.images[0].mono1 });
+    try { rfDrawMeas(C, V, cut); } catch (e) { }
     const lines = [C.se.desc || 'Series'];
     if (!sh) lines.push('W ' + Math.round(wc) + ' / ' + Math.round(ww));
     if (cut.outside) lines.push('This plane is outside this series');
@@ -8248,6 +8257,35 @@ function rfPinch(v, a, b, pz) { // zoom about the fingers, same scale in every p
   const h0 = pz.P0[i] + (pz.m0.x - v.W / 2) / pz.s0, z0 = pz.P0[2] + (v.H / 2 - pz.m0.y) / pz.s0;
   R.scale = s; R.fit = false; R.P[i] = h0 - (m.x - v.W / 2) / s; R.P[2] = z0 - (v.H / 2 - m.y) / s;
   render();
+}
+
+/* ---------- Length and HU on the coronal / sagittal views side by side ----------
+   Kept in millimetres on the plane (across the body, and up the body), for the series, the plane and the plane's
+   position: a measurement shows again when you come back to the same place. */
+S.rfMeas = new Map();
+const rfAt = C => { const R = S.rf; return (R.plane === 'cor' ? R.P[1] : R.P[0]) + (C.rfOff || 0); };
+const rfKey = C => C.se.uid + '|' + S.rf.plane + '|' + Math.round(rfAt(C) * 2) / 2;
+function rfToMm(C, sx, sy) { const R = S.rf, v = C.view; return { H: (R.plane === 'cor' ? R.P[0] : R.P[1]) + (sx - v.W / 2) / R.scale, Z: R.P[2] + (v.H / 2 - sy) / R.scale }; }
+function rfToScreen(C, q) { const R = S.rf, v = C.view; return { x: v.W / 2 + (q.H - (R.plane === 'cor' ? R.P[0] : R.P[1])) * R.scale, y: v.H / 2 - (q.Z - R.P[2]) * R.scale }; }
+function rfValue(C, V, cut, q) { // the value under a point (HU on CT), from the plane on screen
+  const s = rfToScreen(C, q), p = rfMap(C, V)(s.x, s.y), x = Math.round(p.x - 0.5), y = Math.round(p.y - 0.5);
+  if (x < 0 || y < 0 || x >= cut.w || y >= cut.h) return null; return cut.data[y * cut.w + x] * V.sl + V.ic;
+}
+function rfDrawMeas(C, V, cut) {
+  const list = (S.rfMeas.get(rfKey(C)) || []).concat(C.rfDraft ? [C.rfDraft] : []); if (!list.length) return;
+  const g = C.view.ctx, ct = (C.se.modality || (C.se.images[0] || {}).modality) === 'CT';
+  g.save(); g.lineWidth = 2; g.font = '600 12px "IBM Plex Mono", ui-monospace, monospace'; g.textBaseline = 'bottom';
+  for (const m of list) {
+    g.strokeStyle = g.fillStyle = '#ffd54a'; g.shadowColor = '#000'; g.shadowBlur = 3;
+    if (m.type === 'length') { const a = rfToScreen(C, m.a), b = rfToScreen(C, m.b), mm = Math.hypot(m.b.H - m.a.H, m.b.Z - m.a.Z);
+      g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+      for (const q of [a, b]) { g.beginPath(); g.arc(q.x, q.y, 3, 0, 7); g.fill(); }
+      g.fillText((mm >= 100 ? mm.toFixed(0) : mm.toFixed(1)) + ' mm', Math.max(a.x, b.x) + 6, (a.y + b.y) / 2); }
+    else { const a = rfToScreen(C, m.a), val = rfValue(C, V, cut, m.a);
+      g.beginPath(); g.moveTo(a.x - 7, a.y); g.lineTo(a.x + 7, a.y); g.moveTo(a.x, a.y - 7); g.lineTo(a.x, a.y + 7); g.stroke();
+      g.fillText(val == null ? '–' : (ct ? Math.round(val) + ' HU' : (Math.abs(val) < 10 ? val.toFixed(2) : Math.round(val))), a.x + 8, a.y - 4); }
+  }
+  g.restore();
 }
 
 /* ---------- 3D: volume rendering of the series (as in RadiAnt's 3D) ----------
