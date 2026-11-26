@@ -685,7 +685,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-0850</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-1142</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -699,7 +699,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-0850</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1142</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2466,7 +2466,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-0850', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1142', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -4332,6 +4332,25 @@ function mvZoomAt(v, x, y, s) {
 }
 // Leaving MPR (or a single coronal/sagittal) keeps its volume in memory (S.keepVol): going back opens it as it was.
 // Its three GPU contexts are given back (phones allow only a few) and made again when it reopens.
+function mvCreate(kind) { // one MPR view, made once
+  const box = $(kind === 'cor' ? '#mvCor' : kind === 'sag' ? '#mvSag' : '#mvAx');
+  const v = MV[kind] = { kind, box, cv: box.querySelector('.mcv'), glc: box.querySelector('.mgl'), fit: true, W: 0, H: 0 };
+  v.ctx = v.cv.getContext('2d'); v.gl = makeGL(v.glc);
+  if (!v.gl) v.glc.hidden = true;
+  new ResizeObserver(() => {
+    const r = box.getBoundingClientRect();
+    if (S.vol && v.W > 0) planeGeom(v);
+    if (S.vol && !v.fit && v.W > 0 && v.H > 0) { const f0 = mvFitScale(v); v.keep = { c: mvToImage(v, v.W / 2, v.H / 2), rel: f0 ? v.s / f0 : 1 }; }
+    v.W = r.width; v.H = r.height; v.cv.width = v.glc.width = Math.round(v.W * S.dpr); v.cv.height = v.glc.height = Math.round(v.H * S.dpr);
+    if (S.vol && v.W > 0) {
+      if (v.fit) mvFit(v);
+      else if (v.keep) { v.s = mvFitScale(v) * v.keep.rel; const p = mvToScreen(v, v.keep.c.x, v.keep.c.y); v.ox += v.W / 2 - p.x; v.oy += v.H / 2 - p.y; v.keep = null; }
+      keepCrossInView(null);
+    }
+    v.key = null; render();
+  }).observe(box);
+  mvInput(v);
+}
 function mprToggle(on) {
   const want = on == null ? !S.vol : on;
   if (want && typeof consHold === 'function' && consHold(() => mprToggle(true), 'MPR')) return;
@@ -4349,29 +4368,11 @@ function mprToggle(on) {
   $('#views').classList.add('mpr'); $('#btnMPR').setAttribute('aria-pressed', 'true'); $('#vswitch').hidden = false; viewSet('ax', true);
   for (const kind of MVK) {
     if (MV[kind] && !(MV[kind].gl && MV[kind].gl.ok)) glFresh(MV[kind]); // reopened: a new context
-    if (!MV[kind]) {
-      const box = $(kind === 'cor' ? '#mvCor' : kind === 'sag' ? '#mvSag' : '#mvAx');
-      const v = MV[kind] = { kind, box, cv: box.querySelector('.mcv'), glc: box.querySelector('.mgl'), fit: true, W: 0, H: 0 };
-      v.ctx = v.cv.getContext('2d'); v.gl = makeGL(v.glc);
-      if (!v.gl) v.glc.hidden = true;
-      new ResizeObserver(() => {
-        const r = box.getBoundingClientRect();
-        if (S.vol && v.W > 0) planeGeom(v);
-        if (S.vol && !v.fit && v.W > 0 && v.H > 0) { const f0 = mvFitScale(v); v.keep = { c: mvToImage(v, v.W / 2, v.H / 2), rel: f0 ? v.s / f0 : 1 }; }
-        v.W = r.width; v.H = r.height; v.cv.width = v.glc.width = Math.round(v.W * S.dpr); v.cv.height = v.glc.height = Math.round(v.H * S.dpr);
-        if (S.vol && v.W > 0) {
-          if (v.fit) mvFit(v);
-          else if (v.keep) { v.s = mvFitScale(v) * v.keep.rel; const p = mvToScreen(v, v.keep.c.x, v.keep.c.y); v.ox += v.W / 2 - p.x; v.oy += v.H / 2 - p.y; v.keep = null; }
-          keepCrossInView(null);
-        }
-        v.key = null; render();
-      }).observe(box);
-      mvInput(v);
-    }
+    if (!MV[kind]) mvCreate(kind); // made outside: a view kept for the whole session must not hold on to this volume
     MV[kind].fit = true; MV[kind].key = null; MV[kind].g = null; if (!again) MV[kind].meas = null; // the same volume again: its drawings stay
     MV[kind].bodyFit = isCTlike(se0); // a CT: each view opens with the body filling it (see mvFitBody)
   }
-  if (isCTlike(se0)) requestAnimationFrame(() => requestAnimationFrame(() => { if (S.vol === plan) { fitBody(); render(); } })); // the axial too, in its new size
+  if (isCTlike(se0)) { const tok = plan.tok = {}; requestAnimationFrame(() => requestAnimationFrame(() => { if (S.vol && S.vol.tok === tok) { fitBody(); render(); } })); } // the axial too, in its new size
   if (!again) S.keepVol = null; // another series: the old volume is let go
   volFillFromMemory(); if (plan.pet) volFillFromMemory(plan.pet); if (typeof volCacheLoad === 'function') volCacheLoad(plan); render(); pump();
 }
@@ -6814,10 +6815,17 @@ function closeSeries(list) {
   const was = curSeries();
   if (S.vol && gone.has(S.vol.se)) mprToggle(false);
   S.cmps = S.cmps.filter(C => !gone.has(C.se));
-  for (const se of gone) { S.rfVols.delete(se); for (const im of se.images) if (im.pixels && coded(im)) DEC.bytes -= im.pixels.byteLength; }
+  if (S.vr && S.vr.V && gone.has(S.vr.V.se)) { try { vrClose(); } catch (e) { } }
+  if (S.keepVol && gone.has(S.keepVol.se)) S.keepVol = null; // the MPR volume kept for going back
+  // coded() first: a fused or subtracted slice makes its picture when .pixels is read (reading it for every slice froze Close all for seconds)
+  for (const se of gone) { S.rfVols.delete(se); if (se.derived || se.isFuse || se.isSlab) continue; for (const im of se.images) if (coded(im) && im.pixels) DEC.bytes -= im.pixels.byteLength; }
+  { const cl = document.getElementById('cmpList'); if (cl) cl.textContent = ''; } // the Compare list is made again when opened (its buttons kept the series)
+  try { if (LIVE_ST && LIVE_ST.seen) for (const se of gone) LIVE_ST.seen.delete(se); } catch (e) { } // the last study read kept its series listed
+  for (const el of document.querySelectorAll('[id^="mvCmp"]')) { const v = el.__v; if (v && v.__C && gone.has(v.__C.se)) { v.__C = null; v.key = null; v.last = null; } } // a pane let go of what it showed (it kept the whole series)
+  for (const K of [FUSEKEEP, SUBKEEP, SUBPV]) for (const t of K) { t._px = null; t._pv = null; } FUSEKEEP.length = SUBKEEP.length = SUBPV.length = 0; // made pictures go too
   S.series = S.series.filter(s => !gone.has(s));
   if (typeof keepTrim === 'function') keepTrim();
-  if (!S.series.length) { S.si = 0; S.idx = 0; S.cmps = []; S.rf = null; cmpLayout(); render(); return; }
+  if (!S.series.length) { S.si = 0; S.idx = 0; S.cmps = []; S.rf = null; S.keepVol = null; S.subBack = null; if (S.rfVols) S.rfVols.clear(); DEC.bytes = 0; DEC.squeeze = 1; MEM_CAP = Infinity; heapWatch.said = 0; buildPresets(); cmpLayout(); render(); return; }
   if (gone.has(was)) { // show another series: the same patient's first, else the largest open
     const next = S.series.find(s => samePatient(s, was)) || S.series.slice().sort((a, b) => b.images.length - a.images.length)[0];
     selectSeries(S.series.indexOf(next));
@@ -7563,6 +7571,20 @@ function memTight() { // memory ran out: hold less from now on (never a limit of
   FR.add('memory', 'ran out of memory: holding less · ' + FR.ctx());
   DEC.squeeze = Math.max(0.25, (DEC.squeeze || 1) * 0.6); if (S.keepVol && S.keepVol !== S.vol) S.keepVol = null; evict(); // the MPR volume kept from before goes first
   MEM_CAP = Math.min(MEM_CAP, Math.max(150e6, (memUsed() + DEC.bytes + volHeld()) * 0.75)); makeRoom(0, memKeep(LIVE_ST)); }
+// Before it runs out: the phone's own reading of memory in use. Near the limit, hold less (as after running out, but
+// gently and without the emergency count); MPR's and 3D's slices and what is on screen stay.
+function heapWatch() {
+  const M = performance.memory; if (!M || !M.jsHeapSizeLimit || M.usedJSHeapSize < 80e6) return; // a reading that never moves (some tablets) does nothing
+  const f = M.usedJSHeapSize / M.jsHeapSizeLimit; if (f < 0.75) return;
+  const now = performance.now(); if (now - (heapWatch.t || 0) < 4000) return; heapWatch.t = now;
+  if (!heapWatch.said) { heapWatch.said = 1; FR.add('memory', 'memory ' + Math.round(f * 100) + '% full: holding less before it runs out · ' + FR.ctx()); }
+  DEC.squeeze = Math.max(0.25, (DEC.squeeze || 1) * (f > 0.88 ? 0.6 : 0.8));
+  if (S.keepVol && S.keepVol !== S.vol) S.keepVol = null; if (S.rfVols && S.rfVols.size) S.rfVols.clear();
+  for (const K of [FUSEKEEP, SUBKEEP]) while (K.length > 12) { const o = K.shift(); o._px = null; }
+  try { evict(); } catch (e) { }
+  if (f > 0.88) { MEM_CAP = Math.min(MEM_CAP, Math.max(150e6, memUsed() * 0.75)); makeRoom(0, memKeep(LIVE_ST)); }
+}
+setInterval(heapWatch, 2000);
 const outOfMemory = m => /allocation failed|out of memory/i.test(String(m || ''));
 const seBytes = se => se.derived || se.isFuse || se.isSlab ? 0 : se.images.reduce((a, im) => a + (!coded(im) && im.pixels ? im.pixels.byteLength : 0), 0); // a fused, subtracted or slab series makes its pictures when asked: never asked here (that built all of them)
 const needsReload = se => !!(se && se.images.some(im => im.dropped));
