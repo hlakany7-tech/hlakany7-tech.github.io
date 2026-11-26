@@ -691,7 +691,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-1915</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-1950</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -705,7 +705,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1915</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1950</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2475,7 +2475,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1915', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1950', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -5121,7 +5121,7 @@ const CF_ICE = { cfg: null, t: 0, busy: null };
 function cfIceLoad(force) {
   if (CF_ICE.busy) return CF_ICE.busy; if (!force && CF_ICE.cfg && Date.now() - CF_ICE.t < 5 * 3600e3) return Promise.resolve(CF_ICE.cfg);
   const ac = typeof AbortController === 'function' ? new AbortController() : null; const to = setTimeout(() => { try { ac && ac.abort(); } catch (e) { } }, 6000);
-  CF_ICE.busy = fetch(CF_TURN_URL, { cache: 'no-store', signal: ac ? ac.signal : undefined }).then(r => r.ok ? r.json() : Promise.reject(new Error('relay pass ' + r.status)))
+  CF_ICE.busy = fetch(CF_TURN_URL, { cache: 'no-store', signal: ac ? ac.signal : undefined }).then(r => r.ok ? r.json() : r.text().catch(() => '').then(t => Promise.reject(new Error('relay pass ' + r.status + (t ? ': ' + String(t).slice(0, 80) : '')))))
     .then(j => { if (!j || !Array.isArray(j.iceServers) || !j.iceServers.length) throw new Error('relay pass empty'); CF_ICE.cfg = { iceServers: j.iceServers }; CF_ICE.t = Date.now(); consLog('relay: Cloudflare ready');
       try { for (const c of CONS.peers.values()) if (c.pc && c.relay === 'cloudflare' && c.pc.signalingState !== 'closed') c.pc.setConfiguration(Object.assign(c.pc.getConfiguration(), CF_ICE.cfg)); } catch (e) { } // a long conversation: its pass is renewed before it runs out
       return CF_ICE.cfg; })
@@ -5296,9 +5296,15 @@ function consOpen(c, dc) {
   consPersistConvs(); setTimeout(() => consAutoResend(c), 300); // this phone restarted while sending: the case goes on
 }
 async function consRoute(c) { // direct, or through the relay: said once per connection (it decides the speed)
-  const pc = c.pc; if (!pc) return; await new Promise(r => setTimeout(r, 600));
-  try { const st = await pc.getStats(); let pair = null; st.forEach(x => { if (x.type === 'candidate-pair' && x.state === 'succeeded' && (x.nominated || x.selected) && (!pair || x.bytesSent > pair.bytesSent)) pair = x; });
-    const loc = pair && st.get(pair.localCandidateId), rem = pair && st.get(pair.remoteCandidateId);
+  const pc = c.pc; if (!pc) return;
+  for (const wait of [600, 1500, 3000, 6000]) { // the chosen route can take a few seconds to show (it was sometimes missed)
+    await new Promise(r => setTimeout(r, wait)); if (c.pc !== pc) return;
+    let pair = null, st = null; try { st = await pc.getStats(); st.forEach(x => { if (x.type === 'candidate-pair' && x.state === 'succeeded' && (x.nominated || x.selected) && (!pair || x.bytesSent > pair.bytesSent)) pair = x; }); } catch (e) { }
+    if (pair && st.get(pair.localCandidateId)) return consRouteSay(c, st, pair);
+  }
+}
+function consRouteSay(c, st, pair) {
+  try { const loc = pair && st.get(pair.localCandidateId), rem = pair && st.get(pair.remoteCandidateId);
     if (!loc) return; const relay = loc.candidateType === 'relay' || (rem && rem.candidateType === 'relay');
     c.route = relay ? 'through the ' + (c.relay === 'cloudflare' ? 'Cloudflare ' : 'shared ') + 'relay' + (loc.relayProtocol ? ' (' + loc.relayProtocol + ')' : '') : 'direct'; consLog(c.name + ': ' + c.route + (pair.currentRoundTripTime ? ', ' + Math.round(pair.currentRoundTripTime * 1000) + ' ms' : ''));
     consNote(c, 'Route: ' + c.route + (pair.currentRoundTripTime ? ' · ' + Math.round(pair.currentRoundTripTime * 1000) + ' ms' : ''));
