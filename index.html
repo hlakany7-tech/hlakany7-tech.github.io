@@ -692,7 +692,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-2049</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-2101</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -706,7 +706,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-2049</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-2101</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2476,7 +2476,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-2049', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-2101', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -5645,7 +5645,13 @@ function consAddFile(r, n, ab) { // a received file into the case on screen
   try { const info = DICOM.parse(ab);
     // the file itself goes to the browser's storage (it can spill to disk): only the pixels near where you look stay in memory
     const fr = k => Array.from({ length: info.frames || 1 }, (_, i) => k(ab, info, i));
-    const res = addBuffer(null, 'case-' + n, { info, src: { blob: new Blob([ab]), start: 0, method: 0 }, pixels: info.codec ? null : fr(DICOM.framePixels), frames: info.codec ? fr(DICOM.encodedFrame) : null });
+    // kept as a file only (as a study opened from a zip on the device): its pixels are read from it again when needed, never all held
+    // in memory (holding every received file crashed a tablet that cannot see its own memory, 26/11)
+    const blob = new Blob([ab]), mono = !info.palette && !info.ybr && (info.spp || 1) === 1;
+    const lazy = info.pixelOffset == null ? null : info.codec ? { info, z: { blob, start: 0, csize: ab.byteLength, method: 0, pixelOffset: info.pixelOffset } }
+      : (LAZY_RAW && mono && (info.bitsAllocated === 16 || info.bitsAllocated === 8)) ? { info, src: { blob, start: 0, method: 0 } } : null;
+    const res = addBuffer(null, 'case-' + n, lazy || { info, src: { blob, start: 0, method: 0 }, pixels: info.codec ? null : fr(DICOM.framePixels), frames: info.codec ? fr(DICOM.encodedFrame) : null });
+    if (lazy) rxBlob.set(n, blob);
     if (res) for (const s of res.all) { s.__consCase = r.caseId; r.lastBase = String(s.uid).split('#')[0]; } } catch (e) { }
 }
 /* ---------- A case on its way survives either phone being closed or stopped by Android ----------
@@ -5653,6 +5659,7 @@ function consAddFile(r, n, ab) { // a received file into the case on screen
    and the conversation itself. Opened again, the case is back on screen and it carries on from where it stopped; the
    sending phone, opened again with the same study, sends the rest. End removes all of it. */
 const RX = { db: null };
+const rxBlob = new Map(); // the received file just added, kept for storage as a file (the browser can hold it on disk), not as bytes in memory
 function rxDb() {
   if (!RX.db) RX.db = new Promise(ok => { try { const q = indexedDB.open('svRecv', 1); q.onupgradeneeded = () => { const d = q.result; d.createObjectStore('cases'); d.createObjectStore('files'); }; q.onsuccess = () => ok(q.result); q.onerror = () => ok(null); } catch (e) { ok(null); } });
   return RX.db;
@@ -5660,7 +5667,7 @@ function rxDb() {
 async function rxTx(store, fn, mode) { const d = await rxDb(); if (!d) return null; return new Promise(res => { try { const t = d.transaction(store, mode || 'readonly'), os = t.objectStore(store), out = fn(os); t.oncomplete = () => res(out && 'result' in out ? out.result : true); t.onerror = t.onabort = () => res(null); } catch (e) { res(null); } }); }
 const rxKey = (c, r) => c.id + '|' + r.id;
 function rxCase(c, r, done) { const v = { peer: c.id, name: c.name, id: r.id, count: r.count, sizes: r.sizes, left: r.left, desc: r.desc, done: !!done, t: Date.now() }; rxTx('cases', os => os.put(v, rxKey(c, r)), 'readwrite'); }
-function rxSave(c, r, n, i, ab) { if (r.noKeep) return; r.saveQ = (r.saveQ || Promise.resolve()).then(() => rxTx('files', os => os.put({ n, i, data: ab }, rxKey(c, r) + '|' + String(n).padStart(6, '0')), 'readwrite')).then(ok => { if (ok === null && !r.noKeep) { r.noKeep = true; try { FR.add('send', 'this phone could not keep the case as it came (storage full?)', true); } catch (e) { } } }); }
+function rxSave(c, r, n, i, ab) { const d = (ab && rxBlob.get(n)) || ab; rxBlob.delete(n); ab = null; if (r.noKeep) return; r.saveQ = (r.saveQ || Promise.resolve()).then(() => rxTx('files', os => os.put({ n, i, data: d }, rxKey(c, r) + '|' + String(n).padStart(6, '0')), 'readwrite')).then(ok => { if (ok === null && !r.noKeep) { r.noKeep = true; try { FR.add('send', 'this phone could not keep the case as it came (storage full?)', true); } catch (e) { } } }); }
 function rxForget(c) { const lo = c.id + '|', hi = c.id + '|\uffff'; for (const st of ['cases', 'files']) rxTx(st, os => os.delete(IDBKeyRange.bound(lo, hi)), 'readwrite'); }
 async function rxRestore() { // opened again: the conversations and their cases come back
   const cases = await rxTx('cases', os => os.getAll()); const keys = await rxTx('cases', os => os.getAllKeys());
@@ -5671,7 +5678,8 @@ async function rxRestore() { // opened again: the conversations and their cases 
     const c = consConv(v.peer, v.name); if (c.state !== 'open') { c.ever = true; c.state = 'reconnecting'; }
     const files = (await rxTx('files', os => os.getAll(IDBKeyRange.bound(keys[k] + '|', keys[k] + '|\uffff')))) || [];
     const r = { id: v.id, expect: 0, sizes: v.sizes, left: v.left || [], count: v.count, desc: v.desc, got: 0, cur: null, ask: false, q: Promise.resolve(), caseId: 'c' + (++CONS.cid), first: true, t0: 0, have: new Set(), restored: true };
-    for (const f of files.sort((a, b) => a.n - b.n)) { if (f.i != null) { if (r.have.has(f.i)) continue; r.have.add(f.i); } if (f.data) consAddFile(r, f.n, f.data); r.got++; }
+    for (const f of files.sort((a, b) => a.n - b.n)) { if (f.i != null) { if (r.have.has(f.i)) continue; r.have.add(f.i); } if (f.data) { let d = f.data; if (typeof Blob !== 'undefined' && d instanceof Blob) { try { d = await d.arrayBuffer(); } catch (e) { d = null; } } if (d) consAddFile(r, f.n, d); } r.got++; }
+    rxBlob.clear(); // (already in storage)
     r.expect = r.got; if (!c.cases.includes(r.caseId)) c.cases.push(r.caseId);
     if (r.got >= r.count) { (c.doneIds || (c.doneIds = new Set())).add(v.id); r.got = Math.max(r.got, r.count); r.wasDone = true; c.inbox = r; consRecvDone(c, r); }
     else { c.inbox = r; consNote(c, 'The case was coming when Sliceview closed: ' + r.got + ' of ' + r.count + ' are here, the rest comes when ' + c.name + ' is back'); consRecvDone(c, r); }
