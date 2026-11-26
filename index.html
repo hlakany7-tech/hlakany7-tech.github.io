@@ -685,7 +685,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-1326</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-1408</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -699,7 +699,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1326</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1408</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2466,7 +2466,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1326', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1408', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -4357,6 +4357,7 @@ function mprToggle(on) {
   if (want && S.rf) { S.rf = null; cmpLayout(); } // MPR replaces the coronal/sagittal view
   if (!want) { S.keepVol = null; /* trial: leaving MPR lets its volume go, so the next view has all the room (going back builds it again) */ S.vol = null; planeModeOff(); for (const k of MVK) { const v = MV[k]; if (v && v.gl) { v.gl.release(); v.gl = null; } } $('#mvAx').hidden = true; $('#planesReset').hidden = true; $('#views').classList.remove('mpr'); $('#vswitch').hidden = true; delete $('#views').dataset.main; delete $('#views').dataset.layout; $('#btnMPR').setAttribute('aria-pressed', 'false'); render(); return; }
   const se0 = curSeries(); if (!se0) return; const se = volSe(se0);
+  if (S.vr) { const V3 = S.vr.V; vrClose(); S.keepVol = V3 && V3.se === se ? V3 : null; } /* one heavy view at a time: 3D gives way (its volume serves MPR when it is the same series) */
   const K = S.keepVol, again = !!(K && K.se === se); if (!again) S.keepVol = null; // the old volume goes first: two at once is what ran out of memory
   const plan = again ? Object.assign(K, { nCor: [0, 1, 0], nSag: [1, 0, 0], nAx: [0, 0, 1], order: null }) : volPlanSafe(se);
   if (typeof plan === 'string') { say(plan, 5000); return; }
@@ -6583,6 +6584,7 @@ function phasePlan(main) {
 function cmpSetLayout(n) {
   const want = clamp(n, 1, CMP_MAX + 1) - 1;
   if (want > 0 && !cmpOn() && !proGate('Compare')) return;
+  if (want > 0) { if (S.vr) vrClose(); if (S.vol) mprToggle(false); S.keepVol = null; } /* one heavy view at a time: panes get all the room */
   if (want === 3 && S.cmps.length < 3) { const plan = phasePlan(curSeries()); if (plan && !needsReload(plan[0])) {
     const old = curSeries(), keep = { s: S.s, ox: S.ox, oy: S.oy, fit: S.fit };
     S.cmps = [];
@@ -8363,7 +8365,8 @@ function vrOpen() {
   if (!vrGL()) { say('3D needs WebGL 2, which this browser does not have', 4000); return; }
   const K = S.vol && S.vol.se === se ? S.vol : S.keepVol && S.keepVol.se === se ? S.keepVol : null;
   const V = K || volPlanSafe(se); if (typeof V === 'string') { say(V.replace(/^MPR/, '3D'), 4000); return; }
-  if (S.vol) mprToggle(false); // MPR or the single coronal/sagittal gives way; its volume is kept (S.keepVol)
+  if (S.vol) mprToggle(false); // MPR or the single coronal/sagittal gives way (its volume, V, is what 3D is made from)
+  if (S.cmps.length || S.rf) cmpStop(); // one heavy view at a time: the panes give way and let their slices go
   if (cine) cineToggle();
   S.keepVol = V;
   const T = vrTexPlan(V), gl = VRG.gl;
@@ -8383,7 +8386,7 @@ function vrOpen() {
 function vrClose() {
   const R = S.vr; if (!R) return;
   if (R.raf) cancelAnimationFrame(R.raf); clearTimeout(R.wait); clearTimeout(R.feed);
-  S.vrPreset = R.preset; S.vr = null;
+  S.vrPreset = R.preset; S.vr = null; S.keepVol = null; // its volume goes too (MPR opening next takes it first)
   if (VRG && VRG.volTex) { VRG.gl.deleteTexture(VRG.volTex); VRG.volTex = null; }
   if (VRG && VRG.gl) { const x = VRG.gl.getExtension('WEBGL_lose_context'); if (x) x.loseContext(); } // the GPU context goes back (phones allow only a few)
   document.body.classList.remove('vr'); $('#vr3d').hidden = true; $('#btn3D').setAttribute('aria-pressed', 'false');
