@@ -685,7 +685,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.25-2259</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.25-2314</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -699,7 +699,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-2259</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-2314</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2466,7 +2466,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-2259', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-2314', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -3685,7 +3685,8 @@ function volPlan(se, minK = 0) {
   if (a.spp !== 1) return 'MPR is not available for colour images';
   if (im.some(x => x.rows !== a.rows || x.cols !== a.cols)) return 'MPR needs slices of the same size';
   if (a.iop && im.some(x => !x.iop || x.iop.some((v, i) => Math.abs(v - a.iop[i]) > 1e-3))) return 'MPR needs slices with the same orientation';
-  const vb = (DEC.squeeze || 1) < 1 ? volBudget() : VOL_BUDGET; let k = minK; // full detail as before; smaller only after this device has actually run out of memory while (k < 4 && n * Math.ceil(a.cols / 2 ** k) * Math.ceil(a.rows / 2 ** k) * 2 > vb) k++;
+  const vb = (DEC.squeeze || 1) < 1 ? volBudget() : VOL_BUDGET; let k = minK; // full detail as before; smaller only after this device has actually run out of memory
+  while (k < 4 && n * Math.ceil(a.cols / 2 ** k) * Math.ceil(a.rows / 2 ** k) * 2 > vb) k++;
   const w = Math.ceil(a.cols / 2 ** k), h = Math.ceil(a.rows / 2 ** k);
   const locs = im.map(x => x.location);
   let dz = a.thickness || 1;
@@ -6845,7 +6846,7 @@ $('#btnSeries').addEventListener('click', () => {
 // Phones get a smaller cache of decoded slices: a page using too much memory is closed by the phone in the background.
 const BUDGET = 300e6, PREVIEW_BUDGET = 280e6, SETTLE = 140;
 const LOWMEM = !!(performance.memory && performance.memory.jsHeapSizeLimit < 1.8e9) || (navigator.deviceMemory || 8) <= 4 || matchMedia('(pointer: coarse)').matches; // a phone or tablet
-const decBudget = () => Math.max(40e6, clamp(memLimit() * 0.3, 80e6, BUDGET) * (DEC.squeeze || 1)); // sharp slices kept in memory: smaller on a device with less memory // ms without a slice change that counts as a pause
+const decBudget = () => Math.max(40e6, clamp(memLimit() * 0.3, 80e6, LOWMEM ? 180e6 : BUDGET) * (DEC.squeeze || 1)); // a phone or tablet: at most 180 MB of sharp slices (about 350 CT slices) // sharp slices kept in memory: smaller on a device with less memory // ms without a slice change that counts as a pause
 // A job carries either a ready codestream (buf) or a zip entry still packed (z), unpacked here off the main thread.
 async function jobCodestream(m, D) {
   if (!m.z) return new Uint8Array(m.buf);
@@ -6967,7 +6968,7 @@ function decoded(img, d, kind) {
 // compared) they piled up, unseen in the memory count, until Chrome closed the app ("Aw, Snap"). Now they have a budget
 // of their own like the sharp slices: past it, the ones furthest from where you are looking go first.
 const PRV = { set: new Set(), bytes: 0, n: 0 };
-const prvBudget = () => clamp(memLimit() * 0.18, 30e6, 180e6) * (DEC.squeeze || 1);
+const prvBudget = () => clamp(memLimit() * 0.18, 30e6, LOWMEM ? 60e6 : 180e6) * (DEC.squeeze || 1);
 function prvAdd(img) { if (!img.preview || PRV.set.has(img)) return; PRV.set.add(img); PRV.bytes += img.preview.data.byteLength; if (PRV.bytes > prvBudget()) prvEvict(); }
 function prvEvict() {
   let total = 0; for (const im of PRV.set) { if (!im.preview) PRV.set.delete(im); else total += im.preview.data.byteLength; } PRV.bytes = total;
@@ -7541,8 +7542,21 @@ const memLimit = () => Math.min(MEM_CAP, nativeMem(), performance.memory && perf
 const memUsed = () => S.series.reduce((a, s) => a + seBytes(s), 0);
 // never put aside: the series on screen, and while a study is coming in, its biggest series so far (the one it opens on)
 const memKeep = st => { const k = new Set([curSeries()].filter(Boolean)); if (st && st.seen && st.seen.size) k.add([...st.seen].sort((a, b) => b.images.length - a.images.length)[0]); return k; };
+function memEmergency() { // memory keeps running out: everything not on screen right now is let go
+  memTight.n = 0; FR.add('memory', 'memory still full: everything not on screen let go' + (S.vol ? ', MPR closed' : '') + ' · ' + FR.ctx(), true);
+  if (S.vr) { try { vrClose(); } catch (e) { } }
+  if (S.vol) { try { mprToggle(false); } catch (e) { } say('Memory was full: MPR closed to keep Sliceview running. Open it again in a moment.', 6000); }
+  S.keepVol = null; if (S.rfVols) S.rfVols.clear();
+  const keep = new Set(); const add = (se, i) => { if (!se) return; for (let d = -2; d <= 2; d++) { const im = se.images[i + d]; if (im) { keep.add(im); if (im.fuse) { keep.add(im.fuse.ct); keep.add(im.fuse.pt); } } } };
+  add(curSeries(), S.idx); for (const C of S.cmps) add(C.se, C.idx);
+  for (const se of S.series) for (const im of se.images) { if (keep.has(im)) continue; if (coded(im) && im.pixels) { DEC.bytes -= im.pixels.byteLength; im.pixels = null; im.mm = null; } if (im.preview) im.preview = null; }
+  PRV.set.clear(); PRV.bytes = 0; DEC.bytes = Math.max(0, DEC.bytes); render();
+}
 function memTight() { // memory ran out: hold less from now on (never a limit of nothing: slices kept for the screen count too)
-  const now = performance.now(); if (now - (memTight.t || 0) < 3000) { makeRoom(0, memKeep(LIVE_ST)); return; } memTight.t = now; // once for a burst of failures
+  const now = performance.now();
+  if (now - (memTight.t || 0) < 3000) { makeRoom(0, memKeep(LIVE_ST)); return; } // once for a burst of failures
+  memTight.n = now - (memTight.t || 0) < 30000 ? (memTight.n || 0) + 1 : 1; memTight.t = now;
+  if (memTight.n >= 3) { memEmergency(); return; } // a third separate time within half a minute: holding less was not enough, everything else goes
   FR.add('memory', 'ran out of memory: holding less · ' + FR.ctx());
   DEC.squeeze = Math.max(0.25, (DEC.squeeze || 1) * 0.6); if (S.keepVol && S.keepVol !== S.vol) S.keepVol = null; evict(); prvEvict(); // the MPR volume kept from before goes first
   MEM_CAP = Math.min(MEM_CAP, Math.max(150e6, (memUsed() + DEC.bytes + volHeld()) * 0.75)); makeRoom(0, memKeep(LIVE_ST)); }
