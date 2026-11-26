@@ -691,7 +691,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-1812</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-1834</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -705,7 +705,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1812</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1834</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2475,7 +2475,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1812', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1834', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -3318,7 +3318,8 @@ function selectSeries(i) {
   if (typeof RPT !== 'undefined' && RPT && RPT.open) setTimeout(() => { if (RPT.key !== rptKey()) { rptSave(); rptLoad(); } }, 0);
   if (S.vol && S.vol.se !== volSe(se)) mprToggle(false);
   if (S.vr && S.vr.V.se !== se) vrClose();
-  if (S.keepVol && S.keepVol.se !== se && !(se.isSlab && S.keepVol.se === se.slabOf)) S.keepVol = null; // memory: only the volume of the series on screen is kept
+  if (S.keepVol && S.keepVol.se !== se && !(se.isSlab && S.keepVol.se === se.slabOf)) { volStash(S.keepVol); S.keepVol = null; } // another series: its volume is set aside (kept while memory allows)
+  if (!S.keepVol && S.spareVols.has(se)) { S.keepVol = S.spareVols.get(se); S.spareVols.delete(se); } // this series' volume, built or kept before: coronal / sagittal at once
   if (!S.keepPanes && S.cmps.some(C => C.se === se)) { S.cmps = S.cmps.filter(C => C.se !== se); setTimeout(cmpLayout, 0); }
   if (S.c3 && se.studyUid !== S.c3.study) S.c3 = null;
   if (S.rf) { S.rf.main.se = se; S.rf.fit = true; } // coronal/sagittal: the series picked is the one reformatted
@@ -3466,12 +3467,22 @@ function mrShow(kind) {
   // the plane you are in stays: T1 in sagittal, then FLAIR: FLAIR in sagittal (and MPR stays MPR)
   const mpr3 = !!(S.vol && !S.planeMode), want = S.vol && S.planeMode ? ($('#views').dataset.main || 'ax') : S.vol ? 'ax' : natPlane(curSeries());
   const cs = curSeries(), at = c.indexOf(cs), solo = !(S.cmps.length || S.rf || S.vol || S.vr), se = !SEQ_MANY.has(kind) ? seqBest(kind, c, false, mpr3 ? 'ax' : want) : at >= 0 ? (solo ? c[(at + 1) % c.length] : cs) : c[0]; // one press, one series (ADC: again for the next)
+  // where you are in the body (the crosshair in coronal / sagittal, else the middle of the slice): the new series opens there
+  let w0 = null; try { if (S.vol && S.vol.P) w0 = volToWorld(S.vol, S.vol.P); else { const im = cur(); if (im && im.ipp) w0 = imgToWorld(im, im.cols / 2, im.rows / 2); } } catch (e) { w0 = null; }
   if (S.vol) mprToggle(false);
   if (S.vr) vrClose();
   if (S.cmps.length || S.rf) { S.cmps = []; S.rf = null; cmpLayout(); } // a single sequence: one view (the DWI | ADC pair, or any compare, closes)
-  if (se !== cs) selectSeries(S.series.indexOf(se));
+  // the same place in the body: another phase (or sequence) opens on the cut you were on, as if only the contrast changed
+  const view0 = { s: S.s, ox: S.ox, oy: S.oy, fit: S.fit };
+  if (se !== cs) {
+    if (S.vol) mprToggle(false);
+    selectSeries(S.series.indexOf(se));
+    if (w0) { const j = nearestSlice(se, w0); if (j >= 0) S.idx = j; }
+    if (!view0.fit && natPlane(se) === natPlane(cs)) Object.assign(S, view0); // and at the same zoom
+  }
   S.mrKind = kind;
-  if (mpr3) mprToggle(true); else if (natPlane(se) !== want) planeOpen(want); // e.g. a 3D sagittal T1 asked for in axial or coronal: reformatted
+  if (mpr3) mprToggle(true); else if (natPlane(se) !== want) planeOpen(want);
+  if (w0 && S.vol && se !== cs) { try { const V = S.vol, q = worldToVolIdx(V, w0), z = clamp(q[2], 0, V.n - 1); setP([q[0] * V.sx, q[1] * V.sy, V.flip ? z * V.dz : (V.n - 1 - z) * V.dz]); } catch (e) { } } // e.g. a 3D sagittal T1 asked for in axial or coronal: reformatted
   buildPresets(); render();
 }
 function buildPresets() { // the row keeps where it was scrolled to (rebuilt on every change, it jumped back to its start)
@@ -3850,7 +3861,13 @@ function volPlanSafe(se) { // a volume that fits in memory: when the full-size o
   }
   return 'Not enough memory on this device for MPR of this series';
 }
-function volHeld() { let b = 0; try { const add = V => { if (V && V.data && V.data.byteLength) b += V.data.byteLength; }; add(S.vol); if (S.vol) add(S.vol.pet); if (S.keepVol && S.keepVol !== S.vol) add(S.keepVol); if (S.rfVols) for (const V of S.rfVols.values()) add(V); if (S.vr && S.vr.V) add(S.vr.V); } catch (e) { } return b; }
+// Volumes of other series kept ready (the CT's other phases, built in the background, or the one you just left): switching
+// phase in coronal or sagittal then shows the new phase at once. Let go first whenever memory gets short.
+S.spareVols = new Map();
+function volStash(V) { if (!V || !V.data || !V.se) return; const M = performance.memory, lim = M && M.jsHeapSizeLimit && M.usedJSHeapSize > 15e6 ? M.jsHeapSizeLimit : 0;
+  if (lim && (M.usedJSHeapSize > lim * 0.6 || volHeld() > lim * 0.45)) return; if ((DEC.squeeze || 1) < 1) return; S.spareVols.set(V.se, V); while (S.spareVols.size > 4) S.spareVols.delete(S.spareVols.keys().next().value); }
+const spareDrop = () => { if (S.spareVols) S.spareVols.clear(); };
+function volHeld() { let b = 0; try { const add = V => { if (V && V.data && V.data.byteLength) b += V.data.byteLength; }; add(S.vol); if (S.spareVols) for (const V of S.spareVols.values()) add(V); if (S.vol) add(S.vol.pet); if (S.keepVol && S.keepVol !== S.vol) add(S.keepVol); if (S.rfVols) for (const V of S.rfVols.values()) add(V); if (S.vr && S.vr.V) add(S.vr.V); } catch (e) { } return b; }
 // a new volume (MPR, a compared Cor/Sag pane, 3D) gets what is left of the volumes' share of this device's memory: four compared panes share it
 const volBudget = () => clamp(clamp(memLimit() * 0.45, 150e6, 700e6) * (DEC.squeeze || 1) - volHeld(), 40e6, VOL_BUDGET);
 function volPlan(se, minK = 0) {
@@ -3899,6 +3916,7 @@ function volPut(img, data, w, h) {
   if (S.vr && S.vr.V !== S.vol) volPutV(S.vr.V, img, data, w, h);
   if (S.rfVols) for (const V of S.rfVols.values()) volPutV(V, img, data, w, h);
   if (S.keepVol && S.keepVol !== S.vol && !(S.vr && S.vr.V === S.keepVol)) volPutV(S.keepVol, img, data, w, h); // the volume built ahead (or kept)
+  for (const V of S.spareVols.values()) volPutV(V, img, data, w, h);
 }
 function volPutV(V, img, data, w, h) {
   const z = V.index.get(img); if (z == null || V.filled[z] || w < V.w) return;
@@ -3942,7 +3960,7 @@ function volFillFromMemory(V = S.vol) {
   for (let s = 16; s >= 1; s >>= 1) for (let i = 0; i < n; i += s) if (!seen[i]) { seen[i] = 1; order.push(i); }
   let j = 0;
   const step = () => {
-    if (S.vol !== V && !(S.vr && S.vr.V === V) && !(S.vol && S.vol.pet === V) && S.keepVol !== V) return;
+    if (S.vol !== V && !(S.vr && S.vr.V === V) && !(S.vol && S.vol.pet === V) && S.keepVol !== V && !S.spareVols.has(V.se)) return;
     const t0 = performance.now();
     while (j < order.length && performance.now() - t0 < 24) {
       const img = ims[order[j++]];
@@ -5637,7 +5655,7 @@ function consRecvDone(c, r) {
   } else if (now - (r.tUI || 0) > 700 || r.got >= r.count) {
     r.tUI = now; const keep = cur(), touched = finishLoad(), se = curSeries();
     if (keep && se && touched.includes(se)) { const i = se.images.indexOf(keep); if (i >= 0) S.idx = i; }
-    for (const t of touched) { if (S.keepVol && S.keepVol.se === t) S.keepVol = null; if (S.rfVols) S.rfVols.delete(t); }
+    for (const t of touched) { if (S.keepVol && S.keepVol.se === t) S.keepVol = null; S.spareVols.delete(t); if (S.rfVols) S.rfVols.delete(t); }
     render();
   }
   consProgress(c, r.got / Math.max(1, r.count), 'Receiving ' + r.got + ' / ' + r.count);
@@ -6803,7 +6821,7 @@ function phasePlan(main) {
 function cmpSetLayout(n) {
   const want = clamp(n, 1, CMP_MAX + 1) - 1;
   if (want > 0 && !cmpOn() && !proGate('Compare')) return;
-  if (want > 0) { if (S.vr) vrClose(); if (S.vol) mprToggle(false); S.keepVol = null; } /* one heavy view at a time: panes get all the room */
+  if (want > 0) { if (S.vr) vrClose(); if (S.vol) mprToggle(false); S.keepVol = null; spareDrop(); } /* one heavy view at a time: panes get all the room */
   if (want === 3 && S.cmps.length < 3) { const plan = phasePlan(curSeries()); if (plan && !needsReload(plan[0])) {
     const old = curSeries(), keep = { s: S.s, ox: S.ox, oy: S.oy, fit: S.fit };
     S.cmps = [];
@@ -7046,6 +7064,7 @@ function closeSeries(list) {
   S.cmps = S.cmps.filter(C => !gone.has(C.se));
   if (S.vr && S.vr.V && gone.has(S.vr.V.se)) { try { vrClose(); } catch (e) { } }
   if (S.keepVol && gone.has(S.keepVol.se)) S.keepVol = null; // the MPR volume kept for going back
+  for (const se of gone) S.spareVols.delete(se);
   // coded() first: a fused or subtracted slice makes its picture when .pixels is read (reading it for every slice froze Close all for seconds)
   for (const se of gone) { S.rfVols.delete(se); if (se.derived || se.isFuse || se.isSlab) continue; for (const im of se.images) if (coded(im) && im.pixels) DEC.bytes -= im.pixels.byteLength; }
   { const cl = document.getElementById('cmpList'); if (cl) cl.textContent = ''; } // the Compare list is made again when opened (its buttons kept the series)
@@ -7054,7 +7073,7 @@ function closeSeries(list) {
   for (const K of [FUSEKEEP, SUBKEEP, SUBPV]) for (const t of K) { t._px = null; t._pv = null; } FUSEKEEP.length = SUBKEEP.length = SUBPV.length = 0; // made pictures go too
   S.series = S.series.filter(s => !gone.has(s));
   if (typeof keepTrim === 'function') keepTrim();
-  if (!S.series.length) { S.si = 0; S.idx = 0; S.cmps = []; S.rf = null; S.keepVol = null; S.subBack = null; if (S.rfVols) S.rfVols.clear(); DEC.bytes = 0; DEC.squeeze = 1; MEM_CAP = Infinity; heapWatch.said = 0; buildPresets(); cmpLayout(); render(); return; }
+  if (!S.series.length) { S.si = 0; S.idx = 0; S.cmps = []; S.rf = null; S.keepVol = null; spareDrop(); S.subBack = null; if (S.rfVols) S.rfVols.clear(); DEC.bytes = 0; DEC.squeeze = 1; MEM_CAP = Infinity; heapWatch.said = 0; buildPresets(); cmpLayout(); render(); return; }
   if (gone.has(was)) { // show another series: the same patient's first, else the largest open
     const next = S.series.find(s => samePatient(s, was)) || S.series.slice().sort((a, b) => b.images.length - a.images.length)[0];
     selectSeries(S.series.indexOf(next));
@@ -7375,7 +7394,22 @@ function pump() {
   if (pb && pb.count < pb.n) { if (!pb.order) { pb.order = []; const seen = new Uint8Array(n);
       for (let s2 = 16; s2 >= 1; s2 >>= 1) for (let d = 0; d < n; d++) for (const i of d === 0 ? [idx] : near(d)) if (i >= 0 && i < n && (i - idx) % s2 === 0 && !seen[i]) { seen[i] = 1; pb.order.push(i); } }
     if (cap >= 2 && ims.filter(x => x.busyV).length < 2) for (const i of pb.order) { const im = ims[i]; if (!im || pb.filled[i] || im.busyV) continue; if (coded(im) && !im.err) { go(im, 'v', pb.k); return; } } } // one slice at a time, with a worker always left free for what you look at
+  // 9. then the study's other phases (Arterial, Venous, Delayed...), the same way: switching phase in coronal or sagittal is instant
+  if (pb && pb.count >= pb.n && cap >= 2) { const sp = prebuildSpare(se); if (sp && sp.count < sp.n) { const si = sp.se.images;
+      if (!sp.order) { sp.order = []; const m = si.length >> 1, seen = new Uint8Array(si.length); for (let s2 = 16; s2 >= 1; s2 >>= 1) for (let d = 0; d < si.length; d++) for (const i of d ? [m + d, m - d] : [m]) if (i >= 0 && i < si.length && (i - m) % s2 === 0 && !seen[i]) { seen[i] = 1; sp.order.push(i); } }
+      if (si.filter(x => x.busyV).length < 2) for (const i of sp.order) { const im = si[i]; if (!im || sp.filled[i] || im.busyV) continue; if (coded(im) && !im.err) { go(im, 'v', sp.k); return; } } } }
 }
+function prebuildSpare(se) { // the next phase without a volume yet, while memory allows
+  let ph; try { const list = ctStudy(); ph = CT_KINDS.map(([k]) => (ctCands(k, list) || [])[0]).filter(x => x && x !== se && natPlane(x) === 'ax'); } catch (e) { return null; }
+  for (const x of ph) { const V = S.spareVols.get(x); if (V && V.count < V.n) return V; }
+  const next = ph.find(x => !S.spareVols.has(x) && prebuildSpare.no !== x); if (!next) return null;
+  const M = performance.memory, lim = M && M.jsHeapSizeLimit && M.usedJSHeapSize > 15e6 ? M.jsHeapSizeLimit : 0;
+  const size = next.images.length * next.images[0].rows * next.images[0].cols * 2;
+  if (!lim || M.usedJSHeapSize > lim * 0.58 || volHeld() + size > lim * 0.4 || (DEC.squeeze || 1) < 1) return null; // only with plenty of room (and a memory reading to go by)
+  let V; try { V = volPlan(next, 0); } catch (e) { V = 'no memory'; } if (typeof V === 'string' || V.k > 0) { prebuildSpare.no = next; return null; }
+  S.spareVols.set(next, V); volFillFromMemory(V); return V;
+}
+
 function prebuildVol(se) {
   if (!se || S.vol || S.vr || S.cmps.length || S.rf || se.derived || se.isFuse || se.isSlab || document.hidden) return null;
   if ((se.modality || (se.images[0] || {}).modality) !== 'CT' || se.images.length < 30) return null;
@@ -7813,7 +7847,7 @@ function memEmergency() { // memory keeps running out: everything not on screen 
   memTight.n = 0; FR.add('memory', 'memory still full: everything not on screen let go' + (S.vol ? ', MPR closed' : '') + ' · ' + FR.ctx(), true);
   if (S.vr) { try { vrClose(); } catch (e) { } }
   if (S.vol) { try { mprToggle(false); } catch (e) { } say('Memory was full: MPR closed to keep Sliceview running. Open it again in a moment.', 6000); }
-  S.keepVol = null; if (S.rfVols) S.rfVols.clear();
+  S.keepVol = null; spareDrop(); if (S.rfVols) S.rfVols.clear();
   const keep = new Set(); const add = (se, i) => { if (!se) return; for (let d = -2; d <= 2; d++) { const im = se.images[i + d]; if (im) { keep.add(im); if (im.fuse) { keep.add(im.fuse.ct); keep.add(im.fuse.pt); } } } };
   add(curSeries(), S.idx); for (const C of S.cmps) add(C.se, C.idx);
   for (const se of S.series) for (const im of se.images) { if (keep.has(im)) continue; if (coded(im) && im.pixels) { DEC.bytes -= im.pixels.byteLength; im.pixels = null; im.mm = null; } if (im.preview) im.preview = null; if (im.frag && im.zsrc && im.zsrc.blob) im.frag = null; }
@@ -7825,7 +7859,7 @@ function memTight() { // memory ran out: hold less from now on (never a limit of
   memTight.n = now - (memTight.t || 0) < 30000 ? (memTight.n || 0) + 1 : 1; memTight.t = now;
   if (memTight.n >= 3) { memEmergency(); return; } // a third separate time within half a minute: everything else goes
   FR.add('memory', 'ran out of memory: holding less · ' + FR.ctx());
-  DEC.squeeze = Math.max(0.25, (DEC.squeeze || 1) * 0.6); if (S.keepVol && S.keepVol !== S.vol) S.keepVol = null; evict(); // the MPR volume kept from before goes first
+  DEC.squeeze = Math.max(0.25, (DEC.squeeze || 1) * 0.6); if (S.keepVol && S.keepVol !== S.vol) S.keepVol = null; spareDrop(); evict(); // the MPR volume kept from before goes first
   MEM_CAP = Math.min(MEM_CAP, Math.max(150e6, (memUsed() + DEC.bytes + volHeld()) * 0.75)); makeRoom(0, memKeep(LIVE_ST)); }
 // Before it runs out: the phone's own reading of memory in use. Near the limit, hold less (as after running out, but
 // gently and without the emergency count); MPR's and 3D's slices and what is on screen stay.
@@ -7845,7 +7879,7 @@ function heapWatch() {
   if (now - (heapWatch.t || 0) < 4000) return; heapWatch.t = now;
   if (!heapWatch.said) { heapWatch.said = 1; FR.add('memory', 'memory ' + Math.round(f * 100) + '% full: holding less before it runs out · ' + FR.ctx()); }
   DEC.squeeze = Math.max(0.25, (DEC.squeeze || 1) * (f > 0.88 ? 0.6 : 0.8));
-  if (S.keepVol && S.keepVol !== S.vol) S.keepVol = null; if (S.rfVols && S.rfVols.size) S.rfVols.clear();
+  if (S.keepVol && S.keepVol !== S.vol) S.keepVol = null; spareDrop(); if (S.rfVols && S.rfVols.size) S.rfVols.clear();
   for (const K of [FUSEKEEP, SUBKEEP]) while (K.length > 12) { const o = K.shift(); o._px = null; }
   try { evict(); } catch (e) { }
   if (f > 0.88) { MEM_CAP = Math.min(MEM_CAP, Math.max(150e6, memUsed() * 0.75)); makeRoom(0, memKeep(LIVE_ST)); }
@@ -7889,7 +7923,7 @@ async function addFiles(files, opts) {
     const mrAx = se => ((se.modality || (se.images[0] || {}).modality) === 'MR' && natPlane(se) === 'ax' && se.images.length >= 10) ? 1 : 0; // an MRI opens on an axial series
     const main = [...st.seen].sort((a, b) => (petLike(a) - petLike(b)) || (mrAx(b) - mrAx(a)) || ((isVenous(b) && b.images.length >= 16) - (isVenous(a) && a.images.length >= 16)) || (b.images.length - a.images.length))[0]; // a PET-CT opens on its CT; a CT with phases on its venous phase
     // a newly opened case starts on its own: one plain view (Compare and MPR close; the earlier case stays in Series)
-    if (!(opts && opts.restore)) { if (S.cmps.length || S.rf) { S.cmps = []; S.rf = null; cmpLayout(); } if (S.vr) vrClose(); if (S.vol) mprToggle(false); S.keepVol = null; S.subBack = null; }
+    if (!(opts && opts.restore)) { if (S.cmps.length || S.rf) { S.cmps = []; S.rf = null; cmpLayout(); } if (S.vr) vrClose(); if (S.vol) mprToggle(false); S.keepVol = null; spareDrop(); S.subBack = null; }
     selectSeries(S.series.indexOf(main));
     const ph = S.series.find(s => s.uid === 'sample-phantom'); if (ph && S.series.length > 1) closeSeries([ph]);
   };
