@@ -285,7 +285,9 @@ body.focus > header.bar, body.focus .presets-row, body.focus .dock { display: no
 .chip small { font-family: var(--font-mono); margin-left: 6px; color: var(--muted); font-size: 11px; }
 .chip.seq { color: var(--fg); font-weight: 600; padding: 0 12px; } /* MRI sequence buttons: first in the row */
 .chip.seq[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #0b1418; }
-.chip.seq + .chip:not(.seq) { margin-left: 10px; }
+.presets .sep { flex: none; width: 1px; align-self: stretch; margin: 6px 4px; background: var(--line); }
+.chip.seq:disabled { opacity: .55; }
+.dock #actFuse { display: none !important; } /* Fusion lives in the presets row now */
 #stage.pick::after, section.cmpv.pick::after { content: ""; position: absolute; inset: 0; border: 2px solid var(--accent); border-radius: inherit; pointer-events: none; z-index: 6; } /* the view the sequence buttons fill */
 .dock { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: stretch; min-width: 0; }
 .tools { display: flex; gap: 6px; flex: 1 1 440px; min-width: 0; overflow-x: auto; scrollbar-width: none; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 5px; }
@@ -689,7 +691,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-1620</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-1636</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -703,7 +705,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1620</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1636</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2473,7 +2475,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1620', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1636', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -3303,7 +3305,7 @@ function setIdx(i) {
   if (i === S.idx) return;
   const now = performance.now(), dt = Math.max(4, now - (S.moved || 0));
   S.vel = dt > 400 ? 0 : 0.6 * (S.vel || 0) + 0.4 * Math.min(400, Math.abs(i - S.idx) * 1000 / dt);
-  S.dir = i > S.idx ? 1 : -1; S.idx = i; S.draft = null; S.dirty = true; S.moved = now;
+  S.dir = i > S.idx ? 1 : -1; S.idx = i; S.draft = null; S.dirty = true; S.moved = now; if (S.cmpSel != null) cmpUnpick();
   clearTimeout(S.fadeT); S.fadeT = setTimeout(render, 1300);
   if (S.vol) { if (!S.vol.lockZ && S.vol.P) S.vol.P = [S.vol.P[0], S.vol.P[1], zOf(i)]; keepCrossInView('ax'); }
   clearTimeout(S.stopT); S.stopT = setTimeout(pump, SETTLE + 10);
@@ -3354,6 +3356,41 @@ function mrInfo(se) { // what a series is, worked out once: { kind, fs, post, ju
   if (kind === 'DWI' && se.images.length && / direction | set /.test(' ' + String(se.desc || '').toLowerCase() + ' ')) kind = kind; // one direction of a split DWI: kept, but the trace comes first
   return (se.__mrk = { kind, fs, post, junk, n: se.images.length });
 }
+/* ---------- CT: one button per phase (Non-contrast, Arterial, Venous, Delayed) ----------
+   From the series description first (the words scanners and technologists use), else from the contrast tag and the
+   order the series were scanned in. Reformats (coronal, sagittal, MIP), lung and bone kernels and scouts are left out
+   while a plain axial of the phase exists. */
+const CT_KINDS = [['NC', 'Non-contrast'], ['ART', 'Arterial'], ['VEN', 'Venous'], ['DEL', 'Delayed']];
+const isCTse = se => !!se && !se.derived && !se.isFuse && (se.modality || (se.images[0] || {}).modality) === 'CT';
+function ctStudy() { const cs = curSeries(), base = cs && cs.isFuse ? cs.fuseCT : cs; if (!isCTse(base)) return []; return S.series.filter(se => isCTse(se) && se.studyUid === base.studyUid); }
+const ctDesc = se => ' ' + String(se.baseDesc != null ? se.baseDesc : se.desc || '').toLowerCase().replace(/[_\-.,()\[\]]+/g, ' ') + ' ';
+function ctKindByName(se) { const d = ctDesc(se);
+  if (/( non ?con| noncon| plain | native | nativ | pre ?con| precon| unenh| w ?o | without | nc | sans | ohne km| no con)/.test(d)) return 'NC';
+  if (/( delay| late | excret| urogr| del | (3|5|7|10|15) ?min )/.test(d)) return 'DEL';
+  if (/( arter| art | cta | angio| early | aorta | carotid| pulmonary embol| pe )/.test(d)) return 'ART';
+  if (/( venous| ven | portal| pv | pvp | vp | nephro| late arter| abd ?pelvis c| c\+ | post ?con| with con| w ?c )/.test(d)) return 'VEN';
+  return null; }
+const ctJunk = se => cmpAux(se) || / (cor|coronal|sag|sagittal|mip|minip|vr|3d|mpr|lung|bone|dose|report|scout|topo|loc) /.test(ctDesc(se));
+function ctKinds(list) { // series -> phase, worked out over the whole study
+  const k = new Map(), rest = [];
+  for (const se of list) { if (se.images.length < 5) continue; const n = ctKindByName(se); if (n) k.set(se, n); else rest.push(se); }
+  if (rest.length && rest.length <= 6) { // nothing in the names: the contrast tag, then the order of scanning
+    const tm = se => { const t = String((se.ctx && se.ctx.t) || '').replace(/[^\d.]/g, ''); return t.length >= 6 ? (+t.slice(0, 2)) * 3600 + (+t.slice(2, 4)) * 60 + parseFloat(t.slice(4)) : (se.num || 0); };
+    const plain = rest.filter(se => !(se.ctx && se.ctx.ca && String(se.ctx.ca).trim())), con = rest.filter(se => !plain.includes(se));
+    const groups = new Map(); for (const se of con) { const t = Math.round(tm(se) / 20); if (!groups.has(t)) groups.set(t, []); groups.get(t).push(se); } // a phase's several reconstructions share their time
+    const ts = [...groups.keys()].sort((a, b) => a - b);
+    if (con.length && plain.length && plain.length < rest.length) plain.forEach(se => k.set(se, 'NC'));
+    ts.forEach((t, i) => groups.get(t).forEach(se => k.set(se, ts.length === 1 ? 'VEN' : i === 0 ? 'ART' : i === ts.length - 1 && ts.length > 2 ? 'DEL' : 'VEN')));
+  }
+  return k;
+}
+function ctCands(kind, list) {
+  list = list || ctStudy(); const k = ctKinds(list);
+  let c = list.filter(se => k.get(se) === kind);
+  if (c.some(x => !ctJunk(x))) c = c.filter(x => !ctJunk(x));
+  const score = se => (natPlane(se) === 'ax' ? 40 : 0) + (/ (soft|std|standard|abd|body|br3|b30|b31|i30|fc1) /.test(ctDesc(se)) ? 5 : 0) + Math.min(10, se.images.length / 50);
+  return c.sort((a, b) => score(b) - score(a));
+}
 function mrStudy() { const cs = curSeries(); if (!isMRse(cs)) return []; return S.series.filter(se => isMRse(se) && se.studyUid === cs.studyUid); }
 // the same T1 sequence run twice with no word for contrast: the later one is taken as after contrast
 function mrPostByRepeat(list) {
@@ -3379,7 +3416,8 @@ function mrPick() { for (const k of ['FLAIR', 'T2', 'T1', 'DWI']) { const c = mr
 // With several views on screen (Compare), a tap on a view chooses it (its edge lights up) and the sequence buttons fill
 // that view instead of going back to one view: T1 top left, T2 top right, T1+C, DWI... without the Series list.
 function cmpTarget() { if (!S.cmps.length || S.rf) return null; const t = S.cmpSel; if (S.cmps.length === 1 && t == null) return null; /* two views (DWI | ADC) with none chosen: a button goes back to one view */ return t === 'M' || S.cmps.some(C => C.slot === t) ? t : 'M'; }
-function cmpPickUI() { const t = cmpTarget();
+function cmpUnpick() { if (S.cmpSel == null) return; S.cmpSel = null; cmpPickUI(); if (isMRse(curSeries())) buildPresets(); } // scrolling again: you are reading, not choosing
+function cmpPickUI() { const t = S.cmps.length && !S.rf && S.cmpSel != null ? cmpTarget() : null; /* lit only while you are choosing */
   $('#stage').classList.toggle('pick', t === 'M');
   document.querySelectorAll('section.cmpv[id^="mvCmp"]').forEach(el => { const k = el.id.slice(5); el.classList.toggle('pick', t != null && t !== 'M' && String(t) === k); }); }
 function cmpTapSelect(el, slot) { // a short tap without moving: choose this view (scrolling, zooming and measuring are not touched)
@@ -3403,8 +3441,9 @@ function viewSetMain(se) {
   if (!keep.fit) Object.assign(S, keep);
   cmpLayout(); render(); pump();
 }
+const seqCands = (kind, list) => CT_KINDS.some(x => x[0] === kind) ? ctCands(kind, list) : mrCands(kind, list);
 function mrShow(kind) {
-  const c = mrCands(kind); if (!c.length) return;
+  const c = seqCands(kind); if (!c.length) return;
   const T = cmpTarget();
   if (T != null) { // views side by side: the chosen view gets the series; the others stay
     const inT = T === 'M' ? curSeries() : (S.cmps.find(C => C.slot === T) || {}).se, ax = c.filter(x => natPlane(x) === 'ax'), list = ax.length ? ax : c; // a view beside others: an axial series if there is one
@@ -3421,10 +3460,22 @@ function mrShow(kind) {
   if (natPlane(se) !== 'ax') planeOpen('ax'); // a 3D sagittal (or coronal) T1: shown in axial
   buildPresets(); render();
 }
-function buildPresets() {
+function buildPresets() { // the row keeps where it was scrolled to (rebuilt on every change, it jumped back to its start)
+  const box = $('#presets'), sl = box.scrollLeft; buildPresets1(); box.scrollLeft = sl;
+  const on = box.querySelector('.chip.seq[aria-pressed="true"]'); if (on && (on.offsetLeft < box.scrollLeft || on.offsetLeft + on.offsetWidth > box.scrollLeft + box.clientWidth)) box.scrollLeft = Math.max(0, on.offsetLeft - 8);
+}
+function seqChip(box, key, label, pressed, fn, title) { const b = document.createElement('button'); b.className = 'chip seq'; b.type = 'button'; b.dataset.seq = key; b.textContent = label; b.setAttribute('aria-pressed', String(!!pressed)); if (title) b.title = title; b.addEventListener('click', fn); box.append(b); return b; }
+function fuseChip(box) { // PET-CT: Fusion on the left of the row, with the study's own buttons (it mirrors the Fuse button's state)
+  const a = $('#actFuse'); if (!a || a.hidden) return; const se = curSeries(), lab = a.lastChild && a.lastChild.nodeType === 3 ? a.lastChild.textContent : 'Fuse';
+  const b = seqChip(box, 'FUSE', lab === 'Fuse' ? 'Fusion' : lab, se && se.isFuse, () => fuseOpen(), a.title); b.disabled = a.disabled; }
+function buildPresets1() {
   const se = curSeries(), box = $('#presets'); box.textContent = ''; S.keys = {};
   if (!se) return;
+  fuseChip(box);
+  { const list = ctStudy(); if (list.length) { const tgt = cmpTarget(), inT = tgt == null ? (S.cmps.length ? null : se) : tgt === 'M' ? se : (S.cmps.find(C => C.slot === tgt) || {}).se;
+      for (const [k, label] of CT_KINDS) { const c = ctCands(k, list); if (!c.length) continue; seqChip(box, k, label + (c.length > 1 ? ' ·' + c.length : ''), inT && c.includes(inT), () => mrShow(k), c.map(x => x.desc).join('\n')); } } }
   const add = (key, label, wc, ww, fn) => {
+    if (box.lastElementChild && box.lastElementChild.classList.contains('seq')) { const sp = document.createElement('span'); sp.className = 'sep'; box.append(sp); } // study buttons | window presets
     const b = document.createElement('button'); b.className = 'chip'; b.type = 'button'; b.dataset.key = label;
     b.append(label);
     if (wc != null) { const s = document.createElement('small'); s.textContent = (Math.abs(ww) < 10 ? +(+wc).toFixed(2) + '/' + +(+ww).toFixed(2) : Math.round(wc) + '/' + Math.round(ww)); b.append(s); }
@@ -3457,7 +3508,7 @@ function buildPresets() {
   markPresets();
 }
 function markPresets() {
-  if (curSeries() && curSeries().isFuse) { document.querySelectorAll('#presets .chip').forEach(b => b.setAttribute('aria-pressed', b.dataset.key === 'max' + S.fuse.max || b.dataset.key === 'mix' + S.fuse.mix || b.dataset.key === S.preset)); return; }
+  if (curSeries() && curSeries().isFuse) { document.querySelectorAll('#presets .chip:not(.seq)').forEach(b => b.setAttribute('aria-pressed', b.dataset.key === 'max' + S.fuse.max || b.dataset.key === 'mix' + S.fuse.mix || b.dataset.key === S.preset)); return; }
   document.querySelectorAll('#presets .chip:not(.seq)').forEach(b => {
     b.setAttribute('aria-pressed', b.dataset.key === 'Negative' ? S.invert : b.dataset.key === S.preset);
   });
@@ -5943,7 +5994,7 @@ function cmpInput(v) { // bound once per pane; acts on whichever series the pane
     const C = v.__C; if (!C || !(C.main ? S.rf : S.cmps.includes(C))) return; e.preventDefault();
     const k = wheelSteps(e, el); if (!k) return;
     if (S.rf) { rfInput(v, C, e, 'move', { wl: false, acc: k, ly: 0, x0: 0, y0: 0, p: { x: 0, y: 0 } }); return; }
-    if (S.cmpSync) setIdx(S.idx + k); else { C.idx = clamp(C.idx + k, 0, C.se.images.length - 1); render(); pump(); }
+    if (S.cmpSync) setIdx(S.idx + k); else { C.idx = clamp(C.idx + k, 0, C.se.images.length - 1); cmpUnpick(); render(); pump(); }
   }, { passive: false });
   el.addEventListener('pointerdown', e => {
     const mt = mouseTool(e); if (mt === false || (mt && mt !== 'wl' && !(NAV.has(mt) && !S.rf))) return; // the other mouse buttons: their own tools
@@ -5952,7 +6003,7 @@ function cmpInput(v) { // bound once per pane; acts on whichever series the pane
     if (P2.size === 1) {
       const p = at(e); d = { x0: p.x, y0: p.y, ly: p.y, acc: 0, moved: false, t0: performance.now(), mt, wl: wlOn && !C.main && !cmpShared(C), swl: wlOn && !S.rf && (C.main || cmpShared(C)), wc0: C.wc, ww0: C.ww, swc0: S.wc, sww0: S.ww };
       const CC = C; d.feel = { stepPx: () => clamp(v.H * 0.8 / Math.max(1, (S.cmpSync ? curSeries() : CC.se).images.length), 4, 24),
-        step: k => { if (S.cmpSync) { const b = S.idx; setIdx(S.idx + k); return S.idx !== b; } const b = CC.idx; CC.idx = clamp(CC.idx + k, 0, CC.se.images.length - 1); render(); pump(); return CC.idx !== b; } };
+        step: k => { if (S.cmpSync) { const b = S.idx; setIdx(S.idx + k); return S.idx !== b; } const b = CC.idx; CC.idx = clamp(CC.idx + k, 0, CC.se.images.length - 1); if (CC.idx !== b) cmpUnpick(); render(); pump(); return CC.idx !== b; } };
       feelDown(d.feel, p.y, e.timeStamp);
       if (S.rf) { rfInput(v, C, e, 'down', d); if (mt) d.wl = true; return; }
       if (!mt && e.pointerType !== 'pen' && S.tool === 'loupe') { d.loupe = true; v.loupe = { x: p.x, y: p.y }; render(); return; } // the Magnifier tool, as on the main view
@@ -6475,6 +6526,7 @@ function fuseUI() { // the button shows itself when the study has a PET and a CT
   const key = can + ':' + on + ':' + wait; if (b.__k === key) return; b.__k = key;
   b.hidden = !can && !wait; b.disabled = !can; b.classList.toggle('wait', !can && !!wait); b.setAttribute('aria-pressed', on);
   b.title = wait ? 'Fusion: waiting for the PET to load' : 'PET-CT fusion'; const lab = b.lastChild; if (lab && lab.nodeType === 3) lab.textContent = wait || 'Fuse';
+  try { buildPresets(); } catch (e) { } // the Fusion button in the presets row follows
 }
 const bigPet = () => S.series.filter(x => !x.derived && petLike(x)).sort((a, b) => b.images.length - a.images.length)[0];
 function fuseOpen() {
@@ -7324,6 +7376,7 @@ function seriesFor(info, key, label) {
     se = { uid, num: info.seriesNumber, desc: (info.seriesDesc || '') + (label ? (info.seriesDesc ? ' · ' : '') + label : ''), modality: info.modality, patient: info.patientName, patientId: info.patientId, studyUid: info.studyUid, sex: (info.sex || '').trim(), age: (info.age || '').trim() || ageFrom(info.birthDate, info.studyDate),
       studyDesc: info.studyDesc, studyDate: (info.studyDate || '').replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3'), images: [], dirty: true,
       win: clamp(Math.floor(BUDGET / (info.rows * info.cols * 2 * info.spp) / 2.4), 8, 250),
+      ctx: info.modality === 'CT' ? { ca: info.contrastAgent, t: info.acqTime || info.seriesTime, n: info.seriesNumber } : null,
       mr: info.modality === 'MR' ? { tr: info.tr, te: info.te, ti: info.ti, ss: info.scanSeq, sv: info.seqVar, so: info.scanOpt, a3: info.acq3d, sn: info.seqName, it: info.imageType, ca: info.contrastAgent, fa: info.flipAngle, t: info.seriesTime, n: info.seriesNumber } : null };
     S.series.push(se); created = true;
   }
