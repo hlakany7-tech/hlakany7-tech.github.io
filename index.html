@@ -691,7 +691,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-1753</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-1812</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -705,7 +705,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1753</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1812</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2475,7 +2475,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1753', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1812', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -3898,6 +3898,7 @@ function volPut(img, data, w, h) {
   if (S.vol && S.vol.pet) volPutV(S.vol.pet, img, data, w, h);
   if (S.vr && S.vr.V !== S.vol) volPutV(S.vr.V, img, data, w, h);
   if (S.rfVols) for (const V of S.rfVols.values()) volPutV(V, img, data, w, h);
+  if (S.keepVol && S.keepVol !== S.vol && !(S.vr && S.vr.V === S.keepVol)) volPutV(S.keepVol, img, data, w, h); // the volume built ahead (or kept)
 }
 function volPutV(V, img, data, w, h) {
   const z = V.index.get(img); if (z == null || V.filled[z] || w < V.w) return;
@@ -3941,7 +3942,7 @@ function volFillFromMemory(V = S.vol) {
   for (let s = 16; s >= 1; s >>= 1) for (let i = 0; i < n; i += s) if (!seen[i]) { seen[i] = 1; order.push(i); }
   let j = 0;
   const step = () => {
-    if (S.vol !== V && !(S.vr && S.vr.V === V) && !(S.vol && S.vol.pet === V)) return;
+    if (S.vol !== V && !(S.vr && S.vr.V === V) && !(S.vol && S.vol.pet === V) && S.keepVol !== V) return;
     const t0 = performance.now();
     while (j < order.length && performance.now() - t0 < 24) {
       const img = ims[order[j++]];
@@ -7367,6 +7368,24 @@ function pump() {
   for (const q of CP) for (let d = 0; d < q.ims.length; d++) for (const s of d ? [d, -d] : [0]) if (!cGo(q, q.C.idx + s)) return; // compared series of another length
   // 7. full resolution further out, as far as the memory budget allows
   for (let d = 61; d <= win; d++) for (const i of near(d)) if (needF(ims[i]) && !go(ims[i], 'f')) return;
+  // 8. a CT read in one view: its coronal / sagittal volume is built quietly in the background (as RadiAnt has it ready
+  // from the start), so Coronal and Sagittal open sharp at once instead of building in front of you. Only with memory
+  // to spare, after the study is in, never while you touch the screen (the step above already waits for that).
+  const pb = prebuildVol(se);
+  if (pb && pb.count < pb.n) { if (!pb.order) { pb.order = []; const seen = new Uint8Array(n);
+      for (let s2 = 16; s2 >= 1; s2 >>= 1) for (let d = 0; d < n; d++) for (const i of d === 0 ? [idx] : near(d)) if (i >= 0 && i < n && (i - idx) % s2 === 0 && !seen[i]) { seen[i] = 1; pb.order.push(i); } }
+    if (cap >= 2 && ims.filter(x => x.busyV).length < 2) for (const i of pb.order) { const im = ims[i]; if (!im || pb.filled[i] || im.busyV) continue; if (coded(im) && !im.err) { go(im, 'v', pb.k); return; } } } // one slice at a time, with a worker always left free for what you look at
+}
+function prebuildVol(se) {
+  if (!se || S.vol || S.vr || S.cmps.length || S.rf || se.derived || se.isFuse || se.isSlab || document.hidden) return null;
+  if ((se.modality || (se.images[0] || {}).modality) !== 'CT' || se.images.length < 30) return null;
+  if (typeof LIVE_ST !== 'undefined' && LIVE_ST && !LIVE_ST.done) return null; // the study first
+  if (S.keepVol && S.keepVol.se === se) return S.keepVol;
+  if ((DEC.squeeze || 1) < 1 || prebuildVol.no === se) return null; // memory has been short: not now
+  const M = performance.memory; if (M && M.jsHeapSizeLimit && M.usedJSHeapSize > 15e6 && M.usedJSHeapSize > M.jsHeapSizeLimit * 0.45) return null;
+  let V; try { V = volPlan(se, 0); } catch (e) { V = 'no memory'; }
+  if (typeof V === 'string') { prebuildVol.no = se; return null; }
+  S.keepVol = V; volFillFromMemory(V); return V;
 }
 
 /* ---------- loading files ---------- */
