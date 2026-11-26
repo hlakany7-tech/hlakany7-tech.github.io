@@ -692,7 +692,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-2156</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-2207</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -706,7 +706,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-2156</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-2207</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2476,7 +2476,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-2156', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-2207', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -5662,6 +5662,7 @@ function consAddFile(r, n, ab) { // a received file into the case on screen
       : (LAZY_RAW && mono && (info.bitsAllocated === 16 || info.bitsAllocated === 8)) ? { info, src: { blob, start: 0, method: 0 }, pixels: fr(DICOM.framePixels) } : null; // its pixels as they came: sharp at once (counted, and let go far from where you look)
     const res = addBuffer(null, 'case-' + n, lazy || { info, src: { blob, start: 0, method: 0 }, pixels: info.codec ? null : fr(DICOM.framePixels), frames: info.codec ? fr(DICOM.encodedFrame) : null });
     if (lazy) { rxBlob.set(n, blob); rxPackStart(r, n, ab, blob, lazy, res); }
+    if (DEC.bytes > decBudget()) evict(); // the slices kept as they came stay within the budget: those far from where you look go first (2156 kept them all and crashed at 1464)
     if (res) for (const s of res.all) { s.__consCase = r.caseId; r.lastBase = String(s.uid).split('#')[0]; } } catch (e) { }
 }
 /* ---------- A case on its way survives either phone being closed or stopped by Android ----------
