@@ -692,7 +692,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-2101</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-2137</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -706,7 +706,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-2101</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-2137</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2476,7 +2476,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-2101', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-2137', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -4953,15 +4953,25 @@ function anonPixelEnd(u8) { // where the pixel data element starts in a kept hea
 }
 const crcT = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
 const crc32 = u => { let c = 0xFFFFFFFF; for (let i = 0; i < u.length; i++) c = crcT[(c ^ u[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+const ZDEFL = (() => { try { new CompressionStream('deflate'); return true; } catch (e) { return false; } })(); // Chrome 80 has the zlib form only
+async function deflateRawAny(u8) { // a raw deflate stream on any browser that can compress: the zlib form minus its 2-byte head and 4-byte check
+  if (RAW_DEFLATE) return consDeflate(u8);
+  const z = new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer()); return z.subarray(2, z.length - 4);
+}
 function zipMaker() { // a plain zip (stored, no compression), built file by file
   const parts = [], dir = []; let off = 0;
   return {
     async add(name, data) { // squeezed (deflate) when that helps: less memory while it is built, a smaller file
       const nm = new TextEncoder().encode(name), crc = crc32(data), h = new Uint8Array(30 + nm.length), d = new DataView(h.buffer);
       let body = data, method = 0;
-      if (RAW_DEFLATE && data.length > 1024) { try { const z = await consDeflate(data); if (z.length < data.length * 0.95) { body = z; method = 8; } } catch (e) { } }
+      if ((RAW_DEFLATE || ZDEFL) && data.length > 1024) { try { const z = await deflateRawAny(data); if (z.length < data.length * 0.95) { body = z; method = 8; } } catch (e) { } }
       d.setUint32(0, 0x04034B50, true); d.setUint16(4, 20, true); d.setUint16(6, 0x800, true); d.setUint16(8, method, true); d.setUint32(14, crc, true); d.setUint32(18, body.length, true); d.setUint32(22, data.length, true); d.setUint16(26, nm.length, true); h.set(nm, 30);
       parts.push(h, new Blob([body])); dir.push({ nm, crc, size: data.length, csize: body.length, method, off }); off += h.length + body.length;
+    },
+    addPacked(name, body, crc, size, method) { // a file already packed (a Blob, never read here): a case saved at once
+      const nm = new TextEncoder().encode(name), h = new Uint8Array(30 + nm.length), d = new DataView(h.buffer), csize = body.size;
+      d.setUint32(0, 0x04034B50, true); d.setUint16(4, 20, true); d.setUint16(6, 0x800, true); d.setUint16(8, method, true); d.setUint32(14, crc, true); d.setUint32(18, csize, true); d.setUint32(22, size, true); d.setUint16(26, nm.length, true); h.set(nm, 30);
+      parts.push(h, body); dir.push({ nm, crc, size, csize, method, off }); off += h.length + csize;
     },
     blob() {
       const cd = []; let n = 0;
@@ -5651,7 +5661,7 @@ function consAddFile(r, n, ab) { // a received file into the case on screen
     const lazy = info.pixelOffset == null ? null : info.codec ? { info, z: { blob, start: 0, csize: ab.byteLength, method: 0, pixelOffset: info.pixelOffset } }
       : (LAZY_RAW && mono && (info.bitsAllocated === 16 || info.bitsAllocated === 8)) ? { info, src: { blob, start: 0, method: 0 } } : null;
     const res = addBuffer(null, 'case-' + n, lazy || { info, src: { blob, start: 0, method: 0 }, pixels: info.codec ? null : fr(DICOM.framePixels), frames: info.codec ? fr(DICOM.encodedFrame) : null });
-    if (lazy) rxBlob.set(n, blob);
+    if (lazy) { rxBlob.set(n, blob); rxPackStart(r, n, ab, blob, lazy, res); }
     if (res) for (const s of res.all) { s.__consCase = r.caseId; r.lastBase = String(s.uid).split('#')[0]; } } catch (e) { }
 }
 /* ---------- A case on its way survives either phone being closed or stopped by Android ----------
@@ -5659,6 +5669,38 @@ function consAddFile(r, n, ab) { // a received file into the case on screen
    and the conversation itself. Opened again, the case is back on screen and it carries on from where it stopped; the
    sending phone, opened again with the same study, sends the rest. End removes all of it. */
 const RX = { db: null };
+const RXZ = new Map(); // case → its received files, packed as they will go into a saved zip (Save is then at once)
+// a worker of its own squeezes them (and works out each one's check number): never on the screen's thread, which slowed receiving 5x
+const RXW = { w: null, id: 0, cb: new Map(), dead: false };
+function rxWorker() {
+  if (RXW.w || RXW.dead) return RXW.w;
+  try { const src = `const T=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;T[n]=c>>>0;}
+      const raw=(()=>{try{new CompressionStream('deflate-raw');return true}catch(e){return false}})();
+      onmessage=async e=>{const {id,buf,z}=e.data,u=new Uint8Array(buf);let c=0xFFFFFFFF;for(let i=0;i<u.length;i++)c=T[(c^u[i])&255]^(c>>>8);const crc=(c^0xFFFFFFFF)>>>0;let out=null;
+        if(z){try{let d=new Uint8Array(await new Response(new Blob([u]).stream().pipeThrough(new CompressionStream(raw?'deflate-raw':'deflate'))).arrayBuffer());if(!raw)d=d.slice(2,d.length-4);if(d.length<u.length*0.9)out=d;}catch(x){}}
+        postMessage({id,crc,out},out?[out.buffer]:[]);};`;
+    RXW.w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+    RXW.w.onmessage = e => { const f = RXW.cb.get(e.data.id); RXW.cb.delete(e.data.id); if (f) f(e.data); };
+    RXW.w.onerror = () => { RXW.dead = true; for (const f of RXW.cb.values()) f(null); RXW.cb.clear(); };
+  } catch (e) { RXW.dead = true; } return RXW.w;
+}
+function rxPackStart(r, n, ab, blob, lazy, res) {
+  const e = { n, blob, crc: null, size: ab.byteLength, method: 0, se: res && res.all ? [...res.all][0] : null };
+  (RXZ.get(r.caseId) || RXZ.set(r.caseId, new Map()).get(r.caseId)).set(n, e);
+  const z = !!lazy.src && (RAW_DEFLATE || ZDEFL) && ab.byteLength >= 4096, w = rxWorker(); // plain pixels only (a fast-sent case): compressed files stay as they came
+  e.p = new Promise(ok => { if (!w) { e.crc = crc32(new Uint8Array(ab)); return ok(); } const id = ++RXW.id; RXW.cb.set(id, m => {
+    if (m) { e.crc = m.crc; if (m.out) { const zb = new Blob([m.out]); e.blob = zb; e.method = 8; Object.assign(lazy.src, { blob: zb, start: 0, csize: m.out.length, method: 8 }); } }
+    else e.crc = crc32(new Uint8Array(ab)); ok(); });
+    w.postMessage({ id, buf: ab.slice(0), z }); }); // a copy goes (this one stays for the screen)
+}
+async function rxZipNow(list) { // the received case as a zip, from the files as they are kept: nothing re-read or re-made
+  const ids = new Set(list.map(s => s.__consCase)); if (ids.size !== 1) return null; const m = RXZ.get([...ids][0]); if (!m || !m.size) return null;
+  const need = list.reduce((a, s) => a + s.images.length, 0); let have = 0; for (const e of m.values()) have += e.se ? 1 : 0; if (have < Math.min(need, m.size)) return null;
+  await Promise.all([...m.values()].map(e => e.p));
+  const zip = zipMaker(), nm = String((list[0] && list[0].patient) || 'Sliceview-case').replace(/[^\w.-]+/g, '_').slice(0, 40) || 'case';
+  for (const e of [...m.values()].sort((a, b) => a.n - b.n)) zip.addPacked(nm + '/S' + ((e.se && e.se.num) || 0) + '/IM' + String(e.n).padStart(5, '0') + '.dcm', e.blob, e.crc, e.size, e.method);
+  return { blob: zip.blob(), name: nm + '.zip' };
+}
 const rxBlob = new Map(); // the received file just added, kept for storage as a file (the browser can hold it on disk), not as bytes in memory
 function rxDb() {
   if (!RX.db) RX.db = new Promise(ok => { try { const q = indexedDB.open('svRecv', 1); q.onupgradeneeded = () => { const d = q.result; d.createObjectStore('cases'); d.createObjectStore('files'); }; q.onsuccess = () => ok(q.result); q.onerror = () => ok(null); } catch (e) { ok(null); } });
@@ -5667,7 +5709,7 @@ function rxDb() {
 async function rxTx(store, fn, mode) { const d = await rxDb(); if (!d) return null; return new Promise(res => { try { const t = d.transaction(store, mode || 'readonly'), os = t.objectStore(store), out = fn(os); t.oncomplete = () => res(out && 'result' in out ? out.result : true); t.onerror = t.onabort = () => res(null); } catch (e) { res(null); } }); }
 const rxKey = (c, r) => c.id + '|' + r.id;
 function rxCase(c, r, done) { const v = { peer: c.id, name: c.name, id: r.id, count: r.count, sizes: r.sizes, left: r.left, desc: r.desc, done: !!done, t: Date.now() }; rxTx('cases', os => os.put(v, rxKey(c, r)), 'readwrite'); }
-function rxSave(c, r, n, i, ab) { const d = (ab && rxBlob.get(n)) || ab; rxBlob.delete(n); ab = null; if (r.noKeep) return; r.saveQ = (r.saveQ || Promise.resolve()).then(() => rxTx('files', os => os.put({ n, i, data: d }, rxKey(c, r) + '|' + String(n).padStart(6, '0')), 'readwrite')).then(ok => { if (ok === null && !r.noKeep) { r.noKeep = true; try { FR.add('send', 'this phone could not keep the case as it came (storage full?)', true); } catch (e) { } } }); }
+function rxSave(c, r, n, i, ab) { let d = (ab && rxBlob.get(n)) || ab; rxBlob.delete(n); ab = null; if (r.noKeep) return; const e = d && RXZ.get(r.caseId) && RXZ.get(r.caseId).get(n); r.saveQ = (r.saveQ || Promise.resolve()).then(() => e && e.p).then(() => rxTx('files', os => os.put(e && e.method === 8 ? { n, i, data: e.blob, m: 8 } : { n, i, data: d, m: 0 }, rxKey(c, r) + '|' + String(n).padStart(6, '0')), 'readwrite')).then(ok => { if (ok === null && !r.noKeep) { r.noKeep = true; try { FR.add('send', 'this phone could not keep the case as it came (storage full?)', true); } catch (e) { } } }); }
 function rxForget(c) { const lo = c.id + '|', hi = c.id + '|\uffff'; for (const st of ['cases', 'files']) rxTx(st, os => os.delete(IDBKeyRange.bound(lo, hi)), 'readwrite'); }
 async function rxRestore() { // opened again: the conversations and their cases come back
   const cases = await rxTx('cases', os => os.getAll()); const keys = await rxTx('cases', os => os.getAllKeys());
@@ -5678,7 +5720,7 @@ async function rxRestore() { // opened again: the conversations and their cases 
     const c = consConv(v.peer, v.name); if (c.state !== 'open') { c.ever = true; c.state = 'reconnecting'; }
     const files = (await rxTx('files', os => os.getAll(IDBKeyRange.bound(keys[k] + '|', keys[k] + '|\uffff')))) || [];
     const r = { id: v.id, expect: 0, sizes: v.sizes, left: v.left || [], count: v.count, desc: v.desc, got: 0, cur: null, ask: false, q: Promise.resolve(), caseId: 'c' + (++CONS.cid), first: true, t0: 0, have: new Set(), restored: true };
-    for (const f of files.sort((a, b) => a.n - b.n)) { if (f.i != null) { if (r.have.has(f.i)) continue; r.have.add(f.i); } if (f.data) { let d = f.data; if (typeof Blob !== 'undefined' && d instanceof Blob) { try { d = await d.arrayBuffer(); } catch (e) { d = null; } } if (d) consAddFile(r, f.n, d); } r.got++; }
+    for (const f of files.sort((a, b) => a.n - b.n)) { if (f.i != null) { if (r.have.has(f.i)) continue; r.have.add(f.i); } if (f.data) { let d = f.data; if (typeof Blob !== 'undefined' && d instanceof Blob) { try { d = await d.arrayBuffer(); if (f.m === 8) d = await inflateRawBuf(d); } catch (e) { d = null; } } if (d) consAddFile(r, f.n, d); } r.got++; }
     rxBlob.clear(); // (already in storage)
     r.expect = r.got; if (!c.cases.includes(r.caseId)) c.cases.push(r.caseId);
     if (r.got >= r.count) { (c.doneIds || (c.doneIds = new Set())).add(v.id); r.got = Math.max(r.got, r.count); r.wasDone = true; c.inbox = r; consRecvDone(c, r); }
@@ -5948,7 +5990,8 @@ $('#consLog').addEventListener('click', async e => {
     await addFiles([new File([f.blob], f.name, { type: f.type })], { noKeep: true });
     S.series.filter(s => !before.has(s)).forEach(s => { s.__consCase = id; }); c.cases.push(id); return; }
   if (sv) { const list = S.series.filter(s => s.__consCase === sv.dataset.save); if (!list.length) return; sv.disabled = true; sv.textContent = 'Preparing…';
-    let r = null; try { r = await anonExport(list, (k, n) => { sv.textContent = 'Preparing ' + Math.round(100 * k / n) + '%'; }); } catch (err) { r = null; } sv.disabled = false; sv.textContent = 'Save the case (anonymised zip)';
+    let r = null; try { r = await rxZipNow(list); } catch (err) { r = null; } if (r) { sv.disabled = false; sv.textContent = 'Save the case (anonymised zip)'; saveBlobAs(r.blob, r.name); return; }
+    try { r = await anonExport(list, (k, n) => { sv.textContent = 'Preparing ' + Math.round(100 * k / n) + '%'; }); } catch (err) { r = null; } sv.disabled = false; sv.textContent = 'Save the case (anonymised zip)';
     if (r && r.blob) saveBlobAs(r.blob, r.name); else say('The case could not be saved', 3000); return; }
   const b = t.closest('button[data-a]'); if (!b || !c.inbox) return;
   const r = c.inbox; r.ask = false;
@@ -9323,7 +9366,7 @@ FR.bind({ series: () => S.series, ctx: () => { // what the viewer is doing, for 
   return [S.vol ? 'MPR' : '', S.rf ? 'Cor/Sag' : '', S.cmps && S.cmps.length ? 'compare x' + S.cmps.length : '', curSeries() && curSeries().isFuse ? 'fusion' : '', typeof VR !== 'undefined' && VR && VR.on ? '3D' : '',
     n.length + ' series/' + im + ' images', 'held ' + mb(memUsed()) + '/' + mb(memLimit()) + ' MB', performance.memory ? 'heap ' + mb(performance.memory.usedJSHeapSize) + '/' + mb(performance.memory.jsHeapSizeLimit) + ' MB' : ''].filter(Boolean).join(', ');
 } });
-window.__sliceview = { fitBody, dropAll: () => { for (const se of S.series) for (const im of se.images) if (coded(im) && im.pixels) { DEC.bytes -= im.pixels.byteLength; im.pixels = null; im.mm = null; } }, selectSeries, memUsed, memLimit, composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice, refSeg }, anon: { anonExport, dicomDump, anonPlan, anonOne }, cons: CONS, consIceRestart, pk: { pkInit, pkRun, consPackFast, consUnpackFast, PK }, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen }, FOL, derivFind };
+window.__sliceview = { fitBody, rxZipNow, RXZ, dropAll: () => { for (const se of S.series) for (const im of se.images) if (coded(im) && im.pixels) { DEC.bytes -= im.pixels.byteLength; im.pixels = null; im.mm = null; } }, selectSeries, memUsed, memLimit, composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice, refSeg }, anon: { anonExport, dicomDump, anonPlan, anonOne }, cons: CONS, consIceRestart, pk: { pkInit, pkRun, consPackFast, consUnpackFast, PK }, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen }, FOL, derivFind };
 })();
 </script>
 
