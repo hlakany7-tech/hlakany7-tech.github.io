@@ -691,7 +691,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-1727</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-1741</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -705,7 +705,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1727</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1741</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2475,7 +2475,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1727', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1741', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -3416,7 +3416,10 @@ function mrPick() { for (const k of ['FLAIR', 'T2', 'T1', 'DWI']) { const c = mr
 // With several views on screen (Compare), a tap on a view chooses it (its edge lights up) and the sequence buttons fill
 // that view instead of going back to one view: T1 top left, T2 top right, T1+C, DWI... without the Series list.
 function cmpTarget() { if (!S.cmps.length || S.rf) return null; const t = S.cmpSel != null ? S.cmpSel : S.cmps.length >= 2 ? S.cmpLast : null; /* three or four views: the one last touched */ if (S.cmps.length === 1 && t == null) return null; /* two views (DWI | ADC) with none chosen: a button goes back to one view */ return t === 'M' || S.cmps.some(C => C.slot === t) ? t : 'M'; }
-function cmpUnpick() { if (S.cmpSel == null) return; S.cmpSel = null; cmpPickUI(); if (isMRse(curSeries())) buildPresets(); } // scrolling again: you are reading, not choosing
+function cmpUnpick() { if (S.cmpSel == null) return; S.cmpSel = null; cmpPickUI(); buildPresets(); } // scrolling again: you are reading, not choosing
+// which series a lit button stands for: one view: the one on screen; several views: only the view you have just chosen
+// (scrolling clears the choice, and then nothing is lit)
+function litSeries() { const se = curSeries(); if (!S.cmps.length || S.rf) return se; const t = S.cmpSel; if (t == null) return null; return t === 'M' ? se : (S.cmps.find(C => C.slot === t) || {}).se || null; }
 function cmpPickUI() { const t = S.cmps.length && !S.rf && S.cmpSel != null ? cmpTarget() : null; /* lit only while you are choosing */
   $('#stage').classList.toggle('pick', t === 'M');
   document.querySelectorAll('section.cmpv[id^="mvCmp"]').forEach(el => { const k = el.id.slice(5); el.classList.toggle('pick', t != null && t !== 'M' && String(t) === k); }); }
@@ -3424,7 +3427,7 @@ function cmpTapSelect(el, slot) { // a short tap without moving: choose this vie
   let d0 = null;
   el.addEventListener('pointerdown', e => { d0 = S.cmps.length && !S.rf && (e.isPrimary !== false) ? { x: e.clientX, y: e.clientY, t: performance.now() } : null; }, true);
   el.addEventListener('pointerup', e => { if (!d0) return; const moved = Math.hypot(e.clientX - d0.x, e.clientY - d0.y), dt = performance.now() - d0.t; d0 = null;
-    if (moved < 10 && dt < 400 && S.cmps.length && !S.rf) { S.cmpSel = slot; S.cmpLast = slot; cmpPickUI(); /* the lit button follows the view you choose, never the one you scroll */ if (isMRse(curSeries())) buildPresets(); } }, true);
+    if (moved < 10 && dt < 400 && S.cmps.length && !S.rf) { S.cmpSel = slot; S.cmpLast = slot; cmpPickUI(); /* the lit button follows the view you choose, never the one you scroll */ buildPresets(); } }, true);
 }
 cmpTapSelect($('#stage'), 'M');
 document.querySelectorAll('section.cmpv[id^="mvCmp"]').forEach(el => { const k = el.id.slice(5); if (k !== 'M') cmpTapSelect(el, +k); });
@@ -3458,7 +3461,7 @@ function mrShow(kind) {
     const inT = T === 'M' ? curSeries() : (S.cmps.find(C => C.slot === T) || {}).se, ax = c.filter(x => natPlane(x) === 'ax'), list = ax.length ? ax : c; // a view beside others: an axial series if there is one
     const at = list.indexOf(inT), se = SEQ_MANY.has(kind) ? (at >= 0 ? list[(at + 1) % list.length] : list[0]) : seqBest(kind, list, true);
     if (se !== inT) { if (T === 'M') viewSetMain(se); else cmpAdd(se, T, true); }
-    S.mrKind = kind; cmpPickUI(); buildPresets(); render(); return;
+    S.mrKind = kind; S.cmpSel = T; S.cmpLast = T; cmpPickUI(); buildPresets(); render(); return; // the view just filled stays chosen (lit) until you scroll
   }
   // the plane you are in stays: T1 in sagittal, then FLAIR: FLAIR in sagittal (and MPR stays MPR)
   const mpr3 = !!(S.vol && !S.planeMode), want = S.vol && S.planeMode ? ($('#views').dataset.main || 'ax') : S.vol ? 'ax' : natPlane(curSeries());
@@ -3484,7 +3487,7 @@ function buildPresets1() {
   const se = curSeries(), box = $('#presets'); box.textContent = ''; S.keys = {};
   if (!se) return;
   fuseChip(box);
-  { const list = ctStudy(); if (list.length) { const tgt = cmpTarget(), inT = tgt == null ? (S.cmps.length ? null : se) : tgt === 'M' ? se : (S.cmps.find(C => C.slot === tgt) || {}).se;
+  { const list = ctStudy(); if (list.length) { const inT = litSeries();
       for (const [k, label] of CT_KINDS) { const c = ctCands(k, list); if (!c.length) continue; seqChip(box, k, label + (c.length > 1 && SEQ_MANY.has(k) ? ' ·' + c.length : ''), inT && c.includes(inT), () => mrShow(k), c.map(x => x.desc).join('\n')); } } }
   const add = (key, label, wc, ww, fn) => {
     if (box.lastElementChild && box.lastElementChild.classList.contains('seq')) { const sp = document.createElement('span'); sp.className = 'sep'; box.append(sp); } // study buttons | window presets
@@ -3502,7 +3505,7 @@ function buildPresets1() {
   }
   if (isMRse(se)) { const list = mrStudy(); for (const [k, label] of MR_KINDS) { const c = mrCands(k, list); if (!c.length) continue;
     const b = document.createElement('button'); b.className = 'chip seq'; b.type = 'button'; b.dataset.seq = k; b.textContent = label + (c.length > 1 && SEQ_MANY.has(k) ? ' ·' + c.length : '');
-    b.title = c.map(x => x.desc).join('\n'); const tgt = cmpTarget(), inT = tgt == null ? null : tgt === 'M' ? se : (S.cmps.find(C => C.slot === tgt) || {}).se; b.setAttribute('aria-pressed', String(tgt != null ? c.includes(inT) : c.includes(se) && !S.cmps.length));
+    b.title = c.map(x => x.desc).join('\n'); const inT = litSeries(); b.setAttribute('aria-pressed', String(!!inT && c.includes(inT)));
     b.addEventListener('click', () => mrShow(k)); box.append(b); }
     // DWI beside ADC: the pair read together for restricted diffusion (bright on DWI, dark on ADC), side by side and scrolling together
     const dw = mrCands('DWI', list)[0], ad = mrCands('ADC', list)[0];
@@ -6157,6 +6160,7 @@ function cmpLayout() {
   }
   cmpLayout.had = S.cmps.length > 0;
   if (!S.cmps.length) { S.cmpSel = null; S.cmpLast = null; } try { cmpPickUI(); } catch (e) { }
+  if (cmpLayout.n !== S.cmps.length) { cmpLayout.n = S.cmps.length; try { buildPresets(); } catch (e) { } } // one view <-> several: what is lit changes
   const vw = $('#views'); if (vw.dataset.solo && (!S.cmps.length || S.rf || (vw.dataset.solo !== 'M' && !S.cmps.some(C => String(C.slot) === vw.dataset.solo)))) { delete vw.dataset.solo; document.querySelectorAll('.cmpv.solo').forEach(e => e.classList.remove('solo')); } // coronal/sagittal also with a single view (no compared series)
   const n = S.cmps.length, on = n > 0 || !!S.rf;
   if (n > 0 && !S.cmpWas) { // compare starts fitted, whatever zoom there was before: a CT (or fused PET-CT) to its body, as when it opens
