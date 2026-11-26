@@ -685,7 +685,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-1240</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-1326</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -699,7 +699,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1240</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1326</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2466,7 +2466,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1240', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1326', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -4355,7 +4355,7 @@ function mprToggle(on) {
   const want = on == null ? !S.vol : on;
   if (want && typeof consHold === 'function' && consHold(() => mprToggle(true), 'MPR')) return;
   if (want && S.rf) { S.rf = null; cmpLayout(); } // MPR replaces the coronal/sagittal view
-  if (!want) { if (S.vol) S.keepVol = S.vol; S.vol = null; planeModeOff(); for (const k of MVK) { const v = MV[k]; if (v && v.gl) { v.gl.release(); v.gl = null; } } $('#mvAx').hidden = true; $('#planesReset').hidden = true; $('#views').classList.remove('mpr'); $('#vswitch').hidden = true; delete $('#views').dataset.main; delete $('#views').dataset.layout; $('#btnMPR').setAttribute('aria-pressed', 'false'); render(); return; }
+  if (!want) { S.keepVol = null; /* trial: leaving MPR lets its volume go, so the next view has all the room (going back builds it again) */ S.vol = null; planeModeOff(); for (const k of MVK) { const v = MV[k]; if (v && v.gl) { v.gl.release(); v.gl = null; } } $('#mvAx').hidden = true; $('#planesReset').hidden = true; $('#views').classList.remove('mpr'); $('#vswitch').hidden = true; delete $('#views').dataset.main; delete $('#views').dataset.layout; $('#btnMPR').setAttribute('aria-pressed', 'false'); render(); return; }
   const se0 = curSeries(); if (!se0) return; const se = volSe(se0);
   const K = S.keepVol, again = !!(K && K.se === se); if (!again) S.keepVol = null; // the old volume goes first: two at once is what ran out of memory
   const plan = again ? Object.assign(K, { nCor: [0, 1, 0], nSag: [1, 0, 0], nAx: [0, 0, 1], order: null }) : volPlanSafe(se);
@@ -5935,6 +5935,13 @@ function cmpSolo(which) { // which: 'M' the main pane, or a compared pane's slot
   }, true);
 }
 function cmpLayout() {
+  if (!S.cmps.length && cmpLayout.had) { // trial: back to one view: the other panes' sharp slices go (their compressed copies stay: quick to sharpen again)
+    const keep = curSeries(); let freed = 0;
+    for (const se of S.series) { if (se === keep || se.derived || se.isFuse || se.isSlab || (keep && keep.isFuse && (se === keep.fuseCT || se === keep.fusePT))) continue;
+      for (const im of se.images) if (coded(im) && im.pixels) { freed += im.pixels.byteLength; im.pixels = null; im.mm = null; } }
+    DEC.bytes = Math.max(0, DEC.bytes - freed);
+  }
+  cmpLayout.had = S.cmps.length > 0;
   const vw = $('#views'); if (vw.dataset.solo && (!S.cmps.length || S.rf || (vw.dataset.solo !== 'M' && !S.cmps.some(C => String(C.slot) === vw.dataset.solo)))) { delete vw.dataset.solo; document.querySelectorAll('.cmpv.solo').forEach(e => e.classList.remove('solo')); } // coronal/sagittal also with a single view (no compared series)
   const n = S.cmps.length, on = n > 0 || !!S.rf;
   if (n > 0 && !S.cmpWas) { // compare starts fitted, whatever zoom there was before: a CT (or fused PET-CT) to its body, as when it opens
@@ -7574,9 +7581,19 @@ function memTight() { // memory ran out: hold less from now on (never a limit of
 // Before it runs out: the phone's own reading of memory in use. Near the limit, hold less (as after running out, but
 // gently and without the emergency count); MPR's and 3D's slices and what is on screen stay.
 function heapWatch() {
-  const M = performance.memory; if (!M || !M.jsHeapSizeLimit || M.usedJSHeapSize < 80e6) return; // a reading that never moves (some tablets) does nothing
-  const f = M.usedJSHeapSize / M.jsHeapSizeLimit; if (f < 0.75) return;
-  const now = performance.now(); if (now - (heapWatch.t || 0) < 4000) return; heapWatch.t = now;
+  const M = performance.memory; if (!M || !M.jsHeapSizeLimit || heapWatch.dead) return;
+  if (M.usedJSHeapSize < 15e6 && !heapWatch.moved) return; // a reading that never moves (some tablets: always 10 MB) does nothing
+  heapWatch.moved = true;
+  const f = M.usedJSHeapSize / M.jsHeapSizeLimit, now = performance.now();
+  // memory came back (a view closed, a study closed): back to full quality, step by step. Holding less was only for the
+  // time memory was short; staying that way for the rest of the session made single slices slow and soft to come back.
+  if (f < 0.55 && ((DEC.squeeze || 1) < 1 || MEM_CAP < Infinity) && now - (memTight.t || -1e9) > 90000 && now - (heapWatch.t || 0) > 4000) {
+    heapWatch.t = now; DEC.squeeze = Math.min(1, (DEC.squeeze || 1) * 1.5);
+    if (DEC.squeeze >= 1) { DEC.squeeze = 1; MEM_CAP = Infinity; heapWatch.said = 0; FR.add('memory', 'memory free again: full quality back · ' + FR.ctx()); }
+    try { pump(); } catch (e) { } return;
+  }
+  if (f < 0.75) return;
+  if (now - (heapWatch.t || 0) < 4000) return; heapWatch.t = now;
   if (!heapWatch.said) { heapWatch.said = 1; FR.add('memory', 'memory ' + Math.round(f * 100) + '% full: holding less before it runs out · ' + FR.ctx()); }
   DEC.squeeze = Math.max(0.25, (DEC.squeeze || 1) * (f > 0.88 ? 0.6 : 0.8));
   if (S.keepVol && S.keepVol !== S.vol) S.keepVol = null; if (S.rfVols && S.rfVols.size) S.rfVols.clear();
