@@ -286,6 +286,7 @@ body.focus > header.bar, body.focus .presets-row, body.focus .dock { display: no
 .chip.seq { color: var(--fg); font-weight: 600; padding: 0 12px; } /* MRI sequence buttons: first in the row */
 .chip.seq[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #0b1418; }
 .chip.seq + .chip:not(.seq) { margin-left: 10px; }
+#stage.pick::after, section.cmpv.pick::after { content: ""; position: absolute; inset: 0; border: 2px solid var(--accent); border-radius: inherit; pointer-events: none; z-index: 6; } /* the view the sequence buttons fill */
 .dock { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: stretch; min-width: 0; }
 .tools { display: flex; gap: 6px; flex: 1 1 440px; min-width: 0; overflow-x: auto; scrollbar-width: none; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 5px; }
 .tools::-webkit-scrollbar { display: none; }
@@ -688,7 +689,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-1540</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-1607</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -702,7 +703,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1540</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1607</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2472,7 +2473,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1540', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1607', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -3375,10 +3376,33 @@ function mrCands(kind, list) {
   return c.sort((a, b) => score(b) - score(a));
 }
 function mrPick() { for (const k of ['FLAIR', 'T2', 'T1', 'DWI']) { const c = mrCands(k)[0]; if (c && natPlane(c) === 'ax') return c; } return null; } // the series an MRI opens on
+// With several views on screen (Compare), a tap on a view chooses it (its edge lights up) and the sequence buttons fill
+// that view instead of going back to one view: T1 top left, T2 top right, T1+C, DWI... without the Series list.
+function cmpTarget() { if (!S.cmps.length || S.rf) return null; const t = S.cmpSel; if (S.cmps.length === 1 && t == null) return null; /* two views (DWI | ADC) with none chosen: a button goes back to one view */ return t === 'M' || S.cmps.some(C => C.slot === t) ? t : 'M'; }
+function cmpPickUI() { const t = cmpTarget();
+  $('#stage').classList.toggle('pick', t === 'M');
+  document.querySelectorAll('section.cmpv[id^="mvCmp"]').forEach(el => { const k = el.id.slice(5); el.classList.toggle('pick', t != null && t !== 'M' && String(t) === k); }); }
+function cmpTapSelect(el, slot) { // a short tap without moving: choose this view (scrolling, zooming and measuring are not touched)
+  let d0 = null;
+  el.addEventListener('pointerdown', e => { d0 = S.cmps.length && !S.rf && (e.isPrimary !== false) ? { x: e.clientX, y: e.clientY, t: performance.now() } : null; }, true);
+  el.addEventListener('pointerup', e => { if (!d0) return; const moved = Math.hypot(e.clientX - d0.x, e.clientY - d0.y), dt = performance.now() - d0.t; d0 = null;
+    if (moved < 10 && dt < 400 && S.cmps.length && !S.rf) { S.cmpSel = slot; cmpPickUI(); if (isMRse(curSeries())) buildPresets(); } }, true);
+}
+cmpTapSelect($('#stage'), 'M');
+document.querySelectorAll('section.cmpv[id^="mvCmp"]').forEach(el => { const k = el.id.slice(5); if (k !== 'M') cmpTapSelect(el, +k); });
 function mrShow(kind) {
   const c = mrCands(kind); if (!c.length) return;
-  const cs = curSeries(), at = c.indexOf(cs), se = at >= 0 ? c[(at + 1) % c.length] : c[0]; // again: the next series of this kind
+  const T = cmpTarget();
+  if (T != null) { // views side by side: the chosen view gets the series; the others stay
+    const inT = T === 'M' ? curSeries() : (S.cmps.find(C => C.slot === T) || {}).se, ax = c.filter(x => natPlane(x) === 'ax'), list = ax.length ? ax : c; // a view beside others: an axial series if there is one
+    const at = list.indexOf(inT), se = at >= 0 ? list[(at + 1) % list.length] : list[0];
+    if (se !== inT) { if (T === 'M') cmpSetMain(se); else cmpAdd(se, T); }
+    S.mrKind = kind; cmpPickUI(); buildPresets(); render(); return;
+  }
+  const cs = curSeries(), at = c.indexOf(cs), solo = !(S.cmps.length || S.rf || S.vol || S.vr), se = at >= 0 ? (solo ? c[(at + 1) % c.length] : cs) : c[0]; // pressed again on its own view: the next series of this kind
   if (S.vol) mprToggle(false);
+  if (S.vr) vrClose();
+  if (S.cmps.length || S.rf) { S.cmps = []; S.rf = null; cmpLayout(); } // a single sequence: one view (the DWI | ADC pair, or any compare, closes)
   if (se !== cs) selectSeries(S.series.indexOf(se));
   S.mrKind = kind;
   if (natPlane(se) !== 'ax') planeOpen('ax'); // a 3D sagittal (or coronal) T1: shown in axial
@@ -3402,16 +3426,16 @@ function buildPresets() {
   }
   if (isMRse(se)) { const list = mrStudy(); for (const [k, label] of MR_KINDS) { const c = mrCands(k, list); if (!c.length) continue;
     const b = document.createElement('button'); b.className = 'chip seq'; b.type = 'button'; b.dataset.seq = k; b.textContent = label + (c.length > 1 ? ' ·' + c.length : '');
-    b.title = c.map(x => x.desc).join('\n'); b.setAttribute('aria-pressed', String(c.includes(se)));
+    b.title = c.map(x => x.desc).join('\n'); const tgt = cmpTarget(), inT = tgt == null ? null : tgt === 'M' ? se : (S.cmps.find(C => C.slot === tgt) || {}).se; b.setAttribute('aria-pressed', String(tgt != null ? c.includes(inT) : c.includes(se) && !S.cmps.length));
     b.addEventListener('click', () => mrShow(k)); box.append(b); }
     // DWI beside ADC: the pair read together for restricted diffusion (bright on DWI, dark on ADC), side by side and scrolling together
     const dw = mrCands('DWI', list)[0], ad = mrCands('ADC', list)[0];
     if (dw && ad) { const b = document.createElement('button'); b.className = 'chip seq'; b.type = 'button'; b.dataset.seq = 'DWIADC'; b.textContent = 'DWI | ADC';
       b.setAttribute('aria-pressed', String(se === dw && S.cmps.length === 1 && S.cmps[0].se === ad));
-      b.addEventListener('click', () => { if (S.vr) vrClose(); if (S.vol) mprToggle(false); if (S.rf) rfStop(); S.mrKind = 'DWIADC';
+      b.addEventListener('click', () => { if (S.vr) vrClose(); if (S.vol) mprToggle(false); if (S.rf) rfStop(); S.mrKind = 'DWIADC'; S.cmpSel = null;
         if (curSeries() !== dw) selectSeries(S.series.indexOf(dw));
         S.cmps = []; cmpAdd(ad, 0); if (!S.cmpSync) { S.cmpSync = true; try { cmpSyncUI(); } catch (e) { } } buildPresets(); render(); });
-      box.insertBefore(b, box.querySelector('.chip.seq[data-seq="ADC"]') ? box.querySelector('.chip.seq[data-seq="ADC"]').nextSibling : null); } }
+      box.append(b); } } // the side-by-side pair comes last, after the single sequences
   add(0, 'Default', se.def.wc, se.def.ww, () => setWindow(se.def.wc, se.def.ww, 'Default'));
   add(1, 'Full dynamic', null, null, () => { const [lo, hi] = minmax(cur()); setWindow((lo + hi) / 2, Math.max(1, hi - lo), 'Full dynamic'); });
   if (se.modality === 'CT') CT_PRESETS.forEach(([n, c, w], i) => add(i + 2, n, c, w, () => setWindow(c, w, n)));
@@ -6049,6 +6073,7 @@ function cmpLayout() {
     DEC.bytes = Math.max(0, DEC.bytes - freed);
   }
   cmpLayout.had = S.cmps.length > 0;
+  if (!S.cmps.length) S.cmpSel = null; try { cmpPickUI(); } catch (e) { }
   const vw = $('#views'); if (vw.dataset.solo && (!S.cmps.length || S.rf || (vw.dataset.solo !== 'M' && !S.cmps.some(C => String(C.slot) === vw.dataset.solo)))) { delete vw.dataset.solo; document.querySelectorAll('.cmpv.solo').forEach(e => e.classList.remove('solo')); } // coronal/sagittal also with a single view (no compared series)
   const n = S.cmps.length, on = n > 0 || !!S.rf;
   if (n > 0 && !S.cmpWas) { // compare starts fitted, whatever zoom there was before: a CT (or fused PET-CT) to its body, as when it opens
