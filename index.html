@@ -692,7 +692,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-2207</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-2215</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -706,7 +706,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-2207</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-2215</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2476,7 +2476,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-2207', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-2215', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -7236,7 +7236,7 @@ $('#btnSeries').addEventListener('click', () => {
    then the slices just ahead of the scroll direction, then a wider window kept within a memory budget. */
 // Phones get a smaller cache of decoded slices: a page using too much memory is closed by the phone in the background.
 const BUDGET = 300e6, PREVIEW_BUDGET = 280e6, SETTLE = 140;
-const decBudget = () => Math.max(40e6, clamp(memLimit() * 0.3, 80e6, BUDGET) * (DEC.squeeze || 1)); // sharp slices kept in memory: smaller on a device with less memory // ms without a slice change that counts as a pause
+const decBudget = () => Math.max(40e6, clamp(memLimit() * (memBlind() ? 0.42 : 0.3), 80e6, BUDGET) * (DEC.squeeze || 1)); // sharp slices kept in memory: smaller on a device with less memory // ms without a slice change that counts as a pause
 // A job carries either a ready codestream (buf) or a zip entry still packed (z), unpacked here off the main thread.
 async function jobCodestream(m, D) {
   if (!m.z) return new Uint8Array(m.buf);
@@ -7413,6 +7413,7 @@ function pump() {
   const needF = im => coded(im) && !im.pixels && !im.busy && !im.err;
   const needP = im => red > 0 && coded(im) && !im.pixels && !im.preview && !im.busyP && !im.busy && !im.err && !im.noPreview;
   const go = (im, kind, rd) => {
+    if (kind === 'p' && im.lazy && !im.codec) { kind = 'f'; rd = 0; } // an uncompressed slice: the sharp one costs no more than its preview (both read the whole slice)
     if (kind === 'p') im.busyP = true; else if (kind === 'v') im.busyV = true; else im.busy = true;
     submit({ buf: im.frag, z: im.frag ? null : im.zsrc ? zjob(im.zsrc) : im.lazy ? rawJob(im) : null, codec: im.codec || (im.lazy ? 'raw' : null), pixelRep: im.pixelRep, rows: im.rows, cols: im.cols, ba: im.ba, spp: im.spp || 1, ybr: im.ybr, palette: im.palette, reduce: kind === 'p' ? (rd == null ? red : rd) : kind === 'v' ? (rd == null ? S.vol.k : rd) : 0, finish(r) { const ms = performance.now() - this.t0; if (kind === 'p') DEC.pms = 0.8 * (DEC.pms || 30) + 0.2 * ms; else DEC.fms = 0.8 * (DEC.fms || 150) + 0.2 * ms; decoded(im, r, kind); } });
     return --cap > 0;
