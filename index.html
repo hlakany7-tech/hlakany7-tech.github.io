@@ -685,7 +685,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.25-2058</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.25-2211</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -699,7 +699,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-2058</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.25-2211</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2466,7 +2466,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-2058', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-2211', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -4893,13 +4893,18 @@ function consLog(t) { // the last few steps, shown small under the status: what 
 /* staying alive in the background: Android pauses a page that is out of sight, unless it is playing sound. While you are
    online Sliceview plays an inaudible sound (a "Sliceview" card shows in the notifications), so it stays reachable. */
 function consKeepAwake(on) {
+  // Android lets Chrome keep running in the background only while it is playing sound it counts as sound. The old
+  // keep-awake sound was so faint (about -110 dB) that Chrome counted it as silence, so Sliceview was paused in WhatsApp
+  // and a case stopped. Now: a very high tone (18.5 kHz, above what people hear and what most phone speakers can play)
+  // at -54 dB: far too quiet and too high to hear, but loud enough for Chrome to count.
   try {
     if (!on) { if (CONS.awake) { CONS.awake.pause(); } return; }
     if (!CONS.awake) {
-      const n = 8000, b = new ArrayBuffer(44 + n * 2), d = new DataView(b), w = (o, s) => { for (let i = 0; i < s.length; i++) d.setUint8(o + i, s.charCodeAt(i)); };
-      w(0, 'RIFF'); d.setUint32(4, 36 + n * 2, true); w(8, 'WAVEfmt '); d.setUint32(16, 16, true); d.setUint16(20, 1, true); d.setUint16(22, 1, true); d.setUint32(24, 8000, true); d.setUint32(28, 16000, true); d.setUint16(32, 2, true); d.setUint16(34, 16, true); w(36, 'data'); d.setUint32(40, n * 2, true);
-      for (let i = 0; i < n; i++) d.setInt16(44 + i * 2, (i & 1) ? 1 : -1, true); // far below hearing
-      const a = new Audio(URL.createObjectURL(new Blob([b], { type: 'audio/wav' }))); a.loop = true; a.volume = 0.05; CONS.awake = a;
+      const sr = 44100, n = sr * 8, b = new ArrayBuffer(44 + n * 2), d = new DataView(b), w = (o, s) => { for (let i = 0; i < s.length; i++) d.setUint8(o + i, s.charCodeAt(i)); };
+      w(0, 'RIFF'); d.setUint32(4, 36 + n * 2, true); w(8, 'WAVEfmt '); d.setUint32(16, 16, true); d.setUint16(20, 1, true); d.setUint16(22, 1, true); d.setUint32(24, sr, true); d.setUint32(28, sr * 2, true); d.setUint16(32, 2, true); d.setUint16(34, 16, true); w(36, 'data'); d.setUint32(40, n * 2, true);
+      for (let i = 0; i < n; i++) d.setInt16(44 + i * 2, Math.round(64 * Math.sin(2 * Math.PI * 18500 * i / sr)), true); // a whole number of cycles: it loops without a click. 8 s long: Chrome treats anything under 5 s as a sound effect and does not keep the app awake for it
+      const a = new Audio(URL.createObjectURL(new Blob([b], { type: 'audio/wav' }))); a.loop = true; a.volume = 1; CONS.awake = a;
+      a.addEventListener('pause', () => { try { FR.add('away', 'keep-awake sound paused' + (document.hidden ? ' (in another app: another app took the sound?)' : ''), true); } catch (e) { } });
     }
     CONS.awake.play().catch(() => { });
     if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title: 'Sliceview', artist: 'Online for colleagues as ' + CONS.me });
@@ -4955,6 +4960,12 @@ function consSignal(m) {
     const name = String((pl.metadata && pl.metadata.from) || m.src.replace(/^sliceview-/, '')).slice(0, 40); presSet(m.src, true);
     const c = consConv(m.src, name);
     if (c.offer === pl.sdp.sdp && c.pc && c.pc.signalingState !== 'closed') return; // the same call again (it is repeated until answered)
+    if (pl.metadata && pl.metadata.restart && c.pc && c.cid === pl.connectionId && c.pc.signalingState === 'stable') { // a repair of the route we have: answered on the same connection
+      const pc = c.pc; c.offer = pl.sdp.sdp; c.restarting = true; consLog(c.name + ': finding a new route');
+      pc.setRemoteDescription(pl.sdp).then(() => pc.createAnswer()).then(a => pc.setLocalDescription(a))
+        .then(() => { c.restarting = false; consSend(m.src, 'ANSWER', { sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, type: 'data', connectionId: c.cid, browser: 'chrome' }); consFlush(c); })
+        .catch(() => { c.restarting = false; }); return; }
+    if (pl.metadata && pl.metadata.restart && c.pc && c.cid === pl.connectionId) return; // (mid-change: asked again in a moment)
     if (c.dialing && c.state !== 'open' && consDialer(c)) return; // both called at once: ours is kept, they answer it
     consRtc(c, false); c.offer = pl.sdp.sdp; if (pl.connectionId) c.cid = pl.connectionId;
     const pc = c.pc;
@@ -4964,8 +4975,21 @@ function consSignal(m) {
     consUI(); return;
   }
   const c = CONS.peers.get(m.src); if (!c || !c.pc) return;
-  if (m.type === 'ANSWER') { if (c.pc.signalingState === 'have-local-offer') { c.answered = true; c.pc.setRemoteDescription(pl.sdp).then(() => consFlush(c)).catch(() => { }); consUI(); } }
-  else if (m.type === 'CANDIDATE' && pl.candidate) { if (c.pc.remoteDescription) c.pc.addIceCandidate(pl.candidate).catch(() => { }); else c.cands.push(pl.candidate); }
+  if (m.type === 'ANSWER') { if (c.pc.signalingState === 'have-local-offer') { c.answered = true; c.pc.setRemoteDescription(pl.sdp).then(() => { c.restarting = false; consFlush(c); }).catch(() => { c.restarting = false; }); consUI(); } }
+  else if (m.type === 'CANDIDATE' && pl.candidate) { if (c.pc.remoteDescription && !c.restarting) c.pc.addIceCandidate(pl.candidate).catch(() => { }); else c.cands.push(pl.candidate); }
+}
+// A route that dips (a network change, Android putting the other app first) is repaired in place, the way calling apps
+// do it: new routes are found for the same connection, so the conversation and a case on its way just carry on.
+// Only if that has not worked after 45 s is the connection made again from scratch (and the case resumes).
+function consIceRestart(c, pc) {
+  if (c.pc !== pc || c.state !== 'open') return;
+  if (Date.now() - c.iceBad > 120000 && pc.iceConnectionState === 'failed') { consLog(c.name + ': route not back after 2 minutes: connecting again'); consDrop(c, pc, true); return; } // only a route that has really failed for 2 minutes is given up (a paused phone is waited for)
+  if (!consDialer(c)) { if (!c.restartT) c.restartT = setInterval(() => { if (c.pc !== pc || !c.iceBad) { clearInterval(c.restartT); c.restartT = null; return; } if (Date.now() - c.iceBad > 125000 && pc.iceConnectionState === 'failed') { clearInterval(c.restartT); c.restartT = null; consDrop(c, pc, true); } }, 5000); return; } // the other phone repairs it (no two at once)
+  const send = () => { if (c.pc === pc && pc.localDescription && pc.signalingState === 'have-local-offer') consSend(c.id, 'OFFER', { sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, type: 'data', connectionId: c.cid, label: c.cid, reliable: true, serialization: 'raw', metadata: { from: CONS.me, restart: true }, browser: 'chrome' }); }; // (the service's own message shape: it drops anything else)
+  if (pc.signalingState === 'stable') { consLog(c.name + ': finding a new route'); c.restarting = true; pc.createOffer({ iceRestart: true }).then(o => pc.setLocalDescription(o)).then(send).catch(() => { c.restarting = false; }); }
+  if (!c.restartT) c.restartT = setInterval(() => { if (c.pc !== pc || !c.iceBad) { clearInterval(c.restartT); c.restartT = null; return; }
+    if (Date.now() - c.iceBad > 120000) { clearInterval(c.restartT); c.restartT = null; consIceRestart(c, pc); return; }
+    if (pc.signalingState === 'stable') { c.restarting = true; pc.createOffer({ iceRestart: true }).then(o => pc.setLocalDescription(o)).then(send).catch(() => { }); } else send(); }, 5000); // asked again until the other phone answers (it may be paused)
 }
 function consFlush(c) { for (const x of c.cands.splice(0)) c.pc.addIceCandidate(x).catch(() => { }); }
 function consRtc(c, dial) { // a fresh connection for a conversation (first, or after a drop)
@@ -4973,7 +4997,10 @@ function consRtc(c, dial) { // a fresh connection for a conversation (first, or 
   clearInterval(c.again); c.cands = []; c.answered = false; c.dialing = dial; c.offer = null; c.dc = null;
   const pc = new RTCPeerConnection(CONS_ICE); c.pc = pc; c.cid = 'dc_' + Math.random().toString(36).slice(2, 12);
   pc.onicecandidate = e => { if (e.candidate && c.pc === pc) consSend(c.id, 'CANDIDATE', { candidate: e.candidate.toJSON(), type: 'data', connectionId: c.cid }); };
-  pc.oniceconnectionstatechange = () => { if (c.pc !== pc) return; consLog(c.name + ': route ' + pc.iceConnectionState); if (pc.iceConnectionState === 'failed') consDrop(c, pc); consUI(); };
+  pc.oniceconnectionstatechange = () => { if (c.pc !== pc) return; const st = pc.iceConnectionState; consLog(c.name + ': route ' + st);
+    if (st === 'connected' || st === 'completed') { c.iceBad = 0; clearInterval(c.restartT); c.restartT = null; }
+    else if ((st === 'disconnected' || st === 'failed') && c.state === 'open') { if (!c.iceBad) c.iceBad = Date.now(); setTimeout(() => { if (c.pc === pc && c.iceBad && ['disconnected', 'failed'].includes(pc.iceConnectionState)) consIceRestart(c, pc); }, st === 'failed' ? 0 : 6000); } // a short dip usually comes back by itself: left alone for 6 s
+    consUI(); };
   const wire = dc => { if (c.pc !== pc) return; c.dc = dc; dc.binaryType = 'arraybuffer'; dc.bufferedAmountLowThreshold = 256 * 1024;
     dc.onopen = () => consOpen(c, dc);
     dc.onclose = () => { if (c.dc === dc) consDrop(c, pc); };
@@ -5002,7 +5029,9 @@ function consOpen(c, dc) {
     // 4 s, and when nothing has come for 15 s the connection is taken as lost and made again
     if (c.dc !== dc || c.state !== 'open') { clearInterval(c.alive); return; }
     consText(c, { t: 'ping' });
-    if (Date.now() - c.lastIn > 15000) { consLog(c.name + ': silent for 15 s'); consDrop(c, c.pc, true); }
+    const quiet = Date.now() - c.lastIn, ice = c.pc ? c.pc.iceConnectionState : 'closed', up = ice === 'connected' || ice === 'completed';
+    if (quiet > 15000 && !up && !c.iceBad) { c.iceBad = Date.now(); consIceRestart(c, c.pc); } // no route and nothing heard: repaired
+    // (the route up but nothing heard: the other phone is paused in the background. Waited for: it carries on when it is back, as the first versions did)
   }, 4000);
   const again = c.ever; c.state = 'open'; c.ever = true; c.away = false; clearInterval(c.again); clearTimeout(c.timer);
   consNote(c, again ? 'Reconnected' : 'Connected with ' + c.name); consUI(); if (!again) consChatOpen(c, true); else consChatDraw();
@@ -5595,8 +5624,20 @@ $('#consLog').addEventListener('click', async e => {
   if (b.dataset.a === 'open') { rxCase(c, r); consText(c, { t: 'accept', id: r.id }); consProgress(c, 0, 'Receiving 0 / ' + r.count); consNote(c, 'Opening as it arrives…'); } else { consText(c, { t: 'decline', id: r.id }); c.inbox = null; }
   consChatDraw(); });
 // (no goodbye when Sliceview is closed or Android stops it: the conversation and a case on its way carry on when it is back; only End ends it)
+// For the report: what Android lets Sliceview do while you are in another app (does it keep running, does the sound
+// that keeps it awake play, does a case keep going), so a drop can be traced to its cause.
+const AWAY = { t: 0, ticks: 0, last: 0, gap: 0, iv: 0, sent: 0, got: 0 };
+const awayCount = () => { let s = 0, g = 0; for (const c of CONS.peers.values()) { if (c.out) s += c.out.acked; if (c.inbox) g += c.inbox.got; } return [s, g]; };
+document.addEventListener('visibilitychange', () => { try {
+  if (document.hidden) { const [sn, gt] = awayCount(); Object.assign(AWAY, { t: Date.now(), ticks: 0, last: Date.now(), gap: 0, sent: sn, got: gt });
+    clearInterval(AWAY.iv); AWAY.iv = setInterval(() => { const n = Date.now(); AWAY.gap = Math.max(AWAY.gap, n - AWAY.last); AWAY.last = n; AWAY.ticks++; }, 2000);
+    FR.add('away', 'to another app · keep-awake sound ' + (CONS.awake ? (CONS.awake.paused ? 'paused' : 'playing') : 'never started') + ' · ' + [...CONS.peers.values()].map(c => c.name + ' ' + c.state + (c.pc ? ' (' + c.pc.iceConnectionState + ')' : '')).join(', '), true); }
+  else if (AWAY.t) { clearInterval(AWAY.iv); const n = Date.now(), sec = (n - AWAY.t) / 1000, gap = Math.max(AWAY.gap, n - AWAY.last) / 1000, [sn, gt] = awayCount();
+    FR.add('away', 'back after ' + sec.toFixed(0) + ' s · Sliceview ' + (gap > 6 ? 'was paused by Android for up to ' + gap.toFixed(0) + ' s' : 'kept running') + ' · sound ' + (CONS.awake ? (CONS.awake.paused ? 'paused' : 'playing') : 'never started') + ' · meanwhile sent ' + (sn - AWAY.sent) + ', received ' + (gt - AWAY.got) + ' · ' + [...CONS.peers.values()].map(c => c.name + ' ' + c.state + (c.pc ? ' (' + c.pc.iceConnectionState + ')' : '') + (c.dc ? ' channel ' + c.dc.readyState : '')).join(', '), true); AWAY.t = 0; }
+} catch (e) { } });
 document.addEventListener('visibilitychange', () => { // back in Sliceview (after WhatsApp, the lock screen...): online again at once, conversations restored
   if (document.visibilityState !== 'visible' || !CONS.want) return;
+  if (CONS.awake && CONS.awake.paused) consKeepAwake(true); // the sound back (another app may have taken it)
   if (!CONS.ws || CONS.ws.readyState > 1) { clearTimeout(CONS.rt); CONS.ws = null; consGoOnline(CONS.me); }
   else for (const c of CONS.peers.values()) if (c.state === 'reconnecting' && consDialer(c)) consRtc(c, true);
 });
@@ -8776,7 +8817,7 @@ FR.bind({ series: () => S.series, ctx: () => { // what the viewer is doing, for 
   return [S.vol ? 'MPR' : '', S.rf ? 'Cor/Sag' : '', S.cmps && S.cmps.length ? 'compare x' + S.cmps.length : '', curSeries() && curSeries().isFuse ? 'fusion' : '', typeof VR !== 'undefined' && VR && VR.on ? '3D' : '',
     n.length + ' series/' + im + ' images', 'held ' + mb(memUsed()) + '/' + mb(memLimit()) + ' MB', performance.memory ? 'heap ' + mb(performance.memory.usedJSHeapSize) + '/' + mb(performance.memory.jsHeapSizeLimit) + ' MB' : ''].filter(Boolean).join(', ');
 } });
-window.__sliceview = { fitBody, dropAll: () => { for (const se of S.series) for (const im of se.images) if (coded(im) && im.pixels) { DEC.bytes -= im.pixels.byteLength; im.pixels = null; im.mm = null; } }, selectSeries, memUsed, memLimit, composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice, refSeg }, anon: { anonExport, dicomDump, anonPlan, anonOne }, cons: CONS, pk: { pkInit, pkRun, consPackFast, consUnpackFast, PK }, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen }, FOL, derivFind };
+window.__sliceview = { fitBody, dropAll: () => { for (const se of S.series) for (const im of se.images) if (coded(im) && im.pixels) { DEC.bytes -= im.pixels.byteLength; im.pixels = null; im.mm = null; } }, selectSeries, memUsed, memLimit, composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice, refSeg }, anon: { anonExport, dicomDump, anonPlan, anonOne }, cons: CONS, consIceRestart, pk: { pkInit, pkRun, consPackFast, consUnpackFast, PK }, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen }, FOL, derivFind };
 })();
 </script>
 
