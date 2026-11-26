@@ -685,7 +685,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-1408</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-1455</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -699,7 +699,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1408</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1455</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2466,7 +2466,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1408', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1455', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -3840,16 +3840,23 @@ function worldToVolIdx(V, p) { // patient position -> continuous voxel index [x,
 function petOverlay(v, c2) {
   const V = S.vol, Pv = V.pet, g = v.g, F = S.fuse; if (!Pv || !Pv.count || !g) return;
   const key = v.key + '|' + Pv.ver + '|' + Pv.count + '|' + F.max + '|' + F.mix;
+  // The PET is coarse (about 4 mm a voxel against under 1 mm for the CT plane): its colour is worked out on a grid at
+  // least two samples per PET voxel (up to 4 plane pixels a step) and drawn smoothly over the CT. Looks the same,
+  // up to 16 times less work: the fused coronal and sagittal keep up with the finger.
+  const pvAlong = d => 1 / Math.hypot(d[0] / Pv.sx, d[1] / Pv.sy, d[2] / (Math.abs(Pv.dz) || 4)); // the PET voxel's size along a direction (mm)
+  const fx = Math.max(1, Math.min(4, Math.floor(pvAlong(g.a) / (2 * (g.hu || 1))))), fy = Math.max(1, Math.min(4, Math.floor(pvAlong(g.b) / (2 * (g.hv || 1)))));
   if (v.petKey !== key) {
-    const W = g.iw, H = g.ih; if (!v.petCv) v.petCv = document.createElement('canvas');
+    const W = Math.ceil(g.iw / fx), H = Math.ceil(g.ih / fy); if (!v.petCv) v.petCv = document.createElement('canvas');
     if (v.petCv.width !== W || v.petCv.height !== H) { v.petCv.width = W; v.petCv.height = H; }
     const cx = v.petCv.getContext('2d'), img = cx.createImageData(W, H), out = img.data;
     const c = v3.dot(V.P, g.n), q00 = v3.add(v3.add(v3.scale(g.n, c), g.a, g.s0 * g.hu), g.b, g.t0 * g.hv);
     const i00 = worldToVolIdx(Pv, volToWorld(V, q00)), ix = worldToVolIdx(Pv, volToWorld(V, v3.add(q00, g.a, g.hu))), iy = worldToVolIdx(Pv, volToWorld(V, v3.add(q00, g.b, g.hv)));
     const PW = Pv.w, PH = Pv.h, PN = Pv.n, plane = PW * PH, D = Pv.data, fl = Pv.filled, sl = Pv.sl, ic = Pv.ic;
+    const hx = (fx - 1) / 2, hy = (fy - 1) / 2; // each grid point sits at the centre of the plane pixels it stands for
     for (let y = 0, o = 0; y < H; y++) {
-      let xi = i00[0] + (iy[0] - i00[0]) * y, yi = i00[1] + (iy[1] - i00[1]) * y, ki = i00[2] + (iy[2] - i00[2]) * y;
-      const dx = ix[0] - i00[0], dy = ix[1] - i00[1], dk = ix[2] - i00[2];
+      const py = y * fy + hy;
+      const dx = (ix[0] - i00[0]) * fx, dy = (ix[1] - i00[1]) * fx, dk = (ix[2] - i00[2]) * fx;
+      let xi = i00[0] + (iy[0] - i00[0]) * py + dx / fx * hx, yi = i00[1] + (iy[1] - i00[1]) * py + dy / fx * hx, ki = i00[2] + (iy[2] - i00[2]) * py + dk / fx * hx;
       for (let x = 0; x < W; x++, o += 4, xi += dx, yi += dy, ki += dk) {
         if (xi < 0 || yi < 0 || ki < 0 || xi > PW - 1 || yi > PH - 1 || ki > PN - 1) continue;
         const x0 = xi | 0, y0 = yi | 0, k0 = ki | 0, k1 = k0 < PN - 1 ? k0 + 1 : k0; if (!fl[k0] || !fl[k1]) continue;
@@ -3864,7 +3871,7 @@ function petOverlay(v, c2) {
   }
   const s00 = mvToScreen(v, 0, 0), s10 = mvToScreen(v, 1, 0), s01 = mvToScreen(v, 0, 1), d = S.dpr;
   c2.save(); c2.setTransform(d * (s10.x - s00.x), d * (s10.y - s00.y), d * (s01.x - s00.x), d * (s01.y - s00.y), d * s00.x, d * s00.y);
-  c2.imageSmoothingEnabled = true; c2.drawImage(v.petCv, 0, 0); c2.restore();
+  c2.imageSmoothingEnabled = true; if (fx > 1 || fy > 1) c2.scale(fx, fy); c2.drawImage(v.petCv, 0, 0); c2.restore();
 }
 // Resamples the plane through the crosshair from the volume (raw values, trilinear).
 function resample(v) {
@@ -4355,7 +4362,7 @@ function mprToggle(on) {
   const want = on == null ? !S.vol : on;
   if (want && typeof consHold === 'function' && consHold(() => mprToggle(true), 'MPR')) return;
   if (want && S.rf) { S.rf = null; cmpLayout(); } // MPR replaces the coronal/sagittal view
-  if (!want) { S.keepVol = null; /* trial: leaving MPR lets its volume go, so the next view has all the room (going back builds it again) */ S.vol = null; planeModeOff(); for (const k of MVK) { const v = MV[k]; if (v && v.gl) { v.gl.release(); v.gl = null; } } $('#mvAx').hidden = true; $('#planesReset').hidden = true; $('#views').classList.remove('mpr'); $('#vswitch').hidden = true; delete $('#views').dataset.main; delete $('#views').dataset.layout; $('#btnMPR').setAttribute('aria-pressed', 'false'); render(); return; }
+  if (!want) { S.keepVol = S.vol || null; /* kept for going back to MPR or 3D at once; let go when four panes or another study open, or when memory reaches 75% */ S.vol = null; planeModeOff(); for (const k of MVK) { const v = MV[k]; if (v && v.gl) { v.gl.release(); v.gl = null; } } $('#mvAx').hidden = true; $('#planesReset').hidden = true; $('#views').classList.remove('mpr'); $('#vswitch').hidden = true; delete $('#views').dataset.main; delete $('#views').dataset.layout; $('#btnMPR').setAttribute('aria-pressed', 'false'); render(); return; }
   const se0 = curSeries(); if (!se0) return; const se = volSe(se0);
   if (S.vr) { const V3 = S.vr.V; vrClose(); S.keepVol = V3 && V3.se === se ? V3 : null; } /* one heavy view at a time: 3D gives way (its volume serves MPR when it is the same series) */
   const K = S.keepVol, again = !!(K && K.se === se); if (!again) S.keepVol = null; // the old volume goes first: two at once is what ran out of memory
@@ -8386,7 +8393,7 @@ function vrOpen() {
 function vrClose() {
   const R = S.vr; if (!R) return;
   if (R.raf) cancelAnimationFrame(R.raf); clearTimeout(R.wait); clearTimeout(R.feed);
-  S.vrPreset = R.preset; S.vr = null; S.keepVol = null; // its volume goes too (MPR opening next takes it first)
+  S.vrPreset = R.preset; S.vr = null; S.keepVol = R.V || null; // its volume is kept for MPR or 3D again (let go when four panes or another study open, or memory reaches 75%)
   if (VRG && VRG.volTex) { VRG.gl.deleteTexture(VRG.volTex); VRG.volTex = null; }
   if (VRG && VRG.gl) { const x = VRG.gl.getExtension('WEBGL_lose_context'); if (x) x.loseContext(); } // the GPU context goes back (phones allow only a few)
   document.body.classList.remove('vr'); $('#vr3d').hidden = true; $('#btn3D').setAttribute('aria-pressed', 'false');
