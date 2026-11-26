@@ -283,6 +283,9 @@ body.focus > header.bar, body.focus .presets-row, body.focus .dock { display: no
 }
 .chip[aria-pressed="true"] { background: var(--panel-2); border-color: var(--accent); color: var(--fg); }
 .chip small { font-family: var(--font-mono); margin-left: 6px; color: var(--muted); font-size: 11px; }
+.chip.seq { color: var(--fg); font-weight: 600; padding: 0 12px; } /* MRI sequence buttons: first in the row */
+.chip.seq[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #0b1418; }
+.chip.seq + .chip:not(.seq) { margin-left: 10px; }
 .dock { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: stretch; min-width: 0; }
 .tools { display: flex; gap: 6px; flex: 1 1 440px; min-width: 0; overflow-x: auto; scrollbar-width: none; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 5px; }
 .tools::-webkit-scrollbar { display: none; }
@@ -685,7 +688,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-1455</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-1540</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -699,7 +702,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1455</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1540</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2124,6 +2127,9 @@ function dicomModule() {
     // MRI: what sets apart the stacks that can share one series (echo, b-value, time point)
     '00180081': ['te', 'DS'], '00200100': ['temporal', 'IS'], '00189087': ['bvalue', 'FD'],
     '00431039': ['geB', 'DSM'], '0019100C': ['siemensB', 'IS'], '20011003': ['philipsB', 'FL'],
+    // MRI: which sequence a series is (for the T1 / T2 / FLAIR / DWI ... buttons)
+    '00180080': ['tr', 'DS'], '00180082': ['ti', 'DS'], '00180020': ['scanSeq', 'STR'], '00180021': ['seqVar', 'STR'], '00180022': ['scanOpt', 'STR'],
+    '00180023': ['acq3d', 'STR'], '00180024': ['seqName', 'STR'], '00080008': ['imageType', 'STR'], '00180010': ['contrastAgent', 'STR'], '00181314': ['flipAngle', 'DS'],
     // PET: what SUV needs (patient weight, the scan's times, units, decay correction; Philips' own SUV factor)
     '00101030': ['weight', 'DS'], '00080031': ['seriesTime', 'STR'], '00080032': ['acqTime', 'STR'], '00080021': ['seriesDate', 'STR'],
     '00541001': ['petUnits', 'STR'], '00541102': ['decayCorr', 'STR'], '70531000': ['philipsSUV', 'DS'],
@@ -2466,7 +2472,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1455', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1540', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -2593,6 +2599,7 @@ function minmax(img) {
 }
 // MRI, PET and nuclear medicine: the window comes from the middle slice's own pixels, its range without the extreme
 // 0.5% at either end (a few very bright pixels would otherwise darken everything); its header, else the full range
+const wlTxt = x => Math.abs(S.ww) < 10 ? String(+(+x).toFixed(2)) : String(Math.round(x)); // small-valued maps (an ADC in 10⁻³ mm²/s): decimals, not 1 / 2
 function robustWindow(img) {
   const p = img.pixels, n = p.length, step = Math.max(1, Math.floor(n / 65536)), vals = [];
   for (let i = 0; i < n; i += step) vals.push(p[i] * img.slope + img.intercept);
@@ -3264,7 +3271,7 @@ function updateOverlay() {
     const inCmp = S.cmps.length > 0 && !S.rf; // in Compare: the series name under the patient, as in the other views (corners stay off the image)
     $('#ovTL').textContent = inCmp ? [pn(se.patient), se.desc || se.modality].filter(Boolean).join('\n') : pn(se.patient);
     $('#ovTR').textContent = inCmp ? '' : se.desc || se.modality || '';
-    $('#ovBL').textContent = img.spp === 3 && !img.fuse ? '' : 'WL ' + Math.round(S.wc) + ' / ' + Math.round(S.ww) + tg;
+    $('#ovBL').textContent = img.spp === 3 && !img.fuse ? '' : 'WL ' + wlTxt(S.wc) + ' / ' + wlTxt(S.ww) + tg;
     $('#ovBR').textContent = (S.idx + 1) + ' / ' + se.images.length + '';
     const n = se.images.length, t = $('#thumb'), r = $('#rail'), h = r.clientHeight;
     t.style.top = (n > 1 ? S.idx / (n - 1) * h : h / 2) + 'px'; r.setAttribute('aria-valuenow', S.idx + 1); r.setAttribute('aria-valuemax', n);
@@ -3277,7 +3284,7 @@ function updateOverlay() {
     $('#ovTR').textContent = [se.desc, [se.modality, img.cols + '×' + img.rows].filter(Boolean).join('  ')].filter(Boolean).join('\n');
   }
   const tag = S.preset === 'Full dynamic' ? ' [F]' : (S.preset && S.preset.startsWith('CT ') ? ' [' + S.preset + ']' : '');
-  const wl = img.spp === 3 && !img.fuse ? '' : 'WL: ' + Math.round(S.wc) + ' WW: ' + Math.round(S.ww) + tag;
+  const wl = img.spp === 3 && !img.fuse ? '' : 'WL: ' + wlTxt(S.wc) + ' WW: ' + wlTxt(S.ww) + tag;
   const tl = [img.thickness ? 'T: ' + img.thickness.toFixed(1) + 'mm' : '', img.location != null ? 'L: ' + img.location.toFixed(1) + 'mm' : ''].filter(Boolean).join(' ');
   $('#ovBL').textContent = [wl, tl].filter(Boolean).join('\n');
   const ori = [angDeg() ? 'Rot ' + angDeg() + '°' : '', S.fh < 0 ? 'Flip H' : '', S.fv < 0 ? 'Flip V' : ''].filter(Boolean).join('  ');
@@ -3312,12 +3319,70 @@ function selectSeries(i) {
   if (S.cmps.some(C => C.se === se)) { S.cmps = S.cmps.filter(C => C.se !== se); setTimeout(cmpLayout, 0); }
   if (S.c3 && se.studyUid !== S.c3.study) S.c3 = null;
   if (S.rf) { S.rf.main.se = se; S.rf.fit = true; } // coronal/sagittal: the series picked is the one reformatted
-  S.si = i; S.idx = 0; S.draft = null; setTimeout(subUI, 0); S.painted = false; S.dir = 1; S.ang = 0; S.fh = 1; S.fv = 1; S.invert = false; $('#actInvert').setAttribute('aria-pressed', 'false');
+  S.si = i; S.idx = (se.modality || (se.images[0] || {}).modality) === 'MR' ? Math.floor((se.images.length - 1) / 2) : 0; S.draft = null; /* an MRI opens at its middle: its first slice is usually the edge of the head (black) */ setTimeout(subUI, 0); S.painted = false; S.dir = 1; S.ang = 0; S.fh = 1; S.fv = 1; S.invert = false; $('#actInvert').setAttribute('aria-pressed', 'false');
   const d = seriesWindow(se, se.images[S.idx]); se.def = d;
   S.wc = d.wc; S.ww = d.ww; S.preset = 'Default'; S.dirty = true; fit();
   // a CT (or fused PET-CT) opens with its body filling the view, as soon as its slices are there to measure
   S.bodyFit = se.isFuse || ((se.images[0] && se.images[0].modality) || se.modality) === 'CT'; S.bodyFitT = performance.now(); if (S.bodyFit) setTimeout(render, 3100); // (looked at again after 3 s even if nothing else redraws)
   buildPresets(); render(); pump();
+}
+/* ---------- MRI: one button per sequence (T1, T1 FS, T1+C, T2, FLAIR, DWI, ADC, SWI) ----------
+   Each series of the study is recognised from its description and, where that says little, from its scan settings
+   (TR, TE, TI, b-value, fat suppression, contrast). A button shows the best series of that kind: scanned axially if
+   there is one, else a 3D series shown in axial. Tapping the same button again goes to the next series of that kind. */
+const MR_KINDS = [['T1', 'T1'], ['T1FS', 'T1 FS'], ['T1C', 'T1+C'], ['T2', 'T2'], ['FLAIR', 'FLAIR'], ['DWI', 'DWI'], ['ADC', 'ADC'], ['SWI', 'SWI']];
+const isMRse = se => !!se && !se.derived && (se.modality || (se.images[0] || {}).modality) === 'MR';
+function mrInfo(se) { // what a series is, worked out once: { kind, fs, post, junk }
+  if (se.__mrk && se.__mrk.n === se.images.length) return se.__mrk;
+  const m = se.mr || {}, d = ' ' + String(se.baseDesc != null ? se.baseDesc : se.desc || '').toLowerCase().replace(/[_\-.]+/g, ' ') + ' ', a = se.images[0] || {};
+  const it = String(m.it || '').toUpperCase(), so = String(m.so || '').toUpperCase(), tr = +m.tr || 0, te = +(m.te != null ? m.te : a.te) || 0, ti = +m.ti || 0;
+  const b = Math.max(0, ...se.images.slice(0, 50).map(x => +x.bvalue || 0));
+  const junk = se.images.length < 5 || / (survey|scout|loc|localizer|localiser|3 ?plane|plan|cal|calibration|ref|asset|sense ref|coil) /.test(d) || /\bSECONDARY\b/.test(it) && se.images.length < 8;
+  const fs = /( fs | fat ?sat| fatsat| spir| spair| stir| fs$|fs |dixon w| w | water)/.test(d) || /\b(FS|SFS|FSA|FSS|SPIR|SPAIR)\b/.test(so.replace(/\\/g, ' '));
+  const post = /( post | \+ ?c | c\+ |\+c| gad| gd |contrast| ce | post ?gd|\+gd)/.test(d) || !!(m.ca && String(m.ca).trim());
+  let kind = null;
+  if (/\bADC\b/.test(it) || / (adc|apparent|eadc|ddwi|edwi|exp ?adc) /.test(d)) kind = 'ADC';
+  else if (/ (dwi|diff|diffusion|trace|isodwi|b ?1000|ep2d diff) /.test(d) || b >= 400) kind = 'DWI';
+  else if (/(swi|swan|susc|venobold| sws |t2 ?\*|t2star|hemo|haemo|gre t2|ffe t2|mffe)/.test(d) || /\bSW[IP]?_/.test(it)) kind = 'SWI';
+  else if (/ (flair|tirm|dark ?fluid|t2 ?fl) /.test(d) || (ti > 1400 && te > 60)) kind = 'FLAIR';
+  else if (/ (t1|t1w|mprage|mp ?rage|tfe|spgr|fspgr|bravo|vibe|flash|t1 ?se|t1 ?tse|t1 ?ffe|lava|thrive) /.test(d) || / t1/.test(d) || (tr > 0 && tr < 900 && te > 0 && te < 30)) kind = 'T1';
+  else if (/ (t2|t2w|t2 ?tse|t2 ?frfse|haste|ssfse|space|cube) /.test(d) || / t2/.test(d) || (tr > 1800 && te > 60)) kind = 'T2';
+  else if (/ stir /.test(d)) kind = 'T2';
+  if (kind === 'T1' && fs && !post) kind = 'T1FS';
+  if (kind === 'T1' && post) kind = 'T1C';
+  if (kind === 'DWI' && se.images.length && / direction | set /.test(' ' + String(se.desc || '').toLowerCase() + ' ')) kind = kind; // one direction of a split DWI: kept, but the trace comes first
+  return (se.__mrk = { kind, fs, post, junk, n: se.images.length });
+}
+function mrStudy() { const cs = curSeries(); if (!isMRse(cs)) return []; return S.series.filter(se => isMRse(se) && se.studyUid === cs.studyUid); }
+// the same T1 sequence run twice with no word for contrast: the later one is taken as after contrast
+function mrPostByRepeat(list) {
+  const t1 = list.filter(se => { const k = mrInfo(se).kind; return k === 'T1' || k === 'T1FS'; });
+  const key = se => String(se.baseDesc != null ? se.baseDesc : se.desc || '').toLowerCase() + '|' + natPlane(se);
+  const by = new Map(); for (const se of t1) { const k = key(se); if (!by.has(k)) by.set(k, []); by.get(k).push(se); }
+  const post = new Set(); for (const g of by.values()) if (g.length > 1) { g.sort((a, b) => ((a.mr && +a.mr.n) || a.num || 0) - ((b.mr && +b.mr.n) || b.num || 0)); g.slice(1).forEach(x => post.add(x)); }
+  return post;
+}
+function mrCands(kind, list) {
+  list = list || mrStudy(); const post = mrPostByRepeat(list);
+  const kindOf = se => { const i = mrInfo(se); if (i.junk) return null; if (post.has(se) && (i.kind === 'T1' || i.kind === 'T1FS')) return 'T1C'; return i.kind; };
+  const score = se => { const ax = natPlane(se) === 'ax', n = se.images.length, d = String(se.desc || '').toLowerCase(), m = se.mr || {};
+    return (ax ? 40 : n >= 60 ? 20 : 0) + (/\bDERIVED|SECONDARY\b/.test(String(m.it || '').toUpperCase()) ? -15 : 0) + (/ direction | set /.test(' ' + d + ' ') ? -25 : 0)
+      + (kind === 'DWI' && /(iso|trace|tracew)/.test(d) ? 15 : 0) + (kind === 'ADC' && /adc/.test(d) ? 10 : 0) + (kind === 'ADC' && /edwi|eadc|exp/.test(d) ? -5 : 0) + Math.min(10, n / 10); };
+  let c = list.filter(se => kindOf(se) === kind);
+  const proj = se => /PROJECTION/.test(String((se.mr || {}).it || '').toUpperCase()), part = se => / (direction|set) \d/.test(' ' + String(se.desc || '').toLowerCase());
+  if (c.some(x => !proj(x))) c = c.filter(x => !proj(x)); // MIPs and saved views: only when nothing else of the kind
+  if (c.some(x => !part(x))) c = c.filter(x => !part(x)); // one direction of a DWI: only when there is no trace
+  return c.sort((a, b) => score(b) - score(a));
+}
+function mrPick() { for (const k of ['FLAIR', 'T2', 'T1', 'DWI']) { const c = mrCands(k)[0]; if (c && natPlane(c) === 'ax') return c; } return null; } // the series an MRI opens on
+function mrShow(kind) {
+  const c = mrCands(kind); if (!c.length) return;
+  const cs = curSeries(), at = c.indexOf(cs), se = at >= 0 ? c[(at + 1) % c.length] : c[0]; // again: the next series of this kind
+  if (S.vol) mprToggle(false);
+  if (se !== cs) selectSeries(S.series.indexOf(se));
+  S.mrKind = kind;
+  if (natPlane(se) !== 'ax') planeOpen('ax'); // a 3D sagittal (or coronal) T1: shown in axial
+  buildPresets(); render();
 }
 function buildPresets() {
   const se = curSeries(), box = $('#presets'); box.textContent = ''; S.keys = {};
@@ -3325,26 +3390,38 @@ function buildPresets() {
   const add = (key, label, wc, ww, fn) => {
     const b = document.createElement('button'); b.className = 'chip'; b.type = 'button'; b.dataset.key = label;
     b.append(label);
-    if (wc != null) { const s = document.createElement('small'); s.textContent = Math.round(wc) + '/' + Math.round(ww); b.append(s); }
+    if (wc != null) { const s = document.createElement('small'); s.textContent = (Math.abs(ww) < 10 ? +(+wc).toFixed(2) + '/' + +(+ww).toFixed(2) : Math.round(wc) + '/' + Math.round(ww)); b.append(s); }
     b.addEventListener('click', fn); box.append(b);
     if (key != null) { S.keys[key] = fn; b.title = 'Key ' + key; }
   };
   if (se.isFuse) { // fused: the CT presets as on the CT (they set the CT under the colour), then the PET strength and mix
     const d = se.fuseCT.def || se.def; add(0, 'Default', d.wc, d.ww, () => setWindow(d.wc, d.ww, 'Default'));
     CT_PRESETS.forEach(([n, c, w], i) => add(i + 2, n, c, w, () => setWindow(c, w, n)));
-    add(null, 'Custom…', null, null, () => { $('#wlC').value = Math.round(S.wc); $('#wlW').value = Math.round(S.ww); openSheet('#sheetWL'); });
+    add(null, 'Custom…', null, null, () => { $('#wlC').value = wlTxt(S.wc); $('#wlW').value = wlTxt(S.ww); openSheet('#sheetWL'); });
     fusePresets(box); return;
   }
+  if (isMRse(se)) { const list = mrStudy(); for (const [k, label] of MR_KINDS) { const c = mrCands(k, list); if (!c.length) continue;
+    const b = document.createElement('button'); b.className = 'chip seq'; b.type = 'button'; b.dataset.seq = k; b.textContent = label + (c.length > 1 ? ' ·' + c.length : '');
+    b.title = c.map(x => x.desc).join('\n'); b.setAttribute('aria-pressed', String(c.includes(se)));
+    b.addEventListener('click', () => mrShow(k)); box.append(b); }
+    // DWI beside ADC: the pair read together for restricted diffusion (bright on DWI, dark on ADC), side by side and scrolling together
+    const dw = mrCands('DWI', list)[0], ad = mrCands('ADC', list)[0];
+    if (dw && ad) { const b = document.createElement('button'); b.className = 'chip seq'; b.type = 'button'; b.dataset.seq = 'DWIADC'; b.textContent = 'DWI | ADC';
+      b.setAttribute('aria-pressed', String(se === dw && S.cmps.length === 1 && S.cmps[0].se === ad));
+      b.addEventListener('click', () => { if (S.vr) vrClose(); if (S.vol) mprToggle(false); if (S.rf) rfStop(); S.mrKind = 'DWIADC';
+        if (curSeries() !== dw) selectSeries(S.series.indexOf(dw));
+        S.cmps = []; cmpAdd(ad, 0); if (!S.cmpSync) { S.cmpSync = true; try { cmpSyncUI(); } catch (e) { } } buildPresets(); render(); });
+      box.insertBefore(b, box.querySelector('.chip.seq[data-seq="ADC"]') ? box.querySelector('.chip.seq[data-seq="ADC"]').nextSibling : null); } }
   add(0, 'Default', se.def.wc, se.def.ww, () => setWindow(se.def.wc, se.def.ww, 'Default'));
   add(1, 'Full dynamic', null, null, () => { const [lo, hi] = minmax(cur()); setWindow((lo + hi) / 2, Math.max(1, hi - lo), 'Full dynamic'); });
   if (se.modality === 'CT') CT_PRESETS.forEach(([n, c, w], i) => add(i + 2, n, c, w, () => setWindow(c, w, n)));
   add(null, 'Negative', null, null, () => toggleInvert());
-  add(null, 'Custom…', null, null, () => { $('#wlC').value = Math.round(S.wc); $('#wlW').value = Math.round(S.ww); openSheet('#sheetWL'); });
+  add(null, 'Custom…', null, null, () => { $('#wlC').value = wlTxt(S.wc); $('#wlW').value = wlTxt(S.ww); openSheet('#sheetWL'); });
   markPresets();
 }
 function markPresets() {
   if (curSeries() && curSeries().isFuse) { document.querySelectorAll('#presets .chip').forEach(b => b.setAttribute('aria-pressed', b.dataset.key === 'max' + S.fuse.max || b.dataset.key === 'mix' + S.fuse.mix || b.dataset.key === S.preset)); return; }
-  document.querySelectorAll('#presets .chip').forEach(b => {
+  document.querySelectorAll('#presets .chip:not(.seq)').forEach(b => {
     b.setAttribute('aria-pressed', b.dataset.key === 'Negative' ? S.invert : b.dataset.key === S.preset);
   });
 }
@@ -3694,9 +3771,24 @@ function volPlan(se, minK = 0) {
   const prev = k === 0 && im[0].pixels && im[0].pixels.buffer, reuse = prev && prev.byteLength === n * w * h * Arr.BYTES_PER_ELEMENT && prev !== (S.vol && S.vol.data.buffer) &&
     im.every((x, z) => x.pixels && x.pixels.buffer === prev && x.pixels.byteOffset === z * w * h * Arr.BYTES_PER_ELEMENT && x.pixels instanceof Arr);
   const data = reuse ? new Arr(prev) : new Arr(n * w * h); if (!reuse) data.fill(empty);
-  return { se, n, w, h, k, data, Arr, sl, ic, lo, hi, filled: reuse ? new Uint8Array(n).fill(1) : new Uint8Array(n), count: reuse ? n : 0, reused: !!reuse, index: new Map(im.map((x, i) => [x, i])),
+  return volAnatomy({ se, n, w, h, k, data, Arr, sl, ic, lo, hi, filled: reuse ? new Uint8Array(n).fill(1) : new Uint8Array(n), count: reuse ? n : 0, reused: !!reuse, index: new Map(im.map((x, i) => [x, i])),
     flip: locs.every(v => v != null) && locs[n - 1] > locs[0], // first slice is inferior: put superior at the top
-    sx: sp[1] * 2 ** k, sy: sp[0] * 2 ** k, dz, cx: a.cols / 2, cy: a.rows / 2, ver: 0, empty, nCor: [0, 1, 0], nSag: [1, 0, 0], nAx: [0, 0, 1] };
+    sx: sp[1] * 2 ** k, sy: sp[0] * 2 ** k, dz, cx: a.cols / 2, cy: a.rows / 2, ver: 0, empty, nCor: [0, 1, 0], nSag: [1, 0, 0], nAx: [0, 0, 1] });
+}
+// A series not scanned axially (an MRI in sagittal or coronal): the volume's own axes are the image's columns, rows and
+// slices, so 'coronal' in those axes is not the patient's coronal. The patient's axial, coronal and sagittal are worked
+// out from the DICOM orientation and set as the planes (and how each is turned on screen). An axial series keeps the
+// plain axes, exactly as before.
+function natPlane(se) { const a = se && se.images[0]; if (!a || !a.iop) return 'ax'; const r = a.iop, n = [r[1] * r[5] - r[2] * r[4], r[2] * r[3] - r[0] * r[5], r[0] * r[4] - r[1] * r[3]].map(Math.abs); return n[2] >= n[0] && n[2] >= n[1] ? 'ax' : n[1] >= n[0] ? 'cor' : 'sag'; }
+function volAnatomy(V) {
+  const im = V.se.images, a = im[0], b = im[V.n - 1]; if (!a.iop || !a.ipp || !b.ipp || natPlane(V.se) === 'ax') return V;
+  const u = a.iop.slice(0, 3), w = a.iop.slice(3, 6); let e = v3.add(b.ipp, a.ipp, -1); if (V.n < 2 || !(Math.hypot(...e) > 1e-6)) e = v3.cross(u, w); else { e = v3.norm(e); if (!V.flip) e = v3.scale(e, -1); }
+  const toV = p => v3.norm([v3.dot(p, u), v3.dot(p, w), v3.dot(p, e)]); // a patient direction (LPS) in the volume's axes
+  V.nCor = toV([0, 1, 0]); V.nSag = toV([1, 0, 0]); V.nAx = toV([0, 0, 1]);
+  V.base = { nCor: V.nCor, nSag: V.nSag, nAx: V.nAx };
+  // on screen as radiologists read them: patient's left on the right; head up; axial seen from the feet, front at the top
+  V.vdef = { cor: { a: toV([1, 0, 0]), b: toV([0, 0, -1]) }, sag: { a: toV([0, 1, 0]), b: toV([0, 0, -1]) }, oax: { a: toV([1, 0, 0]), b: toV([0, 1, 0]) } };
+  return V;
 }
 // Puts the values of slice z (any size that is the volume size times a power of 2) into the volume.
 function volPut(img, data, w, h) {
@@ -3779,14 +3871,15 @@ const ZUP = [0, 0, 1];
 const VDEF = { cor: { n: [0, 1, 0], a: [1, 0, 0], b: [0, 0, -1] }, sag: { n: [1, 0, 0], a: [0, 1, 0], b: [0, 0, -1] }, oax: { n: [0, 0, 1], a: [1, 0, 0], b: [0, 1, 0] } };
 // The reconstructed views: coronal, sagittal, and the axial once it is tilted (oax: shown over the native axial)
 const MVK = ['cor', 'sag', 'oax'];
-const axTilted = () => { const V = S.vol; return !!V && Math.abs(Math.abs(V.nAx[2]) - 1) > 1e-6; };
+const axTilted = () => { const V = S.vol; return !!V && Math.abs(Math.abs(V.nAx[2]) - 1) > 1e-6; }; // (a series not scanned axially: its true axial is always resampled)
+const offBase = (V, k, i) => { const B = V.base; return B ? Math.abs(Math.abs(v3.dot(V[k], B[k])) - 1) > 1e-6 : Math.abs(Math.abs(V[k][i]) - 1) > 1e-6; };
 function axObliqueUI() { const on = axTilted(); const el = $('#mvAx'); if (el.hidden === on) { el.hidden = !on; if (MV.oax) { MV.oax.needSync = on; MV.oax.key = null; } } } // shown: start at the native axial's zoom and position
 // slice index <-> Z, native axial pixel <-> X/Y (voxel centres at whole multiples of the voxel size)
 const zOf = k => (S.vol.flip ? k : S.vol.n - 1 - k) * S.vol.dz;
 const kOf = Z => S.vol.flip ? Z / S.vol.dz : S.vol.n - 1 - Z / S.vol.dz;
 const xOf = cx => (cx / 2 ** S.vol.k - 0.5) * S.vol.sx, yOf = cy => (cy / 2 ** S.vol.k - 0.5) * S.vol.sy;
 const cxOf = X => (X / S.vol.sx + 0.5) * 2 ** S.vol.k, cyOf = Y => (Y / S.vol.sy + 0.5) * 2 ** S.vol.k;
-const isOblique = () => { const V = S.vol; return !!V && (Math.abs(Math.abs(V.nCor[1]) - 1) > 1e-6 || Math.abs(Math.abs(V.nSag[0]) - 1) > 1e-6 || Math.abs(Math.abs(V.nAx[2]) - 1) > 1e-6); };
+const isOblique = () => { const V = S.vol; return !!V && (offBase(V, 'nCor', 1) || offBase(V, 'nSag', 0) || offBase(V, 'nAx', 2)); };
 // Puts the crosshair at world point P (mm). The axial view follows to the nearest slice.
 function setP(P, from) {
   const V = S.vol; if (!V) return;
@@ -3801,7 +3894,7 @@ function setCross(cx, cy, from) { const V = S.vol; if (!V) return; setP([xOf(cx)
 // Geometry of a plane view: unit axes a (right), b (down), normal n; sample spacing hu, hv (mm);
 // plane pixel (x, y) is the world point c*n + a*(x + s0)*hu + b*(y + t0)*hv, c = P.n.
 function planeGeom(v) {
-  const V = S.vol, n = v.kind === 'cor' ? V.nCor : v.kind === 'sag' ? V.nSag : V.nAx, d = VDEF[v.kind];
+  const V = S.vol, n = v.kind === 'cor' ? V.nCor : v.kind === 'sag' ? V.nSag : V.nAx, d = (V.vdef || VDEF)[v.kind];
   const proj = (w, ...o) => { let r = w; for (const u of o) r = v3.add(r, u, -v3.dot(r, u)); return v3.norm(r); };
   let a = proj(d.a, n), b = proj(d.b, n, a);
   if (v.rot) { const hand = Math.sign(v3.dot(v3.cross(a, b), n)) || 1; a = v3.norm(v3.rot(a, n, -v.rot * hand)); b = v3.norm(v3.rot(b, n, -v.rot * hand)); } // same turning direction on screen in every view
@@ -4051,7 +4144,7 @@ function moveTurn(t, p) {
   $('#planesReset').hidden = !isOblique();
   render();
 }
-function planesReset() { const V = S.vol; if (!V) return; V.nCor = [0, 1, 0]; V.nSag = [1, 0, 0]; V.nAx = [0, 0, 1]; axObliqueUI(); $('#planesReset').hidden = true; render(); }
+function planesReset() { const V = S.vol; if (!V) return; const B = V.base; V.nCor = B ? B.nCor : [0, 1, 0]; V.nSag = B ? B.nSag : [1, 0, 0]; V.nAx = B ? B.nAx : [0, 0, 1]; axObliqueUI(); $('#planesReset').hidden = true; render(); }
 
 function drawMPR() {
   const V = S.vol; if (!V) return; const tMpr = performance.now();
@@ -4332,7 +4425,7 @@ function mvInput(v) {
 
 function mvStep(v, k) { // move a view's plane k voxels along its normal (wheel, arrow keys)
   const V = S.vol; if (!V || !v.g) return;
-  setP(v3.add(V.P, v.g.n, k * (v.kind === 'oax' ? V.dz : Math.min(V.sx, V.sy))), v.kind);
+  setP(v3.add(V.P, v.g.n, k * (V.base ? [V.sx, V.sy, V.dz][planeAxis(v)] : v.kind === 'oax' ? V.dz : Math.min(V.sx, V.sy))), v.kind);
 }
 function mvZoomAt(v, x, y, s) {
   s = clamp(s, 0.05, 60); v.ox = x - (x - v.ox) * (s / v.s); v.oy = y - (y - v.oy) * (s / v.s); v.s = s; v.fit = false; linkZoom(v.kind); render();
@@ -4366,7 +4459,7 @@ function mprToggle(on) {
   const se0 = curSeries(); if (!se0) return; const se = volSe(se0);
   if (S.vr) { const V3 = S.vr.V; vrClose(); S.keepVol = V3 && V3.se === se ? V3 : null; } /* one heavy view at a time: 3D gives way (its volume serves MPR when it is the same series) */
   const K = S.keepVol, again = !!(K && K.se === se); if (!again) S.keepVol = null; // the old volume goes first: two at once is what ran out of memory
-  const plan = again ? Object.assign(K, { nCor: [0, 1, 0], nSag: [1, 0, 0], nAx: [0, 0, 1], order: null }) : volPlanSafe(se);
+  const plan = again ? Object.assign(K, K.base ? { nCor: K.base.nCor, nSag: K.base.nSag, nAx: K.base.nAx, order: null } : { nCor: [0, 1, 0], nSag: [1, 0, 0], nAx: [0, 0, 1], order: null }) : volPlanSafe(se);
   if (typeof plan === 'string') { say(plan, 5000); return; }
   if (se0.isFuse && !(plan.pet && plan.pet.se === se0.fusePT)) { let pp; try { pp = volPlan(se0.fusePT); } catch (e) { pp = 'no memory'; } plan.pet = typeof pp === 'string' ? null : pp; } // fused: the PET's own volume, for the colour on every plane
   if (S.cmps.length) cmpStop();
@@ -4382,6 +4475,7 @@ function mprToggle(on) {
   }
   if (isCTlike(se0)) { const tok = plan.tok = {}; requestAnimationFrame(() => requestAnimationFrame(() => { if (S.vol && S.vol.tok === tok) { fitBody(); render(); } })); } // the axial too, in its new size
   if (!again) S.keepVol = null; // another series: the old volume is let go
+  axObliqueUI(); // a series not scanned axially: the axial view is the resampled one
   volFillFromMemory(); if (plan.pet) volFillFromMemory(plan.pet); if (typeof volCacheLoad === 'function') volCacheLoad(plan); render(); pump();
 }
 $('#btnMPR').addEventListener('click', () => { if (S.planeMode) { planeModeOff(); $('#btnMPR').setAttribute('aria-pressed', 'true'); $('#vswitch').hidden = false; viewSet(null, true); planeBarUI(); return; } mprToggle(); });
@@ -4389,16 +4483,20 @@ $('#btnMPR').addEventListener('click', () => { if (S.planeMode) { planeModeOff()
    (scroll with glide, window, presets, length, HU, ROI, angle, arrow, pan, zoom, rotate, cine, share) works there.
    With series compared beside it, the coronal/sagittal compare (rf.js) takes over. */
 function planeCorners(v, c2) { // the single coronal/sagittal view: the same corner text as the axial view
-  const V = S.vol, cor = v.kind === 'cor', N = cor ? V.h : V.w, k = planeIndex(v) + 1, f = mvFitScale(v);
+  const V = S.vol, cor = v.kind === 'cor', N = [V.w, V.h, V.n][planeAxis(v)], k = planeIndex(v) + 1, f = mvFitScale(v);
   c2.font = '500 11px "IBM Plex Mono", ui-monospace, monospace'; c2.fillStyle = '#d9e2e6'; c2.shadowColor = '#000'; c2.shadowBlur = 3;
   if (V.se && V.se.desc) { c2.textBaseline = 'top'; c2.textAlign = 'left'; c2.fillText(V.se.desc, 10, 26); }
-  c2.textBaseline = 'bottom'; c2.textAlign = 'left'; c2.fillText('WL: ' + Math.round(S.wc) + ' WW: ' + Math.round(S.ww), 10, v.H - 8);
-  c2.textAlign = 'right'; c2.fillText((isOblique() ? '' : (cor ? 'Cor ' : 'Sag ') + k + ' / ' + N), v.W - 10, v.H - 24); if (f) c2.fillText('Zoom ' + (v.s / f).toFixed(2) + '×', v.W - 10, v.H - 8);
+  c2.textBaseline = 'bottom'; c2.textAlign = 'left'; c2.fillText('WL: ' + wlTxt(S.wc) + ' WW: ' + wlTxt(S.ww), 10, v.H - 8);
+  c2.textAlign = 'right'; c2.fillText((isOblique() ? '' : (cor ? 'Cor ' : v.kind === 'sag' ? 'Sag ' : 'Ax ') + k + ' / ' + N), v.W - 10, v.H - 24); if (f) c2.fillText('Zoom ' + (v.s / f).toFixed(2) + '×', v.W - 10, v.H - 8);
   c2.shadowBlur = 0; c2.textAlign = 'left'; c2.textBaseline = 'top';
 }
 const CS_SPEED = 1.25; // coronal/sagittal scroll speed against the axial (1 = the whole range in the axial stack's finger distance)
-function planeCount(v) { const V = S.vol; if (!V || !v.g) return 1; if (isOblique() && v.kind !== 'oax') return Math.max(v.g.iw, 64); return v.kind === 'cor' ? V.h : v.kind === 'sag' ? V.w : V.n; }
-function planeIndex(v) { const V = S.vol, cor = v.kind === 'cor', N = cor ? V.h : V.w; return clamp(Math.round(cor ? V.P[1] / V.sy : V.P[0] / V.sx), 0, N - 1); }
+// which of the volume's axes a view steps along (a series scanned axially: coronal = rows, sagittal = columns, axial = slices;
+// scanned sagittally or coronally: whichever axis the view's plane faces)
+function planeAxis(v) { const V = S.vol, n = v.kind === 'cor' ? V.nCor : v.kind === 'sag' ? V.nSag : V.nAx; if (!V.base) return v.kind === 'cor' ? 1 : v.kind === 'sag' ? 0 : 2;
+  const b = V.base[v.kind === 'cor' ? 'nCor' : v.kind === 'sag' ? 'nSag' : 'nAx'], m = b.map(Math.abs); void n; return m[0] >= m[1] && m[0] >= m[2] ? 0 : m[1] >= m[2] ? 1 : 2; }
+function planeCount(v) { const V = S.vol; if (!V || !v.g) return 1; if (isOblique() && (v.kind !== 'oax' || V.base)) return Math.max(v.g.iw, 64); return [V.w, V.h, V.n][planeAxis(v)]; }
+function planeIndex(v) { const V = S.vol, i = planeAxis(v), N = [V.w, V.h, V.n][i]; return clamp(Math.round(V.P[i] / [V.sx, V.sy, V.dz][i]), 0, N - 1); }
 // The side scroller of the single coronal/sagittal view, as on the axial: shows where you are, and its thumb can be dragged.
 function planeRail(v) {
   if (!v.rail) {
@@ -4424,9 +4522,10 @@ function planeRail(v) {
 }
 function planeModeOff() { if (!S.planeMode) return; S.planeMode = false; S.pslab = null; if (S.planeXh != null) { S.xhair = S.planeXh; $('#xhairBtn').setAttribute('aria-pressed', S.xhair); S.planeXh = null; } }
 function planeOpen(plane) {
-  if (plane !== 'ax' && typeof consHold === 'function' && consHold(() => planeOpen(plane), plane === 'cor' ? 'Coronal' : 'Sagittal')) return;
+  const nat = S.cmps.length ? 'ax' : natPlane(curSeries()), native = plane === nat; // the plane the series was scanned in: shown as it is (an MRI may be sagittal or coronal)
+  if (!native && typeof consHold === 'function' && consHold(() => planeOpen(plane), plane === 'cor' ? 'Coronal' : plane === 'sag' ? 'Sagittal' : 'Axial')) return;
   if (S.cmps.length) { if (plane === 'ax') rfStop(); else rfStart(plane); return; }
-  if (plane === 'ax') { if (S.rf) rfStop(); if (S.vol && S.planeMode) { const sl = S.pslab; mprToggle(false); if (sl) slabApply(sl.mode, sl.t); } planeBarUI(); return; } // a slab carries over to the axial
+  if (native) { if (S.rf) rfStop(); if (S.vol && S.planeMode) { const sl = S.pslab; mprToggle(false); if (sl) slabApply(sl.mode, sl.t); } planeBarUI(); return; } // a slab carries over to the axial
   if (!(S.vol && S.planeMode)) {
     if (S.rf) { S.rf = null; cmpLayout(); }
     const se0 = curSeries(), sl = se0 && se0.isSlab ? { mode: se0.slabMode, t: se0.slabT } : null; // an axial slab carries over: cut across the plane instead
@@ -5789,7 +5888,7 @@ function drawPane(C) {
   const small = v.W < 300;
   const lines = [C.se.desc || 'Series', (small ? '' : 'Im ') + (C.idx + 1) + ' / ' + ims.length + (!small && im.location != null ? '  L: ' + im.location.toFixed(1) + 'mm' : '')];
   if (S.cmpSync && C.delta != null && C.delta > 0.05) lines.push('Δ ' + C.delta.toFixed(1) + ' mm');
-  if (!sh) lines.push('W ' + Math.round(wc) + ' / ' + Math.round(ww));
+  if (!sh) lines.push('W ' + (Math.abs(ww) < 10 ? +(+wc).toFixed(2) + ' / ' + +(+ww).toFixed(2) : Math.round(wc) + ' / ' + Math.round(ww)));
   const other = !samePatient(C.se, curSeries()); if (other) lines.unshift('⚠ Different patient' + (S.anon ? '' : ': ' + patName(C.se)));
   v.info.classList.toggle('warn', other);
   v.info.textContent = lines.join('\n');
@@ -5990,7 +6089,7 @@ function cmpRemove(slot) { S.cmps = S.cmps.filter(C => C.slot !== slot); if (!S.
 function cmpStop() { S.cmps = []; S.rf = null; cmpLayout(); }
 // The Axial | Coronal | Sagittal bar: on the screen whenever a series is open (MPR has its own)
 function planeBarUI() { const b = $('#cmpbar'), h = !curSeries() || (!!S.vol && !S.planeMode), solo = !S.cmps.length; if (b.hidden !== h) b.hidden = h;
-  const pl = S.rf ? S.rf.plane : S.vol && S.planeMode ? ($('#views').dataset.main || 'ax') : 'ax';
+  const pl = S.rf ? S.rf.plane : S.vol && S.planeMode ? ($('#views').dataset.main || 'ax') : natPlane(curSeries());
   b.querySelectorAll('[data-plane]').forEach(x => { const on = String(x.dataset.plane === pl); if (x.getAttribute('aria-pressed') !== on) x.setAttribute('aria-pressed', on); });
   for (const id of ['#cmpSync', '#cmpClose']) { const e = $(id); if (e.hidden !== solo) e.hidden = solo; } } // Synced and Close belong to Compare
 // Synced (the default): every series follows the main slice position (mm). Not synced: each scrolls on its own.
@@ -7185,7 +7284,8 @@ function seriesFor(info, key, label) {
   if (!se) {
     se = { uid, num: info.seriesNumber, desc: (info.seriesDesc || '') + (label ? (info.seriesDesc ? ' · ' : '') + label : ''), modality: info.modality, patient: info.patientName, patientId: info.patientId, studyUid: info.studyUid, sex: (info.sex || '').trim(), age: (info.age || '').trim() || ageFrom(info.birthDate, info.studyDate),
       studyDesc: info.studyDesc, studyDate: (info.studyDate || '').replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3'), images: [], dirty: true,
-      win: clamp(Math.floor(BUDGET / (info.rows * info.cols * 2 * info.spp) / 2.4), 8, 250) };
+      win: clamp(Math.floor(BUDGET / (info.rows * info.cols * 2 * info.spp) / 2.4), 8, 250),
+      mr: info.modality === 'MR' ? { tr: info.tr, te: info.te, ti: info.ti, ss: info.scanSeq, sv: info.seqVar, so: info.scanOpt, a3: info.acq3d, sn: info.seqName, it: info.imageType, ca: info.contrastAgent, fa: info.flipAngle, t: info.seriesTime, n: info.seriesNumber } : null };
     S.series.push(se); created = true;
   }
   se.dirty = true;
@@ -7262,8 +7362,15 @@ function splitMixed(se) {
     ['b', i => i.bvalue != null ? String(Math.round(i.bvalue)) : '', i => 'b=' + Math.round(i.bvalue)],
     ['t', i => i.temporal != null ? String(i.temporal) : '', i => 'Phase ' + i.temporal]];
   const use = KEYS.filter(([, f]) => new Set(ims.map(f)).size > 1);
-  if (!use.length) return;
   const pos = i => i.ipp.map(v => Math.round(v * 100)).join(',');
+  if (!use.length) { // nothing tells them apart, yet each position comes 2-8 times (a DWI with its diffusion directions in one series):
+    // one series per set, in instance order at each position, so scrolling moves through the body instead of repeating each level
+    const byPos = new Map(); for (const im of ims) { const k = pos(im); if (!byPos.has(k)) byPos.set(k, []); byPos.get(k).push(im); }
+    const cs = [...byPos.values()], k = cs[0].length;
+    if (!(byPos.size >= 3 && k > 1 && k <= 8 && cs.every(a => a.length === k))) return;
+    const rank = new Map(); for (const a of cs) a.slice().sort((x, y) => (x.instance || 0) - (y.instance || 0)).forEach((im, j) => rank.set(im, j));
+    use.push(['set', i => String(rank.get(i)), i => (i.bvalue > 0 ? 'direction ' : 'set ') + (rank.get(i) + 1)]);
+  }
   const mixedPlanes = use.some(u => u[0] === 'iop'), repeats = new Set(ims.map(pos)).size < ims.length;
   if (!mixedPlanes && !repeats) return; // e.g. the echo time drifts slice by slice: one stack
   const t = use.find(u => u[0] === 't'); if (t && new Set(ims.map(t[1])).size > 12) use.splice(use.indexOf(t), 1); // a long dynamic run stays one series
@@ -7646,7 +7753,8 @@ async function addFiles(files, opts) {
   const list = [...files]; if (!list.length) return;
   const st = { ok: 0, n: 0, total: list.length, bad: [], last: 0, seen: new Set(), t0: performance.now(), memN: 0 }; LIVE_ST = st;
   const openMain = () => { // the largest series read so far, at its first slice
-    const main = [...st.seen].sort((a, b) => (petLike(a) - petLike(b)) || ((isVenous(b) && b.images.length >= 16) - (isVenous(a) && a.images.length >= 16)) || (b.images.length - a.images.length))[0]; // a PET-CT opens on its CT; a CT with phases on its venous phase
+    const mrAx = se => ((se.modality || (se.images[0] || {}).modality) === 'MR' && natPlane(se) === 'ax' && se.images.length >= 10) ? 1 : 0; // an MRI opens on an axial series
+    const main = [...st.seen].sort((a, b) => (petLike(a) - petLike(b)) || (mrAx(b) - mrAx(a)) || ((isVenous(b) && b.images.length >= 16) - (isVenous(a) && a.images.length >= 16)) || (b.images.length - a.images.length))[0]; // a PET-CT opens on its CT; a CT with phases on its venous phase
     // a newly opened case starts on its own: one plain view (Compare and MPR close; the earlier case stays in Series)
     if (!(opts && opts.restore)) { if (S.cmps.length || S.rf) { S.cmps = []; S.rf = null; cmpLayout(); } if (S.vr) vrClose(); if (S.vol) mprToggle(false); S.keepVol = null; S.subBack = null; }
     selectSeries(S.series.indexOf(main));
@@ -7686,6 +7794,14 @@ async function addFiles(files, opts) {
   if (st.opened) { // the other series came in behind: the slice on screen stays where it is
     const keep = cur(), touched = finishLoad(), se = curSeries();
     if (keep && touched.includes(se)) { const i = se.images.indexOf(keep); if (i >= 0) S.idx = i; }
+    { // an MRI that opened on a sagittal or coronal series (the zip's biggest folder): once all is in, an axial one instead,
+      // unless you have already started looking (touched the screen since it opened)
+      const isMR = x => (x.modality || (x.images[0] || {}).modality) === 'MR', now = curSeries();
+      if (now && isMR(now) && natPlane(now) !== 'ax' && LAST_INPUT.t < st.t0 + (st.tFirst || 0) && !S.vol && !S.vr && !S.cmps.length && !S.rf) {
+        const best = (typeof mrPick === 'function' && mrPick()) || [...st.seen].filter(x => isMR(x) && natPlane(x) === 'ax' && x.images.length >= 10).sort((a, b) => b.images.length - a.images.length)[0];
+        if (best && S.series.includes(best)) selectSeries(S.series.indexOf(best));
+      }
+    }
     render();
   } else finishLoad();
   showLoading(null);
