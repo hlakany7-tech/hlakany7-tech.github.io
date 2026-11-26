@@ -685,7 +685,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-1213</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-1240</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -699,7 +699,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1213</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1240</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2466,7 +2466,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1213', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1240', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -7690,39 +7690,6 @@ for (const inp of document.querySelectorAll('input[webkitdirectory]')) {
   inp.addEventListener('cancel', () => { PICK.on = false; if (PICK.shown) { PICK.shown = false; if (!LIVE_ST || LIVE_ST.done) showLoading(null); } });
   inp.addEventListener('change', () => { window.__svPickT = performance.now(); if (PICK.on) { try { FR.add('folder', 'files listed ' + ((performance.now() - PICK.t) / 1000).toFixed(1) + ' s after the picker opened', true); } catch (e) { } } PICK.on = false; PICK.shown = false; }, true);
 }
-// Newer Chrome (Android too): the folder is picked with the browser's folder chooser and its files are listed here, in the
-// background, a few at a time. The older way (the hidden folder input) had Android list every file at once, holding the
-// screen still for 7 s or more on a big study. Older browsers, and the web page inside another page, keep the older way.
-const FSA_SKIP = /^(DICOMDIR|LOCKFILE|VERSION|AUTORUN\.INF|\..*|.*\.(exe|dll|ini|txt|htm|html|xml|pdf|jpg|jpeg|png|gif|js|css|json|db|plist))$/i;
-const fsaOk = () => { try { return typeof window.showDirectoryPicker === 'function' && window.self === window.top && !window.__noFSA; } catch (e) { return false; } };
-async function openDirFSA() {
-  let dh; const t0 = performance.now();
-  try { dh = await window.showDirectoryPicker({ id: 'sliceview-folder', mode: 'read' }); }
-  catch (err) { if (err && err.name === 'AbortError') return true; return false; } // cancelled: nothing; refused: the older way
-  try { FR.add('folder', 'folder chosen after ' + ((performance.now() - t0) / 1000).toFixed(1) + ' s'); } catch (e) { }
-  const box = $('#loading'); box.hidden = false; $('#loadTxt').textContent = 'Reading the folder…'; $('#loadBar').style.width = '0%'; $('#loadHint').hidden = true;
-  const t1 = performance.now(), hs = [], dirs = [[dh, dh.name + '/']];
-  while (dirs.length) { // the folder and its subfolders: names only (quick)
-    const [d, path] = dirs.shift();
-    try { for await (const h of d.values()) { if (h.kind === 'directory') dirs.push([h, path + h.name + '/']); else if (!FSA_SKIP.test(h.name)) hs.push([h, path + h.name]); } } catch (e) { }
-    $('#loadTxt').textContent = 'Reading the folder · ' + hs.length + ' files';
-  }
-  const files = new Array(hs.length); let done = 0;
-  await pool(hs.map((x, i) => [x, i]), 16, async ([[h, path], i]) => { // then the files themselves, 16 at a time
-    try { const f = await h.getFile(); try { f.__path = path; } catch (e) { } files[i] = f; } catch (e) { }
-    if (++done % 50 === 0) { $('#loadTxt').textContent = 'Reading the folder · ' + done + ' / ' + hs.length; $('#loadBar').style.width = Math.round(done / hs.length * 100) + '%'; }
-  });
-  const list = files.filter(f => f && f.size > 0);
-  try { FR.add('folder', list.length + ' files listed in ' + ((performance.now() - t1) / 1000).toFixed(1) + ' s (in the background)'); } catch (e) { }
-  if (list.length) addFiles(list); else { showLoading(null); say('No files found in this folder', 5000); }
-  return true;
-}
-for (const inp of document.querySelectorAll('input[webkitdirectory]')) inp.addEventListener('click', e => {
-  if (!fsaOk()) return;
-  e.preventDefault(); e.stopImmediatePropagation(); if (inp.id === 'inFolder2') $('#sheetMore').hidden = true;
-  try { FR.add('folder', 'folder chooser opened'); } catch (x) { }
-  openDirFSA().then(ok => { if (!ok) { window.__noFSA = true; inp.click(); } }); // refused here: the older way from now on
-}, true);
 const pickBack = () => { if (!PICK.on || PICK.shown || document.hidden) return; PICK.shown = true;
   const box = $('#loading'); box.hidden = false; $('#loadTxt').textContent = 'Reading the folder…'; $('#loadBar').style.width = '0%'; $('#loadHint').hidden = true;
   setTimeout(() => { if (PICK.shown && PICK.on) { PICK.on = PICK.shown = false; if (!LIVE_ST || LIVE_ST.done) showLoading(null); } }, 45000); }; // never left up for ever
@@ -8913,7 +8880,7 @@ FR.bind({ series: () => S.series, ctx: () => { // what the viewer is doing, for 
   return [S.vol ? 'MPR' : '', S.rf ? 'Cor/Sag' : '', S.cmps && S.cmps.length ? 'compare x' + S.cmps.length : '', curSeries() && curSeries().isFuse ? 'fusion' : '', typeof VR !== 'undefined' && VR && VR.on ? '3D' : '',
     n.length + ' series/' + im + ' images', 'held ' + mb(memUsed()) + '/' + mb(memLimit()) + ' MB', performance.memory ? 'heap ' + mb(performance.memory.usedJSHeapSize) + '/' + mb(performance.memory.jsHeapSizeLimit) + ' MB' : ''].filter(Boolean).join(', ');
 } });
-window.__sliceview = { ld: () => [LOADSTAT, !!(LIVE_ST && LIVE_ST.done)], fitBody, dropAll: () => { for (const se of S.series) for (const im of se.images) if (coded(im) && im.pixels) { DEC.bytes -= im.pixels.byteLength; im.pixels = null; im.mm = null; } }, selectSeries, memUsed, memLimit, composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice, refSeg }, anon: { anonExport, dicomDump, anonPlan, anonOne }, cons: CONS, consIceRestart, pk: { pkInit, pkRun, consPackFast, consUnpackFast, PK }, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen }, FOL, derivFind };
+window.__sliceview = { fitBody, dropAll: () => { for (const se of S.series) for (const im of se.images) if (coded(im) && im.pixels) { DEC.bytes -= im.pixels.byteLength; im.pixels = null; im.mm = null; } }, selectSeries, memUsed, memLimit, composeView, roiStats, roiLabel, vr: { vrSlice, vrPut, vrUpload, vrLevel }, c3: { imgToWorld, worldToImg, place3D, nearestSlice, refSeg }, anon: { anonExport, dicomDump, anonPlan, anonOne }, cons: CONS, consIceRestart, pk: { pkInit, pkRun, consPackFast, consUnpackFast, PK }, feel: { feelDown, feelMove, feelUp }, rf: { rfPanes, rfVol, rfPump, rfGeom }, rpt: { pdfReport, rptText, rptPhone, R: RPT, rptToggle }, S, DICOM, addFiles, DEC, pump, GLR, render, J2K_SRC, MV, mprToggle, cmpStart, mpr: { setP, planeGeom, worldToPlane, planeToWorld, crossScreen, hitHandle, handlePositions, xOf, yOf, zOf, v3, axScreenDir, screenDir }, mvToImage, mvToScreen, view: { toImage, toScreen }, FOL, derivFind };
 })();
 </script>
 
