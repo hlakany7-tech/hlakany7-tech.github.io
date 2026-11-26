@@ -691,7 +691,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-1708</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-1727</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -705,7 +705,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1708</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1727</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2475,7 +2475,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1708', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1727', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -3422,10 +3422,9 @@ function cmpPickUI() { const t = S.cmps.length && !S.rf && S.cmpSel != null ? cm
   document.querySelectorAll('section.cmpv[id^="mvCmp"]').forEach(el => { const k = el.id.slice(5); el.classList.toggle('pick', t != null && t !== 'M' && String(t) === k); }); }
 function cmpTapSelect(el, slot) { // a short tap without moving: choose this view (scrolling, zooming and measuring are not touched)
   let d0 = null;
-  el.addEventListener('pointerdown', e => { d0 = S.cmps.length && !S.rf && (e.isPrimary !== false) ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
-    if (S.cmps.length && !S.rf && S.cmpLast !== slot) { S.cmpLast = slot; if (isMRse(curSeries()) || ctStudy().length) buildPresets(); } }, true); // the view you are using: its button stays lit
+  el.addEventListener('pointerdown', e => { d0 = S.cmps.length && !S.rf && (e.isPrimary !== false) ? { x: e.clientX, y: e.clientY, t: performance.now() } : null; }, true);
   el.addEventListener('pointerup', e => { if (!d0) return; const moved = Math.hypot(e.clientX - d0.x, e.clientY - d0.y), dt = performance.now() - d0.t; d0 = null;
-    if (moved < 10 && dt < 400 && S.cmps.length && !S.rf) { S.cmpSel = slot; cmpPickUI(); if (isMRse(curSeries())) buildPresets(); } }, true);
+    if (moved < 10 && dt < 400 && S.cmps.length && !S.rf) { S.cmpSel = slot; S.cmpLast = slot; cmpPickUI(); /* the lit button follows the view you choose, never the one you scroll */ if (isMRse(curSeries())) buildPresets(); } }, true);
 }
 cmpTapSelect($('#stage'), 'M');
 document.querySelectorAll('section.cmpv[id^="mvCmp"]').forEach(el => { const k = el.id.slice(5); if (k !== 'M') cmpTapSelect(el, +k); });
@@ -3446,9 +3445,10 @@ const seqCands = (kind, list) => CT_KINDS.some(x => x[0] === kind) ? ctCands(kin
 const SEQ_MANY = new Set(['ADC']); // the buttons that still step through several series when pressed again
 // one press, one series: the one with the most slices (the thinnest cuts). A 3D series counts whatever its plane (it is shown
 // in axial); a 2D series scanned in another plane only when there is no axial or 3D one (in axial it would be coarse).
-function seqBest(kind, c, axOnly) {
+function seqBest(kind, c, axOnly, plane) { // plane: the plane on screen (axial, coronal or sagittal): a series scanned in it, or a 3D one
+  plane = plane || 'ax';
   const is3d = se => /3D/i.test(String((se.mr && se.mr.a3) || '')) || (se.images.length >= 80 && !(se.mr && /2D/i.test(String(se.mr.a3 || ''))));
-  const ok = se => natPlane(se) === 'ax' || (!axOnly && is3d(se));
+  const ok = se => natPlane(se) === plane || (!axOnly && is3d(se));
   return c.slice().sort((a, b) => (ok(b) - ok(a)) || (b.images.length - a.images.length))[0];
 }
 function mrShow(kind) {
@@ -3460,13 +3460,15 @@ function mrShow(kind) {
     if (se !== inT) { if (T === 'M') viewSetMain(se); else cmpAdd(se, T, true); }
     S.mrKind = kind; cmpPickUI(); buildPresets(); render(); return;
   }
-  const cs = curSeries(), at = c.indexOf(cs), solo = !(S.cmps.length || S.rf || S.vol || S.vr), se = !SEQ_MANY.has(kind) ? seqBest(kind, c) : at >= 0 ? (solo ? c[(at + 1) % c.length] : cs) : c[0]; // one press, one series (ADC: again for the next)
+  // the plane you are in stays: T1 in sagittal, then FLAIR: FLAIR in sagittal (and MPR stays MPR)
+  const mpr3 = !!(S.vol && !S.planeMode), want = S.vol && S.planeMode ? ($('#views').dataset.main || 'ax') : S.vol ? 'ax' : natPlane(curSeries());
+  const cs = curSeries(), at = c.indexOf(cs), solo = !(S.cmps.length || S.rf || S.vol || S.vr), se = !SEQ_MANY.has(kind) ? seqBest(kind, c, false, mpr3 ? 'ax' : want) : at >= 0 ? (solo ? c[(at + 1) % c.length] : cs) : c[0]; // one press, one series (ADC: again for the next)
   if (S.vol) mprToggle(false);
   if (S.vr) vrClose();
   if (S.cmps.length || S.rf) { S.cmps = []; S.rf = null; cmpLayout(); } // a single sequence: one view (the DWI | ADC pair, or any compare, closes)
   if (se !== cs) selectSeries(S.series.indexOf(se));
   S.mrKind = kind;
-  if (natPlane(se) !== 'ax') planeOpen('ax'); // a 3D sagittal (or coronal) T1: shown in axial
+  if (mpr3) mprToggle(true); else if (natPlane(se) !== want) planeOpen(want); // e.g. a 3D sagittal T1 asked for in axial or coronal: reformatted
   buildPresets(); render();
 }
 function buildPresets() { // the row keeps where it was scrolled to (rebuilt on every change, it jumped back to its start)
