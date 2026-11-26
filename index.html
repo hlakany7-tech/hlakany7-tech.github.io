@@ -689,7 +689,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-1607</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-1620</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -703,7 +703,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1607</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1620</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2473,7 +2473,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1607', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1620', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -3317,7 +3317,7 @@ function selectSeries(i) {
   if (S.vol && S.vol.se !== volSe(se)) mprToggle(false);
   if (S.vr && S.vr.V.se !== se) vrClose();
   if (S.keepVol && S.keepVol.se !== se && !(se.isSlab && S.keepVol.se === se.slabOf)) S.keepVol = null; // memory: only the volume of the series on screen is kept
-  if (S.cmps.some(C => C.se === se)) { S.cmps = S.cmps.filter(C => C.se !== se); setTimeout(cmpLayout, 0); }
+  if (!S.keepPanes && S.cmps.some(C => C.se === se)) { S.cmps = S.cmps.filter(C => C.se !== se); setTimeout(cmpLayout, 0); }
   if (S.c3 && se.studyUid !== S.c3.study) S.c3 = null;
   if (S.rf) { S.rf.main.se = se; S.rf.fit = true; } // coronal/sagittal: the series picked is the one reformatted
   S.si = i; S.idx = (se.modality || (se.images[0] || {}).modality) === 'MR' ? Math.floor((se.images.length - 1) / 2) : 0; S.draft = null; /* an MRI opens at its middle: its first slice is usually the edge of the head (black) */ setTimeout(subUI, 0); S.painted = false; S.dir = 1; S.ang = 0; S.fh = 1; S.fv = 1; S.invert = false; $('#actInvert').setAttribute('aria-pressed', 'false');
@@ -3390,13 +3390,26 @@ function cmpTapSelect(el, slot) { // a short tap without moving: choose this vie
 }
 cmpTapSelect($('#stage'), 'M');
 document.querySelectorAll('section.cmpv[id^="mvCmp"]').forEach(el => { const k = el.id.slice(5); if (k !== 'M') cmpTapSelect(el, +k); });
+// Another series in the main view, touching nothing else: the other views keep their series and their slice, and the
+// new series opens at the body level the main view was at (the same series may be shown in two views if you choose so)
+function viewSetMain(se) {
+  const old = curSeries(), i = S.series.indexOf(se); if (!old || i < 0 || se === old) return;
+  if (needsReload(se)) { reloadSeries(se, [old, ...S.cmps.map(x => x.se)]).then(ok => { if (ok) viewSetMain(se); }); return; }
+  const im0 = cur(), loc = im0 && im0.location, panes = S.cmps.slice(), idxs = panes.map(C => C.idx), keep = { s: S.s, ox: S.ox, oy: S.oy, fit: S.fit };
+  S.keepPanes = true; try { selectSeries(i); } finally { S.keepPanes = false; }
+  S.cmps = panes; panes.forEach((C, k) => { C.idx = idxs[k]; });
+  if (loc != null && se.images.some(x => x.location != null)) { let b = S.idx, bd = Infinity; se.images.forEach((x, k) => { if (x.location != null && Math.abs(x.location - loc) < bd) { bd = Math.abs(x.location - loc); b = k; } }); S.idx = b; }
+  panes.forEach((C, k) => { C.hold = { m: S.idx, i: idxs[k], se }; });
+  if (!keep.fit) Object.assign(S, keep);
+  cmpLayout(); render(); pump();
+}
 function mrShow(kind) {
   const c = mrCands(kind); if (!c.length) return;
   const T = cmpTarget();
   if (T != null) { // views side by side: the chosen view gets the series; the others stay
     const inT = T === 'M' ? curSeries() : (S.cmps.find(C => C.slot === T) || {}).se, ax = c.filter(x => natPlane(x) === 'ax'), list = ax.length ? ax : c; // a view beside others: an axial series if there is one
     const at = list.indexOf(inT), se = at >= 0 ? list[(at + 1) % list.length] : list[0];
-    if (se !== inT) { if (T === 'M') cmpSetMain(se); else cmpAdd(se, T); }
+    if (se !== inT) { if (T === 'M') viewSetMain(se); else cmpAdd(se, T, true); }
     S.mrKind = kind; cmpPickUI(); buildPresets(); render(); return;
   }
   const cs = curSeries(), at = c.indexOf(cs), solo = !(S.cmps.length || S.rf || S.vol || S.vr), se = at >= 0 ? (solo ? c[(at + 1) % c.length] : cs) : c[0]; // pressed again on its own view: the next series of this kind
@@ -4582,6 +4595,7 @@ function zpos(im) {
 function zrange(se) { if (!se.__zr) { const z = se.images.map(zpos); se.__zr = z.every(v => v != null) ? [Math.min(...z), Math.max(...z)] : null; } return se.__zr; }
 function cmpMatch(C) { // slice of a compared series at the main slice's position
   const a = cur(); if (!a || !S.cmpSync) return;
+  if (C.hold) { if (C.hold.m === S.idx && C.hold.se === curSeries()) { C.idx = C.hold.i; return; } C.hold = null; } // the main view just changed series: this view stays put until you scroll
   if (S.c3 && C.c3idx != null && S.c3.mainIdx === S.idx) { C.idx = C.c3idx; return; } // placed by the 3D cursor
   const ims = C.se.images, ra = zrange(curSeries()), rb = zrange(C.se), za = zpos(a);
   if (C.byLoc && ra && rb && za != null) {
@@ -6094,8 +6108,8 @@ function cmpLayout() {
   S.cmps.forEach(C => cmpMatch(C)); render(); pump();
 }
 // Compare panes keep their own input handlers, bound per slot: route them to the series now in that slot.
-function cmpAdd(se, slot) {
-  if (!se || se === curSeries()) return;
+function cmpAdd(se, slot, dup) {
+  if (!se || (se === curSeries() && !dup)) return;
   if (needsReload(se)) { reloadSeries(se, [curSeries(), ...S.cmps.map(C => C.se)]).then(ok => { if (ok && S.series.includes(se)) cmpAdd(se, slot); }); return; }
   se.used = performance.now();
   const pm = S.vol && S.planeMode ? $('#views').dataset.main : null; // coronal/sagittal on its own: compare in that plane
