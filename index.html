@@ -692,7 +692,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-2030</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-2049</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -706,7 +706,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-2030</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-2049</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2476,7 +2476,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-2030', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-2049', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -7507,6 +7507,7 @@ function prebuildVol(se) {
   if (typeof LIVE_ST !== 'undefined' && LIVE_ST && !LIVE_ST.done) return null; // the study first
   if (S.keepVol && S.keepVol.se === se) return S.keepVol;
   if ((DEC.squeeze || 1) < 1 || prebuildVol.no === se) return null; // memory has been short: not now
+  if (memBlind() && (volHeld() > 0 || [...CONS.peers.values()].some(c => c.inbox && !c.inbox.wasDone))) return null; // memory unseen: one volume at most, and none while a case comes in
   const M = performance.memory; if (M && M.jsHeapSizeLimit && M.usedJSHeapSize > 15e6 && M.usedJSHeapSize > M.jsHeapSizeLimit * 0.45) return null;
   let V; try { V = volPlan(se, 0); } catch (e) { V = 'no memory'; }
   if (typeof V === 'string') { prebuildVol.no = se; return null; }
@@ -7930,7 +7931,10 @@ async function rdZip(r, name, st, depth) {
 // opened. If memory still runs out, the limit drops to what was in use then (memTight).
 let MEM_CAP = Infinity;
 const nativeMem = () => { try { const n = window.SliceviewNative && SliceviewNative.memoryBudget ? +SliceviewNative.memoryBudget() : 0; return n > 0 ? n : Infinity; } catch (e) { return Infinity; } };
-const memLimit = () => Math.min(MEM_CAP, nativeMem(), performance.memory && performance.memory.jsHeapSizeLimit ? performance.memory.jsHeapSizeLimit * 0.7 : (navigator.deviceMemory || 4) * 0.3e9);
+// a memory reading that never moves (Chrome 80 tablets: always 10 MB) tells nothing: such a device works to a cautious
+// budget of its own instead (it crashed building full-size MPR volumes while a case came in, 26/11)
+const memBlind = () => { const M = performance.memory; return !M || !M.jsHeapSizeLimit || (M.usedJSHeapSize < 15e6 && !heapWatch.moved); };
+const memLimit = () => Math.min(MEM_CAP, nativeMem(), memBlind() ? 350e6 : Infinity, performance.memory && performance.memory.jsHeapSizeLimit ? performance.memory.jsHeapSizeLimit * 0.7 : (navigator.deviceMemory || 4) * 0.3e9);
 const memUsed = () => S.series.reduce((a, s) => a + seBytes(s), 0);
 // never put aside: the series on screen, and while a study is coming in, its biggest series so far (the one it opens on)
 const memKeep = st => { const k = new Set([curSeries()].filter(Boolean)); if (st && st.seen && st.seen.size) k.add([...st.seen].sort((a, b) => b.images.length - a.images.length)[0]); return k; };
