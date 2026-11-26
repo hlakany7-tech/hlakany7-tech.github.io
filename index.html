@@ -692,7 +692,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-2137</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-2143</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -706,7 +706,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-2137</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-2143</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2476,7 +2476,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-2137', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-2143', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -4964,7 +4964,7 @@ function zipMaker() { // a plain zip (stored, no compression), built file by fil
     async add(name, data) { // squeezed (deflate) when that helps: less memory while it is built, a smaller file
       const nm = new TextEncoder().encode(name), crc = crc32(data), h = new Uint8Array(30 + nm.length), d = new DataView(h.buffer);
       let body = data, method = 0;
-      if ((RAW_DEFLATE || ZDEFL) && data.length > 1024) { try { const z = await deflateRawAny(data); if (z.length < data.length * 0.95) { body = z; method = 8; } } catch (e) { } }
+      if (RAW_DEFLATE && data.length > 1024) { try { const z = await consDeflate(data); if (z.length < data.length * 0.95) { body = z; method = 8; } } catch (e) { } }
       d.setUint32(0, 0x04034B50, true); d.setUint16(4, 20, true); d.setUint16(6, 0x800, true); d.setUint16(8, method, true); d.setUint32(14, crc, true); d.setUint32(18, body.length, true); d.setUint32(22, data.length, true); d.setUint16(26, nm.length, true); h.set(nm, 30);
       parts.push(h, new Blob([body])); dir.push({ nm, crc, size: data.length, csize: body.length, method, off }); off += h.length + body.length;
     },
@@ -5687,7 +5687,7 @@ function rxWorker() {
 function rxPackStart(r, n, ab, blob, lazy, res) {
   const e = { n, blob, crc: null, size: ab.byteLength, method: 0, se: res && res.all ? [...res.all][0] : null };
   (RXZ.get(r.caseId) || RXZ.set(r.caseId, new Map()).get(r.caseId)).set(n, e);
-  const z = !!lazy.src && (RAW_DEFLATE || ZDEFL) && ab.byteLength >= 4096, w = rxWorker(); // plain pixels only (a fast-sent case): compressed files stay as they came
+  const z = !!lazy.src && RAW_DEFLATE && ab.byteLength >= 4096, w = RAW_DEFLATE ? rxWorker() : null; // Chrome 80 tablet: its compressor crashed it (26/11): nothing squeezed there, the check number worked out here // plain pixels only (a fast-sent case): compressed files stay as they came
   e.p = new Promise(ok => { if (!w) { e.crc = crc32(new Uint8Array(ab)); return ok(); } const id = ++RXW.id; RXW.cb.set(id, m => {
     if (m) { e.crc = m.crc; if (m.out) { const zb = new Blob([m.out]); e.blob = zb; e.method = 8; Object.assign(lazy.src, { blob: zb, start: 0, csize: m.out.length, method: 8 }); } }
     else e.crc = crc32(new Uint8Array(ab)); ok(); });
