@@ -691,7 +691,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-1658</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-1708</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -705,7 +705,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1658</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-1708</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2475,7 +2475,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1658', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-1708', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -3443,16 +3443,24 @@ function viewSetMain(se) {
   cmpLayout(); render(); pump();
 }
 const seqCands = (kind, list) => CT_KINDS.some(x => x[0] === kind) ? ctCands(kind, list) : mrCands(kind, list);
+const SEQ_MANY = new Set(['ADC']); // the buttons that still step through several series when pressed again
+// one press, one series: the one with the most slices (the thinnest cuts). A 3D series counts whatever its plane (it is shown
+// in axial); a 2D series scanned in another plane only when there is no axial or 3D one (in axial it would be coarse).
+function seqBest(kind, c, axOnly) {
+  const is3d = se => /3D/i.test(String((se.mr && se.mr.a3) || '')) || (se.images.length >= 80 && !(se.mr && /2D/i.test(String(se.mr.a3 || ''))));
+  const ok = se => natPlane(se) === 'ax' || (!axOnly && is3d(se));
+  return c.slice().sort((a, b) => (ok(b) - ok(a)) || (b.images.length - a.images.length))[0];
+}
 function mrShow(kind) {
   const c = seqCands(kind); if (!c.length) return;
   const T = cmpTarget();
   if (T != null) { // views side by side: the chosen view gets the series; the others stay
     const inT = T === 'M' ? curSeries() : (S.cmps.find(C => C.slot === T) || {}).se, ax = c.filter(x => natPlane(x) === 'ax'), list = ax.length ? ax : c; // a view beside others: an axial series if there is one
-    const at = list.indexOf(inT), se = at >= 0 ? list[(at + 1) % list.length] : list[0];
+    const at = list.indexOf(inT), se = SEQ_MANY.has(kind) ? (at >= 0 ? list[(at + 1) % list.length] : list[0]) : seqBest(kind, list, true);
     if (se !== inT) { if (T === 'M') viewSetMain(se); else cmpAdd(se, T, true); }
     S.mrKind = kind; cmpPickUI(); buildPresets(); render(); return;
   }
-  const cs = curSeries(), at = c.indexOf(cs), solo = !(S.cmps.length || S.rf || S.vol || S.vr), se = at >= 0 ? (solo ? c[(at + 1) % c.length] : cs) : c[0]; // pressed again on its own view: the next series of this kind
+  const cs = curSeries(), at = c.indexOf(cs), solo = !(S.cmps.length || S.rf || S.vol || S.vr), se = !SEQ_MANY.has(kind) ? seqBest(kind, c) : at >= 0 ? (solo ? c[(at + 1) % c.length] : cs) : c[0]; // one press, one series (ADC: again for the next)
   if (S.vol) mprToggle(false);
   if (S.vr) vrClose();
   if (S.cmps.length || S.rf) { S.cmps = []; S.rf = null; cmpLayout(); } // a single sequence: one view (the DWI | ADC pair, or any compare, closes)
@@ -3475,7 +3483,7 @@ function buildPresets1() {
   if (!se) return;
   fuseChip(box);
   { const list = ctStudy(); if (list.length) { const tgt = cmpTarget(), inT = tgt == null ? (S.cmps.length ? null : se) : tgt === 'M' ? se : (S.cmps.find(C => C.slot === tgt) || {}).se;
-      for (const [k, label] of CT_KINDS) { const c = ctCands(k, list); if (!c.length) continue; seqChip(box, k, label + (c.length > 1 ? ' ·' + c.length : ''), inT && c.includes(inT), () => mrShow(k), c.map(x => x.desc).join('\n')); } } }
+      for (const [k, label] of CT_KINDS) { const c = ctCands(k, list); if (!c.length) continue; seqChip(box, k, label + (c.length > 1 && SEQ_MANY.has(k) ? ' ·' + c.length : ''), inT && c.includes(inT), () => mrShow(k), c.map(x => x.desc).join('\n')); } } }
   const add = (key, label, wc, ww, fn) => {
     if (box.lastElementChild && box.lastElementChild.classList.contains('seq')) { const sp = document.createElement('span'); sp.className = 'sep'; box.append(sp); } // study buttons | window presets
     const b = document.createElement('button'); b.className = 'chip'; b.type = 'button'; b.dataset.key = label;
@@ -3491,7 +3499,7 @@ function buildPresets1() {
     fusePresets(box); return;
   }
   if (isMRse(se)) { const list = mrStudy(); for (const [k, label] of MR_KINDS) { const c = mrCands(k, list); if (!c.length) continue;
-    const b = document.createElement('button'); b.className = 'chip seq'; b.type = 'button'; b.dataset.seq = k; b.textContent = label + (c.length > 1 ? ' ·' + c.length : '');
+    const b = document.createElement('button'); b.className = 'chip seq'; b.type = 'button'; b.dataset.seq = k; b.textContent = label + (c.length > 1 && SEQ_MANY.has(k) ? ' ·' + c.length : '');
     b.title = c.map(x => x.desc).join('\n'); const tgt = cmpTarget(), inT = tgt == null ? null : tgt === 'M' ? se : (S.cmps.find(C => C.slot === tgt) || {}).se; b.setAttribute('aria-pressed', String(tgt != null ? c.includes(inT) : c.includes(se) && !S.cmps.length));
     b.addEventListener('click', () => mrShow(k)); box.append(b); }
     // DWI beside ADC: the pair read together for restricted diffusion (bright on DWI, dark on ADC), side by side and scrolling together
