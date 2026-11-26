@@ -685,7 +685,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-0825</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-0850</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -699,7 +699,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-0825</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-0850</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2466,7 +2466,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-0825', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-0850', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -6964,11 +6964,13 @@ const fragBudget = () => Math.max(60e6, memLimit() * 0.3 * (DEC.squeeze || 1) - 
 function fragTrim() {
   let total = 0; const all = [];
   for (const se of S.series) { if (se.derived) continue; se.images.forEach((im, i) => { if (im.frag && im.zsrc && im.zsrc.blob) { total += im.frag.byteLength; all.push([im, se, i]); } }); }
+  if ((DEC.squeeze || 1) >= 1) return; // only once this device has actually run out of memory (before that: exactly as 2211)
   const B = fragBudget(); if (total <= B) return;
   const at = new Map(), look = (se, i) => { if (!se) return; if (!se.derived) { if (!at.has(se)) at.set(se, i); return; } for (const x of [se.fuseCT, se.fusePT, se.slabOf]) if (x && !at.has(x)) at.set(x, Math.round(i * x.images.length / Math.max(1, se.images.length))); };
   look(curSeries(), S.idx); for (const C of S.cmps) look(C.se, C.idx); if (S.vol) look(S.vol.se, S.idx); if (S.vr && S.vr.V) look(S.vr.V.se, 0);
   const far = x => { const a = at.get(x[1]); return a == null ? 1e9 : Math.abs(x[2] - a); };
-  for (const x of all) x[3] = far(x); all.sort((x, y) => y[3] - x[3]);
+  const whole = new Set([S.vol && S.vol.se, S.vr && S.vr.V && S.vr.V.se].filter(Boolean)); // MPR and 3D need every slice of their series: those stay (letting them go made MPR fuzzy for long and 3D slow)
+  for (const x of all) x[3] = whole.has(x[1]) ? 0 : far(x); all.sort((x, y) => y[3] - x[3]);
   for (const x of all) { if (total <= B * 0.9) break; if (x[3] < 40) break; total -= x[0].frag.byteLength; x[0].frag = null; }
 }
 function evict() { try { fragTrim(); } catch (e) { }
