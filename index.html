@@ -692,7 +692,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.26-2215</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-2228</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -706,7 +706,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.26-2215</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-2228</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -899,6 +899,108 @@ function inflateModule() { // also given to the background readers: older browse
   return { inflateRaw };
 }
 const Inflate = inflateModule();
+/* Sliceview's own deflate (raw, RFC 1951): LZ77 with hash chains and dynamic Huffman codes. Runs in a worker on browsers
+   whose own compressor cannot be used (Chrome 80 crashed with it). Output inflates with any zip tool. */
+function jsDeflateModule() {
+  const LBASE = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258];
+  const LEXT = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
+  const DBASE = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577];
+  const DEXT = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
+  const LCODE = new Uint16Array(259), DCODE = new Uint8Array(32769);
+  for (let c = 0; c < 29; c++) for (let l = LBASE[c]; l < (c < 28 ? LBASE[c + 1] : 259); l++) LCODE[l] = c;
+  LCODE[258] = 28;
+  for (let c = 0; c < 30; c++) for (let d = DBASE[c]; d < (c < 29 ? DBASE[c + 1] : 32769); d++) DCODE[d] = c;
+  const CLORD = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+
+  function lengths(freq, lim) { // Huffman code lengths, none longer than lim
+    const n = freq.length, len = new Uint8Array(n), sym = [];
+    for (let i = 0; i < n; i++) if (freq[i]) sym.push(i);
+    if (sym.length === 0) return len;
+    if (sym.length === 1) { len[sym[0]] = 1; return len; }
+    sym.sort((a, b) => freq[a] - freq[b] || a - b);
+    // two-queue Huffman: leaves in order, internal nodes in order of creation
+    const m = sym.length, w = new Float64Array(2 * m), par = new Int32Array(2 * m).fill(-1);
+    for (let i = 0; i < m; i++) w[i] = freq[sym[i]];
+    let a = 0, b = m, nb = m;
+    const take = () => (a < m && (b >= nb || w[a] <= w[b])) ? a++ : b++;
+    while (nb < 2 * m - 1) { const x = take(), y = take(); w[nb] = w[x] + w[y]; par[x] = nb; par[y] = nb; nb++; }
+    const depth = new Int32Array(2 * m); for (let i = 2 * m - 3; i >= 0; i--) depth[i] = depth[par[i]] + 1;
+    let over = false; for (let i = 0; i < m; i++) { let d = depth[i]; if (d > lim) { d = lim; over = true; } len[sym[i]] = d; }
+    if (over) { // Kraft repair: lengthen the shortest-needed codes until the code is complete again
+      let k = 0; for (let i = 0; i < m; i++) k += 1 << (lim - len[sym[i]]);
+      const full = 1 << lim;
+      while (k > full) { // the rarest symbol whose code can still grow
+        let best = -1; for (let i = 0; i < m; i++) { const s = sym[i]; if (len[s] < lim && (best < 0 || len[s] > len[best])) best = s; }
+        k -= 1 << (lim - len[best] - 1); len[best]++;
+      }
+      while (k < full) { // and shortened again where room was left: an incomplete code is refused by inflaters
+        let best = -1; for (let i = 0; i < m; i++) { const s = sym[i]; if (len[s] > 1 && k + (1 << (lim - len[s])) <= full && (best < 0 || len[s] > len[best])) best = s; }
+        if (best < 0) break; k += 1 << (lim - len[best]); len[best]--;
+      }
+    }
+    return len;
+  }
+  function codes(len) { // canonical codes, bit-reversed for writing LSB first
+    const n = len.length, cnt = new Uint16Array(16), next = new Uint16Array(16), out = new Uint16Array(n);
+    for (let i = 0; i < n; i++) cnt[len[i]]++;
+    cnt[0] = 0; let c = 0; for (let b = 1; b < 16; b++) { c = (c + cnt[b - 1]) << 1; next[b] = c; }
+    for (let i = 0; i < n; i++) { const l = len[i]; if (!l) continue; let v = next[l]++, r = 0; for (let k = 0; k < l; k++) { r = (r << 1) | (v & 1); v >>= 1; } out[i] = r; }
+    return out;
+  }
+  function deflate(u) {
+    const N = u.length;
+    let out = new Uint8Array(Math.max(1024, (N >> 1) + 1024)), op = 0, bb = 0, bc = 0;
+    const put = (v, n) => { bb |= v << bc; bc += n; while (bc >= 8) { if (op >= out.length) { const o = new Uint8Array(out.length * 2); o.set(out); out = o; } out[op++] = bb & 255; bb >>>= 8; bc -= 8; } };
+    const HB = 15, HS = 1 << HB, HM = HS - 1, W = 32768, CHAIN = 8;
+    const head = new Int32Array(HS).fill(-1), prev = new Int32Array(W);
+    const BLK = 1 << 16; // symbols per block
+    const buf = new Uint32Array(BLK); // literal: v<256; match: (len<<16)|dist marked by bit 31
+    let pos = 0, last = false;
+    const hash = p => (((u[p] << 10) ^ (u[p + 1] << 5) ^ u[p + 2]) & HM);
+    const insert = p => { if (p + 2 >= N) return; const h = hash(p); prev[p & (W - 1)] = head[h]; head[h] = p; };
+    if (N === 0) { put(1, 1); put(1, 2); put(0, 7); if (bc) put(0, 8 - bc); return out.subarray(0, op); }
+    while (!last) {
+      let ns = 0; const lf = new Uint32Array(286), df = new Uint32Array(30);
+      while (ns < BLK && pos < N) {
+        let bl = 0, bd = 0;
+        if (pos + 2 < N) {
+          const h = hash(pos); let cand = head[h], chain = CHAIN; const max = Math.min(258, N - pos), lim = pos - W;
+          while (cand > lim && cand >= 0 && chain-- > 0) {
+            if (u[cand + bl] === u[pos + bl] && u[cand] === u[pos]) { let l = 0; while (l < max && u[cand + l] === u[pos + l]) l++; if (l > bl) { bl = l; bd = pos - cand; if (l >= max) break; } }
+            cand = prev[cand & (W - 1)];
+          }
+        }
+        if (bl >= 3) { buf[ns++] = 0x80000000 | (bl << 16) | bd; lf[257 + LCODE[bl]]++; df[DCODE[bd]]++; for (let k = 0; k < bl; k++) insert(pos + k); pos += bl; }
+        else { buf[ns++] = u[pos]; lf[u[pos]]++; insert(pos); pos++; }
+      }
+      last = pos >= N; lf[256] = 1;
+      const ll = lengths(lf, 15); let dl = lengths(df, 15); let hasD = false; for (let i = 0; i < 30; i++) if (dl[i]) hasD = true;
+      if (!hasD) { dl = new Uint8Array(30); dl[0] = 1; }
+      let hl = 286; while (hl > 257 && !ll[hl - 1]) hl--;
+      let hd = 30; while (hd > 1 && !dl[hd - 1]) hd--;
+      const all = new Uint8Array(hl + hd); all.set(ll.subarray(0, hl)); all.set(dl.subarray(0, hd), hl);
+      const rle = [], cf = new Uint32Array(19);
+      for (let i = 0; i < all.length;) { const v = all[i]; let r = 1; while (i + r < all.length && all[i + r] === v) r++;
+        if (v === 0 && r >= 3) { let k = r; while (k >= 3) { if (k >= 11) { const t = Math.min(k, 138); rle.push(18, t - 11); cf[18]++; k -= t; } else { const t = Math.min(k, 10); rle.push(17, t - 3); cf[17]++; k -= t; } } for (; k > 0; k--) { rle.push(0, -1); cf[0]++; } i += r; continue; }
+        if (v !== 0 && r >= 4) { rle.push(v, -1); cf[v]++; let k = r - 1; while (k >= 3) { const t = Math.min(k, 6); rle.push(16, t - 3); cf[16]++; k -= t; } for (; k > 0; k--) { rle.push(v, -1); cf[v]++; } i += r; continue; }
+        for (let k = 0; k < r; k++) { rle.push(v, -1); cf[v]++; } i += r; }
+      const cl = lengths(cf, 7); { let nz = 0, one = 0; for (let i = 0; i < 19; i++) if (cl[i]) { nz++; one = i; } if (nz === 1) cl[one === 0 ? 1 : 0] = 1; } // a code of one length only: given a partner (inflaters refuse it alone)
+      const cc = codes(cl); let hc = 19; while (hc > 4 && !cl[CLORD[hc - 1]]) hc--;
+      const lc = codes(ll), dc = codes(dl);
+      put(last ? 1 : 0, 1); put(2, 2); put(hl - 257, 5); put(hd - 1, 5); put(hc - 4, 4);
+      for (let i = 0; i < hc; i++) put(cl[CLORD[i]], 3);
+      for (let i = 0; i < rle.length; i += 2) { const s = rle[i], x = rle[i + 1]; put(cc[s], cl[s]); if (s === 16) put(x, 2); else if (s === 17) put(x, 3); else if (s === 18) put(x, 7); }
+      for (let i = 0; i < ns; i++) { const v = buf[i];
+        if (v & 0x80000000) { const l = (v >>> 16) & 0x1FF, d = v & 0xFFFF, c = LCODE[l], s = 257 + c; put(lc[s], ll[s]); if (LEXT[c]) put(l - LBASE[c], LEXT[c]); const e = DCODE[d]; put(dc[e], dl[e]); if (DEXT[e]) put(d - DBASE[e], DEXT[e]); }
+        else put(lc[v], ll[v]); }
+      put(lc[256], ll[256]);
+    }
+    if (bc) put(0, 8 - bc);
+    return out.subarray(0, op);
+  }
+  return { deflate };
+}
+const JSDEFL = jsDeflateModule();
 const Zip = (() => {
   'use strict';
   // A reader is { size, read(start, end) -> Promise<ArrayBuffer> }, so a big zip
@@ -2476,7 +2578,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-2215', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-2228', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -4958,13 +5060,30 @@ async function deflateRawAny(u8) { // a raw deflate stream on any browser that c
   if (RAW_DEFLATE) return consDeflate(u8);
   const z = new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer()); return z.subarray(2, z.length - 4);
 }
+// Sliceview's own compressor (deflate.js), in workers: where the browser's own cannot be used (Chrome 80 crashed with it, 26/11)
+const JZ = { ws: [], id: 0, cb: new Map(), dead: false };
+function jzInit() {
+  if (JZ.ws.length || JZ.dead) return;
+  try { const src = jsDeflateModule.toString() + '\nconst JSDEFL = jsDeflateModule();\nonmessage = e => { const { id, buf } = e.data; let out = null; try { out = JSDEFL.deflate(new Uint8Array(buf)).slice().buffer; } catch (x) { } postMessage({ id, out }, out ? [out] : []); };';
+    const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' })), n = clamp((navigator.hardwareConcurrency || 4) - 3, 1, 3);
+    for (let i = 0; i < n; i++) { const w = new Worker(url); w.busy = 0;
+      w.onmessage = e => { w.busy--; const f = JZ.cb.get(e.data.id); JZ.cb.delete(e.data.id); if (f) f(e.data.out); };
+      w.onerror = () => { JZ.dead = true; for (const f of JZ.cb.values()) f(null); JZ.cb.clear(); };
+      JZ.ws.push(w); }
+  } catch (e) { JZ.dead = true; }
+}
+function jzDeflate(u8) { // a raw deflate stream, or null
+  jzInit(); if (JZ.dead || !JZ.ws.length) return Promise.resolve(null);
+  return new Promise(ok => { const id = ++JZ.id; JZ.cb.set(id, b => ok(b ? new Uint8Array(b) : null)); const w = JZ.ws.reduce((a, b) => a.busy <= b.busy ? a : b); w.busy++;
+    const buf = u8.slice().buffer; w.postMessage({ id, buf }, [buf]); });
+}
 function zipMaker() { // a plain zip (stored, no compression), built file by file
   const parts = [], dir = []; let off = 0;
   return {
     async add(name, data) { // squeezed (deflate) when that helps: less memory while it is built, a smaller file
       const nm = new TextEncoder().encode(name), crc = crc32(data), h = new Uint8Array(30 + nm.length), d = new DataView(h.buffer);
       let body = data, method = 0;
-      if (RAW_DEFLATE && data.length > 1024) { try { const z = await consDeflate(data); if (z.length < data.length * 0.95) { body = z; method = 8; } } catch (e) { } }
+      if (data.length > 1024) { try { const z = RAW_DEFLATE ? await consDeflate(data) : await jzDeflate(data); if (z) if (z.length < data.length * 0.95) { body = z; method = 8; } } catch (e) { } }
       d.setUint32(0, 0x04034B50, true); d.setUint16(4, 20, true); d.setUint16(6, 0x800, true); d.setUint16(8, method, true); d.setUint32(14, crc, true); d.setUint32(18, body.length, true); d.setUint32(22, data.length, true); d.setUint16(26, nm.length, true); h.set(nm, 30);
       parts.push(h, new Blob([body])); dir.push({ nm, crc, size: data.length, csize: body.length, method, off }); off += h.length + body.length;
     },
@@ -5686,21 +5805,33 @@ function rxWorker() {
   } catch (e) { RXW.dead = true; } return RXW.w;
 }
 function rxPackStart(r, n, ab, blob, lazy, res) {
-  const e = { n, blob, crc: null, size: ab.byteLength, method: 0, se: res && res.all ? [...res.all][0] : null };
-  (RXZ.get(r.caseId) || RXZ.set(r.caseId, new Map()).get(r.caseId)).set(n, e);
+  const e = { n, blob, crc: null, size: ab.byteLength, method: 0, plain: !!lazy.src, se: res && res.all ? [...res.all][0] : null };
+  const m = RXZ.get(r.caseId) || RXZ.set(r.caseId, new Map()).get(r.caseId); m.set(n, e);
+  m.sq = null; // old Chrome: squeezed by Sliceview's own compressor only when Save is pressed (nothing runs in the background)
   const z = !!lazy.src && RAW_DEFLATE && ab.byteLength >= 4096, w = RAW_DEFLATE ? rxWorker() : null; // Chrome 80 tablet: its compressor crashed it (26/11): nothing squeezed there, the check number worked out here // plain pixels only (a fast-sent case): compressed files stay as they came
   e.p = new Promise(ok => { if (!w) { e.crc = crc32(new Uint8Array(ab)); return ok(); } const id = ++RXW.id; RXW.cb.set(id, m => {
     if (m) { e.crc = m.crc; if (m.out) { const zb = new Blob([m.out]); e.blob = zb; e.method = 8; Object.assign(lazy.src, { blob: zb, start: 0, csize: m.out.length, method: 8 }); } }
     else e.crc = crc32(new Uint8Array(ab)); ok(); });
     w.postMessage({ id, buf: ab.slice(0), z }); }); // a copy goes (this one stays for the screen)
 }
-async function rxZipNow(list) { // the received case as a zip, from the files as they are kept: nothing re-read or re-made
+function rxSqueeze(id, onStep) { // the plain files of a received case, squeezed for its zip (in the background; the screen keeps the plain ones)
+  const m = RXZ.get(id); if (!m) return Promise.resolve();
+  if (onStep) m.sqStep = onStep; if (m.sq) return m.sq;
+  m.sq = (async () => { const todo = [...m.values()].filter(e => e.plain && e.method === 0 && !e.zb && e.size >= 4096); let k = 0, done = 0;
+    const lane = async () => { while (k < todo.length) { const e = todo[k++];
+      try { const u = new Uint8Array(await e.blob.arrayBuffer()); const z = await jzDeflate(u); if (z && z.length < u.length * 0.9) e.zb = new Blob([z]); } catch (x) { }
+      done++; if (m.sqStep) try { m.sqStep(done, todo.length); } catch (x) { } } };
+    jzInit(); await Promise.all(Array.from({ length: Math.max(1, JZ.ws.length) }, lane)); m.sqStep = null; })();
+  return m.sq;
+}
+async function rxZipNow(list, onStep) { // the received case as a zip, from the files as they are kept: nothing re-read or re-made
   const ids = new Set(list.map(s => s.__consCase)); if (ids.size !== 1) return null; const m = RXZ.get([...ids][0]); if (!m || !m.size) return null;
   const need = list.reduce((a, s) => a + s.images.length, 0); let have = 0; for (const e of m.values()) have += e.se ? 1 : 0; if (have < Math.min(need, m.size)) return null;
-  await Promise.all([...m.values()].map(e => e.p));
+  await Promise.all([...m.values()].map(e => e.p)); if (!RAW_DEFLATE) await rxSqueeze([...ids][0], onStep);
   const zip = zipMaker(), nm = String((list[0] && list[0].patient) || 'Sliceview-case').replace(/[^\w.-]+/g, '_').slice(0, 40) || 'case';
-  for (const e of [...m.values()].sort((a, b) => a.n - b.n)) zip.addPacked(nm + '/S' + ((e.se && e.se.num) || 0) + '/IM' + String(e.n).padStart(5, '0') + '.dcm', e.blob, e.crc, e.size, e.method);
-  return { blob: zip.blob(), name: nm + '.zip' };
+  for (const e of [...m.values()].sort((a, b) => a.n - b.n)) zip.addPacked(nm + '/S' + ((e.se && e.se.num) || 0) + '/IM' + String(e.n).padStart(5, '0') + '.dcm', e.zb || e.blob, e.crc, e.size, e.zb ? 8 : e.method);
+  const out = { blob: zip.blob(), name: nm + '.zip' }; for (const e of m.values()) e.zb = null; m.sq = null; // the zip holds them now: no second copy kept
+  return out;
 }
 const rxBlob = new Map(); // the received file just added, kept for storage as a file (the browser can hold it on disk), not as bytes in memory
 function rxDb() {
@@ -5991,7 +6122,7 @@ $('#consLog').addEventListener('click', async e => {
     await addFiles([new File([f.blob], f.name, { type: f.type })], { noKeep: true });
     S.series.filter(s => !before.has(s)).forEach(s => { s.__consCase = id; }); c.cases.push(id); return; }
   if (sv) { const list = S.series.filter(s => s.__consCase === sv.dataset.save); if (!list.length) return; sv.disabled = true; sv.textContent = 'Preparing…';
-    let r = null; try { r = await rxZipNow(list); } catch (err) { r = null; } if (r) { sv.disabled = false; sv.textContent = 'Save the case (anonymised zip)'; saveBlobAs(r.blob, r.name); return; }
+    let r = null; try { r = await rxZipNow(list, (k, n) => { sv.textContent = 'Compressing ' + Math.round(100 * k / Math.max(1, n)) + '%'; }); } catch (err) { r = null; } if (r) { sv.disabled = false; sv.textContent = 'Save the case (anonymised zip)'; saveBlobAs(r.blob, r.name); return; }
     try { r = await anonExport(list, (k, n) => { sv.textContent = 'Preparing ' + Math.round(100 * k / n) + '%'; }); } catch (err) { r = null; } sv.disabled = false; sv.textContent = 'Save the case (anonymised zip)';
     if (r && r.blob) saveBlobAs(r.blob, r.name); else say('The case could not be saved', 3000); return; }
   const b = t.closest('button[data-a]'); if (!b || !c.inbox) return;
