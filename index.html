@@ -685,7 +685,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
 </div>
 <div class="sheet" id="sheetMore" hidden>
   <div class="card" role="dialog" aria-label="More">
-    <div class="head"><h2>More<small>version 2026.11.25-2314</small></h2><button class="btn" data-close>Close</button></div>
+    <div class="head"><h2>More<small>version 2026.11.26-0648</small></h2><button class="btn" data-close>Close</button></div>
     <div class="list">
       <label class="item pick">Open a folder<input type="file" id="inFolder2" webkitdirectory multiple></label>
       <button class="item" type="button" id="btnProMore"><span id="moreProTxt">Sliceview Pro</span></button>
@@ -699,7 +699,7 @@ body.reporting .rare { display: none; } body.reporting .more-only { display: inl
       <button class="item" type="button" data-do="btnPrivacy" id="morePrivacyTxt">Hide patient details</button>
       <button class="item" type="button" id="btnForget">Remove the saved copy of the study from this device</button>
     </div>
-    <p class="note" id="appVersion">Sliceview · version 2026.11.25-2314</p>
+    <p class="note" id="appVersion">Sliceview · version 2026.11.26-0648</p>
     <p class="note owner">Made by radiologists, for radiologists.<br>© 2026 Dr. Hashem El-Lakany. All rights reserved.<br>Not a certified medical device; not intended for primary diagnosis.</p>
     <div hidden>
     </div>
@@ -2466,7 +2466,7 @@ const DICOM = dicomModule();
    What went wrong and when: errors, freezes, memory running short, a session that ended while on screen
    (a crash), how long studies took to open. More > Send app report hands it over as plain text. */
 const FR = (() => {
-  const KEY = 'svFlight', MAX = 300, V = '2026.11.25-2314', sid = Math.random().toString(36).slice(2, 7);
+  const KEY = 'svFlight', MAX = 300, V = '2026.11.26-0648', sid = Math.random().toString(36).slice(2, 7);
   let log = []; try { log = JSON.parse(localStorage.getItem(KEY) || '[]'); if (!Array.isArray(log)) log = []; } catch (e) { log = []; }
   let dirty = false, state = 'starting', B = null; // B: the viewer's own view of itself, once it has started
   const save = () => { dirty = false; try { localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX))); } catch (e) { } };
@@ -3676,16 +3676,20 @@ function volPlanSafe(se) { // a volume that fits in memory: when the full-size o
   }
   return 'Not enough memory on this device for MPR of this series';
 }
-function volHeld() { let b = 0; try { const add = V => { if (V && V.data && V.data.byteLength) b += V.data.byteLength; }; add(S.vol); if (S.vol) add(S.vol.pet); if (S.rfVols) for (const V of S.rfVols.values()) add(V); if (S.vr && S.vr.V) add(S.vr.V); } catch (e) { } return b; }
+function volHeld() { let b = 0; try { const add = V => { if (V && V.data && V.data.byteLength) b += V.data.byteLength; }; add(S.vol); if (S.vol) add(S.vol.pet); if (S.keepVol && S.keepVol !== S.vol) add(S.keepVol); if (S.rfVols) for (const V of S.rfVols.values()) add(V); if (S.vr && S.vr.V) add(S.vr.V); } catch (e) { } return b; }
 // a new volume (MPR, a compared Cor/Sag pane, 3D) gets what is left of the volumes' share of this device's memory: four compared panes share it
-const volBudget = () => clamp(clamp(memLimit() * 0.45, 150e6, 700e6) * (DEC.squeeze || 1) - volHeld(), 40e6, VOL_BUDGET);
+// ONE memory budget for the whole app (about 85% of what Chrome allows this page): the MPR/3D volumes, the sharp slices,
+// the quick scrolling copies and the study's own pixels are counted together, so panes, MPR and 3D at once can never
+// fill the device. Volumes may take up to about half of it; the sharp slices give way to them (and come back after).
+const appBudget = () => memLimit() * 0.85 * (DEC.squeeze || 1);
+const volBudget = () => clamp(Math.min(memLimit() * 0.45 * (DEC.squeeze || 1), appBudget() - memUsed() - 80e6) - volHeld(), 40e6, VOL_BUDGET);
 function volPlan(se, minK = 0) {
   const im = se.images, n = im.length, a = im[0];
   if (n < 16) return 'MPR needs a series of at least 16 slices';
   if (a.spp !== 1) return 'MPR is not available for colour images';
   if (im.some(x => x.rows !== a.rows || x.cols !== a.cols)) return 'MPR needs slices of the same size';
   if (a.iop && im.some(x => !x.iop || x.iop.some((v, i) => Math.abs(v - a.iop[i]) > 1e-3))) return 'MPR needs slices with the same orientation';
-  const vb = (DEC.squeeze || 1) < 1 ? volBudget() : VOL_BUDGET; let k = minK; // full detail as before; smaller only after this device has actually run out of memory
+  const vb = volBudget(); let k = minK; // full detail when it fits in what is left of the one budget (it does for a usual CT on a phone) // full detail as before; smaller only after this device has actually run out of memory
   while (k < 4 && n * Math.ceil(a.cols / 2 ** k) * Math.ceil(a.rows / 2 ** k) * 2 > vb) k++;
   const w = Math.ceil(a.cols / 2 ** k), h = Math.ceil(a.rows / 2 ** k);
   const locs = im.map(x => x.location);
@@ -4344,11 +4348,12 @@ function mprToggle(on) {
   if (want && S.rf) { S.rf = null; cmpLayout(); } // MPR replaces the coronal/sagittal view
   if (!want) { if (S.vol) S.keepVol = S.vol; S.vol = null; planeModeOff(); for (const k of MVK) { const v = MV[k]; if (v && v.gl) { v.gl.release(); v.gl = null; } } $('#mvAx').hidden = true; $('#planesReset').hidden = true; $('#views').classList.remove('mpr'); $('#vswitch').hidden = true; delete $('#views').dataset.main; delete $('#views').dataset.layout; $('#btnMPR').setAttribute('aria-pressed', 'false'); render(); return; }
   const se0 = curSeries(); if (!se0) return; const se = volSe(se0);
-  const K = S.keepVol, again = !!(K && K.se === se), plan = again ? Object.assign(K, { nCor: [0, 1, 0], nSag: [1, 0, 0], nAx: [0, 0, 1], order: null }) : volPlanSafe(se);
+  const K = S.keepVol, again = !!(K && K.se === se); if (!again) S.keepVol = null; // the old volume goes first: two at once is what ran out of memory
+  const plan = again ? Object.assign(K, { nCor: [0, 1, 0], nSag: [1, 0, 0], nAx: [0, 0, 1], order: null }) : volPlanSafe(se);
   if (typeof plan === 'string') { say(plan, 5000); return; }
   if (se0.isFuse && !(plan.pet && plan.pet.se === se0.fusePT)) { let pp; try { pp = volPlan(se0.fusePT); } catch (e) { pp = 'no memory'; } plan.pet = typeof pp === 'string' ? null : pp; } // fused: the PET's own volume, for the colour on every plane
   if (S.cmps.length) cmpStop();
-  S.vol = plan;
+  S.vol = plan; evict(); // the sharp slices make room for the volume (one budget)
   plan.P = [xOf(plan.cx), yOf(plan.cy), zOf(S.idx)];
   $('#planesReset').hidden = true;
   $('#views').classList.add('mpr'); $('#btnMPR').setAttribute('aria-pressed', 'true'); $('#vswitch').hidden = false; viewSet('ax', true);
@@ -4689,8 +4694,9 @@ async function inflateRawBuf(d) { // a raw deflate stream unpacked: the browser'
   if (RAW_DEFLATE) return await new Response(new Response(d).body.pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
   const u = Inflate.inflateRaw(new Uint8Array(d)); return u.byteOffset === 0 && u.length === u.buffer.byteLength ? u.buffer : u.slice().buffer;
 }
+async function zipDataStart(s) { if (s.start != null || s.lho == null) return s.start || 0; const lh = new DataView(await s.blob.slice(s.lho, s.lho + 30).arrayBuffer()); if (lh.getUint32(0, true) !== 0x04034B50) throw new Error('the zip changed'); return s.lho + 30 + lh.getUint16(26, true) + lh.getUint16(28, true); }
 async function anonOriginal(im) { // the original file of an image, when it can be read again
-  if (im.zsrc && im.zsrc.blob) { const s = im.zsrc; let d = await s.blob.slice(s.start, s.start + s.csize).arrayBuffer(); if (s.method === 8) d = await inflateRawBuf(d); return new Uint8Array(d); }
+  if (im.zsrc && im.zsrc.blob) { const s = im.zsrc, st = await zipDataStart(s); let d = await s.blob.slice(st, st + (s.csize != null ? s.csize : s.blob.size - st)).arrayBuffer(); if (s.method === 8) d = await inflateRawBuf(d); return new Uint8Array(d); }
   if (im.zsrc) { const s = im.zsrc, z = s.zbuf instanceof ArrayBuffer ? s.zbuf : s.zbuf.buffer; const off = s.zbuf instanceof ArrayBuffer ? 0 : s.zbuf.byteOffset;
     let d = z.slice(off + s.start, off + s.start + s.csize);
     if (s.method === 8) d = await inflateRawBuf(d);
@@ -6846,13 +6852,15 @@ $('#btnSeries').addEventListener('click', () => {
 // Phones get a smaller cache of decoded slices: a page using too much memory is closed by the phone in the background.
 const BUDGET = 300e6, PREVIEW_BUDGET = 280e6, SETTLE = 140;
 const LOWMEM = !!(performance.memory && performance.memory.jsHeapSizeLimit < 1.8e9) || (navigator.deviceMemory || 8) <= 4 || matchMedia('(pointer: coarse)').matches; // a phone or tablet
-const decBudget = () => Math.max(40e6, clamp(memLimit() * 0.3, 80e6, LOWMEM ? 180e6 : BUDGET) * (DEC.squeeze || 1)); // a phone or tablet: at most 180 MB of sharp slices (about 350 CT slices) // sharp slices kept in memory: smaller on a device with less memory // ms without a slice change that counts as a pause
+const decBudget = () => Math.max(40e6, Math.min(clamp(memLimit() * 0.3, 80e6, LOWMEM ? 180e6 : BUDGET) * (DEC.squeeze || 1), appBudget() - volHeld() - memUsed() - (typeof PRV !== 'undefined' ? PRV.bytes : 0))); // what the volumes and the rest leave // a phone or tablet: at most 180 MB of sharp slices (about 350 CT slices) // sharp slices kept in memory: smaller on a device with less memory // ms without a slice change that counts as a pause
 // A job carries either a ready codestream (buf) or a zip entry still packed (z), unpacked here off the main thread.
 async function jobCodestream(m, D) {
   if (!m.z) return new Uint8Array(m.buf);
   const z = m.z;
-  if (z.blob && z.enc) { // a compressed image's zip entry, read from the file on the device when it is needed
-    const d = await z.blob.slice(z.start, z.start + z.csize).arrayBuffer();
+  if (z.blob && z.enc) { // a compressed image's zip entry (or file), read from the file on the device when it is needed
+    let start = z.start || 0;
+    if (z.start == null && z.lho != null) { const lh = new DataView(await z.blob.slice(z.lho, z.lho + 30).arrayBuffer()); if (lh.getUint32(0, true) !== 0x04034B50) throw new Error('the zip changed'); start = z.lho + 30 + lh.getUint16(26, true) + lh.getUint16(28, true); }
+    const d = await z.blob.slice(start, z.csize != null ? start + z.csize : undefined).arrayBuffer();
     const b = z.method === 0 ? d : await rawInflate(d);
     const info = Object.assign({ frames: z.frames }, D.readFragments(new DataView(b), z.pixelOffset));
     return new Uint8Array(D.encodedFrame(b, info, z.frame));
@@ -6978,7 +6986,8 @@ function prvEvict() {
   look(cs, S.idx); for (const C of S.cmps) look(C.se, C.idx);
   const pos = new Map(); for (const se of S.series) { const a = at.get(se); se.images.forEach((im, i) => { if (PRV.set.has(im)) pos.set(im, a == null ? 1e9 + (se.used ? -se.used / 1e6 : 0) : Math.abs(i - a)); }); }
   const cand = [...PRV.set].sort((a, b) => (pos.get(b) ?? 2e9) - (pos.get(a) ?? 2e9));
-  for (const im of cand) { if (total <= B * 0.75) break; if ((pos.get(im) ?? 2e9) < 12) break; total -= im.preview.data.byteLength; im.preview = null; PRV.set.delete(im); } // the slices around each view stay
+  const hold = new Set(); if (S.vr && S.vr.V && !vrDone(S.vr.T)) for (const im of S.vr.V.se.images) hold.add(im); // 3D still being built from these: they stay (letting them go stalled 3D at about 65%)
+  for (const im of cand) { if (total <= B * 0.75) break; if ((pos.get(im) ?? 2e9) < 12) break; if (hold.has(im)) continue; total -= im.preview.data.byteLength; im.preview = null; PRV.set.delete(im); } // the slices around each view stay
   PRV.bytes = total;
 }
 function evict() {
@@ -7008,7 +7017,7 @@ function previewLevel(se) {
 const LAZY_RAW = true;
 const coded = im => !!(im && (im.frag || im.zsrc || im.lazy));
 const rawJob = im => ({ blob: im.src.blob, start: im.src.start, csize: im.src.csize, method: im.src.method, lho: im.src.lho, pixelOffset: im.pixOff, frame: im.srcFrame || 0, rows: im.rows, cols: im.cols, spp: im.spp || 1, ba: im.ba });
-const zjob = s => s.blob ? { blob: s.blob, enc: true, start: s.start, csize: s.csize, method: s.method, pixelOffset: s.pixelOffset, frame: s.frame, frames: s.frames } : ({ data: s.zbuf.slice(s.start, s.start + s.csize), method: s.method, pixelOffset: s.pixelOffset, frame: s.frame, frames: s.frames });
+const zjob = s => s.blob ? { blob: s.blob, enc: true, start: s.start, lho: s.lho, csize: s.csize, method: s.method, pixelOffset: s.pixelOffset, frame: s.frame, frames: s.frames } : ({ data: s.zbuf.slice(s.start, s.start + s.csize), method: s.method, pixelOffset: s.pixelOffset, frame: s.frame, frames: s.frames });
 const LAST_INPUT = { t: 0, wait: 0 }; // the last touch, drag, wheel or key anywhere in the app
 for (const ev of ['wheel', 'pointerdown', 'pointermove', 'keydown']) addEventListener(ev, e => { if (ev !== 'pointermove' || e.buttons) LAST_INPUT.t = performance.now(); }, { capture: true, passive: true });
 function pump() {
@@ -7087,6 +7096,18 @@ function pump() {
   // before the sharp one), then the compared panes' slices, then the neighbours, ahead first
   if (needF(c) && !go(c, 'f')) return;
   for (const q of CP) { const im = q.ims[q.C.idx]; if (im && needF(im) && !go(im, 'f')) return; } // the compared series: their slice on screen
+  // 3D open: right after the slices on screen, before the neighbours (3D is what is being looked at; before, it waited
+  // behind a minute of the panes' neighbours and seemed to stop at 50-70%)
+  if (!S.vol && S.vr && S.vr.V.se === se && S.vr.T.viaP && !vrDone(S.vr.T)) {
+    for (let d = 0; d < n; d++) for (const i of near(d)) if (needP(ims[i]) && !go(ims[i], 'p')) return;
+  }
+  // 3D of a series that is not the main view's (opened from a compared pane): it is filled too (before, it stopped at
+  // whatever happened to be decoded, e.g. 61 of 240, and never finished)
+  const V3 = S.vr && S.vr.V; if (V3 && V3.se !== se && V3.count < V3.n && !(S.vr.T.viaP && vrDone(S.vr.T))) {
+    const ims3 = V3.se.images, n3 = ims3.length, c3 = clamp(Math.round(n3 / 2), 0, n3 - 1);
+    for (let d = 0; d < n3; d++) for (const i of d ? [c3 + d, c3 - d] : [c3]) { const im = ims3[i]; if (!im || (V3.filled && V3.filled[i])) continue;
+      if (S.vr.T.viaP) { if (needP(im) && !go(im, 'p')) return; } else if (coded(im) && !im.busyV && !im.err && !go(im, 'v', V3.k)) return; }
+  }
   for (const q of CP) for (const d of [1, -1, 2, -2]) { const im = q.ims[q.C.idx + d * dir]; if (im && needF(im) && !go(im, 'f')) return; }
   for (let d = 1; d <= 4; d++) { const i = idx + d * dir; if (needF(ims[i]) && !go(ims[i], 'f')) return; }
   for (let d = 1; d <= 2; d++) { const i = idx - d * dir; if (needF(ims[i]) && !go(ims[i], 'f')) return; }
@@ -7098,9 +7119,6 @@ function pump() {
   for (const q of CP) for (let d = 3; d <= 12; d++) for (const s of [d, -d]) { const im = q.ims[q.C.idx + s * dir]; if (im && needF(im) && !go(im, 'f')) return; }
   // 4. with MPR open: the 3D volume, nearest slices first: through the previews when they are the volume's size
   // 3D on its own, with previews as fine as its texture: only the previews are needed (quick), not the full volume
-  if (!S.vol && S.vr && S.vr.V.se === se && S.vr.T.viaP && !vrDone(S.vr.T)) {
-    for (let d = 0; d < n; d++) for (const i of near(d)) if (needP(ims[i]) && !go(ims[i], 'p')) return;
-  }
   const V = S.vol && S.vol.se === se ? S.vol : S.vr && S.vr.V.se === se && !S.vr.T.viaP ? S.vr.V : null; // MPR or 3D open
   if (V && V.count < V.n) {
     const viaP = red > 0 && Math.ceil(ims[0].cols / 2 ** red) === V.w;
@@ -7114,9 +7132,8 @@ function pump() {
       else if (coded(im) && !im.busyV && !im.err && !go(im, 'v', V.k)) return;
     }
   }
-  // Everything below is background work for slices further away: it waits while the user is touching the screen,
-  // so scrolling right after a study opens is as smooth as later on.
-  if (performance.now() - Math.max(S.moved || 0, LAST_INPUT.t) < 700) { if (!LAST_INPUT.wait) LAST_INPUT.wait = setTimeout(() => { LAST_INPUT.wait = 0; pump(); }, 750); return; }
+  // 3D of a series that is not the main view's (opened from a compared pane): it is filled too (before, it stopped at
+  // whatever happened to be decoded, e.g. 61 of 240, and never finif (performance.now() - Math.max(S.moved || 0, LAST_INPUT.t) < 700) { if (!LAST_INPUT.wait) LAST_INPUT.wait = setTimeout(() => { LAST_INPUT.wait = 0; pump(); }, 750); return; }
   // 5. full resolution around the reading position: scrolling here stays sharp, with no preview in between
   const win = se.win || 60;
   for (let d = 5; d <= Math.min(60, win); d++) for (const i of near(d)) if (needF(ims[i]) && !go(ims[i], 'f')) return;
@@ -7445,7 +7462,7 @@ async function rdAll(list, st, chunked, tight) {
           for (const im of e.imgs) { im.pixels = r.pixels[im.srcFrame]; im.dropped = false; }
           st.n += e.imgs.length; continue;
         }
-        if (r.kind === 'px' || r.kind === 'enc') { st.evN = (st.evN || 0) + 1; if (st.evN % 24 === 0) evict(); const res = addBuffer(null, e.name, r.kind === 'px' ? { info: r.info, pixels: r.pixels, src: { blob: e.blob, start: e.start, csize: e.csize, method: e.method, lho: e.lho } } : { info: r.info, frames: r.frames }); st.n++; st.ok++; res.all.forEach(s => st.seen.add(s)); }
+        if (r.kind === 'px' || r.kind === 'enc') { st.evN = (st.evN || 0) + 1; if (st.evN % 24 === 0) evict(); const res = addBuffer(null, e.name, r.kind === 'px' ? { info: r.info, pixels: r.pixels, src: { blob: e.blob, start: e.start, csize: e.csize, method: e.method, lho: e.lho } } : LAZY_RAW && e.blob && r.info.pixelOffset != null ? { info: r.info, z: { blob: e.blob, start: e.start, lho: e.lho, csize: e.csize, method: e.method || 0, pixelOffset: r.info.pixelOffset } } : { info: r.info, frames: r.frames }); /* compressed images too stay in the file on the device (before: the whole study in memory) */ st.n++; st.ok++; res.all.forEach(s => st.seen.add(s)); }
         else if (r.kind === 'zip') await rdZip(Zip.fromBlob(e.blob), e.name, st, e.depth);
         else if (r.kind === 'buf') await ingest(Zip.fromBuffer(r.buf), e.name, st, e.depth + 1);
         else if (e.en) { await tick(); await ingest(Zip.fromBuffer(await Zip.read(e.r, e.en)), e.name, st, e.depth + 1); } // read on the page instead (a pause first: the screen keeps going)
@@ -8099,6 +8116,7 @@ function vrSrc(T, V, z) {
   if (V.filled[z]) return { lv: 2, D: V.data, base: z * W * H, W, H, f: T.fxy, sl: V.sl, ic: V.ic };
   const im = V.se.images[z], pv = im && im.preview;
   if (pv && pv.data && T.red > 0) return { lv: T.pr >= 1 ? 2 : 1, D: pv.data, base: 0, W: pv.w, H: pv.h, f: T.pr, sl: im.slope || 1, ic: im.intercept || 0 };
+  if (im && im.pixels && im.pixels.length >= im.cols * im.rows) return { lv: 2, D: im.pixels, base: 0, W: im.cols, H: im.rows, f: T.fxy * im.cols / W, sl: im.slope || 1, ic: im.intercept || 0 }; // a slice already sharp (for a pane or for scrolling) is used as it is: before, 3D waited for a quick copy of it that was never made, and stopped at about 65%
   return null;
 }
 const vrZs = (T, V, t) => { const k0 = t * T.fz, k1 = Math.min(V.n, k0 + T.fz), zs = []; for (let k = k0; k < k1; k++) zs.push(V.flip ? k : V.n - 1 - k); return zs; }; // texture w goes up: superior at the top
